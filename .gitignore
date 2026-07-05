@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+n8n/credentials/
+*.log
+.DS_Store
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
