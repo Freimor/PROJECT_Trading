@@ -16,7 +16,7 @@ llm:
 
 trading:
   kill_switch: false
-  mode: dry_run  # dry_run | paper | shadow | live
+  mode: paper  # dry_run | paper | shadow | live
   allowed_envs: [dry_run, paper, shadow, testnet, sandbox]
   live_requires_manual_flag: true
   max_open_positions_crypto: 2

@@ -79,14 +79,23 @@ class TinvestRestClient:
             {},
         )
         account_id = str(opened["accountId"])
-        self._post(
+        self.sandbox_pay_in(account_id, rub_units=1_000_000)
+        return account_id
+
+    def sandbox_pay_in(self, account_id: str, *, rub_units: int = 1_000_000) -> dict[str, Any]:
+        return self._post(
             "/tinkoff.public.invest.api.contract.v1.SandboxService/SandboxPayIn",
             {
                 "accountId": account_id,
-                "amount": {"currency": "rub", "units": "1000000", "nano": 0},
+                "amount": {"currency": "rub", "units": str(rub_units), "nano": 0},
             },
         )
-        return account_id
+
+    def close_sandbox_account(self, account_id: str) -> dict[str, Any]:
+        return self._post(
+            "/tinkoff.public.invest.api.contract.v1.SandboxService/CloseSandboxAccount",
+            {"accountId": account_id},
+        )
 
     def get_account_id(self) -> str:
         if self.sandbox:
@@ -96,7 +105,28 @@ class TinvestRestClient:
             raise RuntimeError("no_account")
         return str(accounts[0]["id"])
 
-    def find_instrument(self, query: str) -> dict[str, Any] | None:
+    def get_share_by_ticker(self, ticker: str, *, class_code: str = "TQBR") -> dict[str, Any] | None:
+        """Resolve MOEX share on main board (avoids wrong FindInstrument matches)."""
+        try:
+            data = self._post(
+                "/tinkoff.public.invest.api.contract.v1.InstrumentsService/ShareBy",
+                {
+                    "idType": "INSTRUMENT_ID_TYPE_TICKER",
+                    "classCode": class_code,
+                    "id": ticker.upper(),
+                },
+            )
+            return data.get("instrument") or None
+        except Exception:
+            return None
+
+    def find_instrument(self, query: str, *, class_code: str = "TQBR") -> dict[str, Any] | None:
+        # Prefer exact TQBR share — FindInstrument often returns bonds/notes first.
+        if query.isalpha() and 1 <= len(query) <= 6:
+            share = self.get_share_by_ticker(query, class_code=class_code)
+            if share:
+                return share
+
         data = self._post(
             "/tinkoff.public.invest.api.contract.v1.InstrumentsService/FindInstrument",
             {"query": query},
@@ -104,11 +134,16 @@ class TinvestRestClient:
         instruments = data.get("instruments") or []
         if not instruments:
             return None
-        preferred = next(
-            (i for i in instruments if str(i.get("ticker", "")).upper() == query.upper()),
-            instruments[0],
-        )
-        return preferred
+
+        def _score(inst: dict[str, Any]) -> tuple[int, str]:
+            ticker = str(inst.get("ticker", "")).upper()
+            cc = str(inst.get("classCode", ""))
+            tradeable = bool(inst.get("apiTradeAvailableFlag"))
+            exact = ticker == query.upper()
+            tqbr = cc == class_code
+            return (int(exact) * 4 + int(tqbr) * 2 + int(tradeable), ticker)
+
+        return max(instruments, key=_score)
 
     def get_last_price(self, instrument_id: str) -> float:
         data = self._post(

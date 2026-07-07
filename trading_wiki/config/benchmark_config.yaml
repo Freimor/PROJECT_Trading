@@ -1,0 +1,24 @@
+# LLM benchmark — пороги разметки исходов и горизонты
+version: "1.0.0"
+
+crypto:
+  timeframe: "4h"
+  horizon_bars: 6          # ~24h на 4h свечах
+  good_return_pct: 1.0     # approve + return >= → good
+  bad_return_pct: -1.0     # approve + return <= → bad
+  klines_limit: 120
+
+securities:
+  moex_interval: 24        # дневные свечи MOEX ISS
+  horizon_bars: 5          # 5 торговых дней
+  good_return_pct: 2.0
+  bad_return_pct: -2.0
+  candles_limit: 60
+
+sampling:
+  max_cases_per_run: 80
+  min_age_hours: 30        # не размечать свежие (нет будущих баров)
+
+golden:
+  crypto_file: benchmark/crypto_golden_v1.yaml
+  securities_file: benchmark/moex_golden_v1.yaml

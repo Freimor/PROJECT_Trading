@@ -10,6 +10,10 @@ from telegram_bot.actions import (
     send_automat_docs,
     send_automat_events,
     send_automat_menu,
+    send_benchmark_full,
+    send_benchmark_golden,
+    send_benchmark_menu,
+    send_benchmark_report,
     send_confirmations,
     send_crypto_balance,
     send_crypto_events,
@@ -36,20 +40,31 @@ from telegram_bot.actions import (
     send_news_menu,
     send_news_sources,
     send_news_trades_toggle_info,
+    send_paper_effectiveness,
+    send_paper_menu,
+    send_paper_reset,
+    send_paper_run_crypto,
+    send_paper_run_moex,
     send_restart_prompt,
     send_smoke_test,
     send_system_menu,
     send_system_summary,
+    send_workflows_menu,
     send_welcome,
     send_wiki,
 )
 from telegram_bot.config import is_allowed
 from telegram_bot.keyboards import (
     AUTOMAT_BUTTONS,
+    BENCHMARK_BUTTONS,
     BTN_AUTOMAT,
     BTN_AUTOMAT_DOCS,
     BTN_BACK_AUTOMAT,
     BTN_BACK_MAIN,
+    BTN_BENCHMARK,
+    BTN_BM_FULL,
+    BTN_BM_GOLDEN,
+    BTN_BM_REPORT,
     BTN_CONFIRM,
     BTN_CR_BALANCE,
     BTN_CR_EVENTS,
@@ -77,8 +92,14 @@ from telegram_bot.keyboards import (
     BTN_NEWS_LATEST,
     BTN_NEWS_SOURCES,
     BTN_NEWS_TRADES,
+    BTN_PAPER_EFF,
+    BTN_PAPER_RESET,
+    BTN_PAPER_RUN_CR,
+    BTN_PAPER_RUN_MX,
+    BTN_PAPER_TEST,
     BTN_RESTART,
     BTN_SMOKE,
+    BTN_WORKFLOWS,
     BTN_SYS_SUMMARY,
     BTN_SYSTEM,
     BTN_WIKI,
@@ -88,6 +109,7 @@ from telegram_bot.keyboards import (
     MAIN_BUTTONS,
     MOEX_SANDBOX_BUTTONS,
     NEWS_BUTTONS,
+    PAPER_BUTTONS,
     SYSTEM_BUTTONS,
 )
 
@@ -139,6 +161,42 @@ async def on_automat(message: Message) -> None:
         await send_automat_events(message)
     elif text == BTN_AUTOMAT_DOCS:
         await send_automat_docs(message)
+    elif text == BTN_PAPER_TEST:
+        await send_paper_menu(message)
+    elif text == BTN_BENCHMARK:
+        await send_benchmark_menu(message)
+
+
+@router.message(F.text.in_(BENCHMARK_BUTTONS))
+async def on_benchmark(message: Message) -> None:
+    if not message.text or not is_allowed(message.chat.id):
+        return
+    text = message.text
+    if text == BTN_BACK_AUTOMAT:
+        await send_automat_menu(message)
+    elif text == BTN_BM_REPORT:
+        await send_benchmark_report(message)
+    elif text == BTN_BM_GOLDEN:
+        await send_benchmark_golden(message)
+    elif text == BTN_BM_FULL:
+        await send_benchmark_full(message)
+
+
+@router.message(F.text.in_(PAPER_BUTTONS))
+async def on_paper(message: Message) -> None:
+    if not message.text or not is_allowed(message.chat.id):
+        return
+    text = message.text
+    if text == BTN_BACK_AUTOMAT:
+        await send_automat_menu(message)
+    elif text == BTN_PAPER_EFF:
+        await send_paper_effectiveness(message)
+    elif text == BTN_PAPER_RESET:
+        await send_paper_reset(message)
+    elif text == BTN_PAPER_RUN_CR:
+        await send_paper_run_crypto(message)
+    elif text == BTN_PAPER_RUN_MX:
+        await send_paper_run_moex(message)
 
 
 @router.message(F.text.in_(KNOWLEDGE_BUTTONS))
@@ -179,6 +237,8 @@ async def on_system(message: Message) -> None:
         await send_welcome(message)
     elif message.text == BTN_HOST_STATUS:
         await send_host_status(message)
+    elif message.text == BTN_WORKFLOWS:
+        await send_workflows_menu(message)
     elif message.text == BTN_SMOKE:
         await send_smoke_test(message)
     elif message.text == BTN_RESTART:

@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import httpx
+
 from bridges.tinvest_rest import TinvestRestClient
 
 
@@ -19,6 +21,31 @@ def _client(sandbox: bool) -> TinvestRestClient | None:
     if not token:
         return None
     return TinvestRestClient(token, sandbox=sandbox)
+
+
+def _moex_last_price(ticker: str) -> float:
+    """Fallback when T-Invest sandbox returns empty last price."""
+    url = (
+        f"https://iss.moex.com/iss/engines/stock/markets/shares/"
+        f"boards/TQBR/securities/{ticker.upper()}/marketdata.json"
+    )
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(url, params={"iss.only": "marketdata"})
+            resp.raise_for_status()
+            data = resp.json()
+        cols = data["marketdata"]["columns"]
+        rows = data["marketdata"]["data"]
+        if not rows:
+            return 0.0
+        row = dict(zip(cols, rows[0]))
+        for key in ("LAST", "LCURRENTPRICE", "WAPRICE", "CLOSEPRICE"):
+            val = row.get(key)
+            if val is not None and float(val) > 0:
+                return float(val)
+    except Exception:
+        return 0.0
+    return 0.0
 
 
 def post_dca_order(
@@ -56,6 +83,10 @@ def post_dca_order(
 
         account_id = client.get_account_id()
         price = client.get_last_price(figi)
+        price_source = "tinkoff"
+        if price <= 0:
+            price = _moex_last_price(ticker)
+            price_source = "moex_iss"
         if price <= 0:
             return {"status": "error", "reject_reason": "no_price", "ticker": ticker, "figi": figi}
 
@@ -74,6 +105,7 @@ def post_dca_order(
             "lots": lots,
             "lot_size": lot_size,
             "price": price,
+            "price_source": price_source,
             "sandbox": sandbox,
         }
     except Exception as exc:

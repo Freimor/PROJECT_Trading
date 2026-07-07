@@ -4,10 +4,10 @@
 version: "1.0.0"
 env: sandbox  # sandbox | live
 
-mode: dry_run  # dry_run | paper | shadow | live
+mode: paper  # dry_run | paper | shadow | live
 
-# Режимы: index_dca (без LLM) | swing_signals (с LLM)
-active_mode: index_dca
+# Режимы: index_dca (без LLM) | swing_signals (с LLM — для paper-теста LLM)
+active_mode: swing_signals
 
 index_dca:
   ticker: TMOS
@@ -22,6 +22,7 @@ swing_signals:
   llm_min_confidence: 0.7
   ollama_model: qwen3.5:9b
   prompt_version: "securities_validate_v1"
+  paper_amount_rub: 5000
   prefer_limit_orders: true
 
 session:

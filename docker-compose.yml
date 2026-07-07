@@ -75,6 +75,8 @@ services:
       - TELEGRAM_PROXY_GATEWAY=${TELEGRAM_PROXY_GATEWAY:-socks5://proxy-gateway:17890}
       - TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC=${TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC:-60}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      - N8N_API_KEY=${N8N_API_KEY:-}
+      - N8N_API_BASE=${N8N_API_BASE:-http://n8n:5678/api/v1}
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
     volumes:
       - ./data:/data

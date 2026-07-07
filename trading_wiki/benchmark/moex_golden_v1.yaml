@@ -1,0 +1,89 @@
+version: 1
+market: securities
+description: Регрессионный golden set — MOEX swing validate prompt
+prompt_version: securities_validate_v1
+cases:
+  - id: sber_uptrend_macd
+    symbol: SBER
+    timeframe: 1d
+    expected_action: approve
+    indicators:
+      close: 296.5
+      rsi_14: 53
+      ema50: 285
+      ema200: 270
+      trend: up
+      macd: 0.28
+      macd_signal: -0.27
+      macd_histogram: 0.55
+      proceed: true
+      rule_name: macd_bullish_cross+golden_cross_context
+    news: "none"
+
+  - id: sber_overbought
+    symbol: SBER
+    timeframe: 1d
+    expected_action: reject
+    indicators:
+      close: 320
+      rsi_14: 72
+      ema50: 300
+      ema200: 280
+      trend: up
+      macd: -0.1
+      macd_signal: 0.2
+      macd_histogram: -0.3
+      proceed: true
+      rule_name: rsi_overbought
+    news: "none"
+
+  - id: gazp_downtrend
+    symbol: GAZP
+    timeframe: 1d
+    expected_action: reject
+    indicators:
+      close: 120
+      rsi_14: 38
+      ema50: 135
+      ema200: 150
+      trend: down
+      macd: -2
+      macd_signal: -1
+      macd_histogram: -1
+      proceed: true
+      rule_name: below_ema200
+    news: "none"
+
+  - id: lkoh_swing_setup
+    symbol: LKOH
+    timeframe: 1d
+    expected_action: approve
+    indicators:
+      close: 7200
+      rsi_14: 42
+      ema50: 7000
+      ema200: 6800
+      trend: up
+      macd: 50
+      macd_signal: 20
+      macd_histogram: 30
+      proceed: true
+      rule_name: pullback_in_uptrend
+    news: "Oil stable, no major sanctions news"
+
+  - id: gmkn_weak_setup
+    symbol: GMKN
+    timeframe: 1d
+    expected_action: reject
+    indicators:
+      close: 15000
+      rsi_14: 50
+      ema50: 15100
+      ema200: 15200
+      trend: down
+      macd: -10
+      macd_signal: -5
+      macd_histogram: -5
+      proceed: true
+      rule_name: below_emas
+    news: "Nickel volatility elevated"

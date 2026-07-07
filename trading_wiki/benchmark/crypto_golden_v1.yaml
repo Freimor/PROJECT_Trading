@@ -1,0 +1,89 @@
+version: 1
+market: crypto
+description: Регрессионный golden set — crypto validate prompt
+prompt_version: crypto_validate_v1
+cases:
+  - id: btc_uptrend_oversold
+    symbol: BTCUSDT
+    timeframe: 4h
+    expected_action: approve
+    indicators:
+      close: 65000
+      rsi_14: 34
+      ema50: 62000
+      ema200: 58000
+      trend: up
+      macd: 120
+      macd_signal: 80
+      macd_histogram: 40
+      proceed: true
+      rule_name: rsi_oversold_in_uptrend
+    news: "none"
+
+  - id: btc_overbought_reject
+    symbol: BTCUSDT
+    timeframe: 4h
+    expected_action: reject
+    indicators:
+      close: 72000
+      rsi_14: 78
+      ema50: 68000
+      ema200: 65000
+      trend: up
+      macd: -50
+      macd_signal: 20
+      macd_histogram: -70
+      proceed: true
+      rule_name: rsi_overbought
+    news: "none"
+
+  - id: eth_downtrend_reject
+    symbol: ETHUSDT
+    timeframe: 4h
+    expected_action: reject
+    indicators:
+      close: 2800
+      rsi_14: 45
+      ema50: 3100
+      ema200: 3400
+      trend: down
+      macd: -30
+      macd_signal: -10
+      macd_histogram: -20
+      proceed: true
+      rule_name: below_ema200
+    news: "none"
+
+  - id: btc_macd_bullish_cross
+    symbol: BTCUSDT
+    timeframe: 4h
+    expected_action: approve
+    indicators:
+      close: 67000
+      rsi_14: 52
+      ema50: 65500
+      ema200: 60000
+      trend: up
+      macd: 150
+      macd_signal: 100
+      macd_histogram: 50
+      proceed: true
+      rule_name: macd_bullish_cross
+    news: "ETF inflows positive"
+
+  - id: btc_high_volatility_news
+    symbol: BTCUSDT
+    timeframe: 4h
+    expected_action: reject
+    indicators:
+      close: 64000
+      rsi_14: 48
+      ema50: 63800
+      ema200: 62000
+      trend: sideways
+      macd: 5
+      macd_signal: 10
+      macd_histogram: -5
+      proceed: true
+      rule_name: weak_momentum
+    news: "SEC investigation headline unverified"

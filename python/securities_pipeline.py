@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from config_loader import load_config
-from event_log import log_event
+from event_log import log_event, log_llm_decision
 from guardrails import enforce_guardrails
 from indicators.technical import compute_indicators, rule_filter
 from llm_client import validate_signal
@@ -89,6 +89,16 @@ def run_securities_swing_dry_run(
             decision=llm_result.get("action"),
             workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
             model=llm_result.get("model"), confidence=llm_result.get("confidence"),
+        )
+        log_llm_decision(
+            trade_event_id=None,
+            market="securities",
+            model=llm_result.get("model", "unknown"),
+            prompt_version=prompt_version,
+            inputs_hash=ih,
+            raw_response=str(llm_result.get("raw", "")),
+            parsed=llm_result,
+            latency_ms=int(llm_result.get("latency_ms") or 0),
         )
 
     guard = enforce_guardrails(

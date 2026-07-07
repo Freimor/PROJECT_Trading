@@ -106,9 +106,46 @@ docker exec -it trading-ollama ollama pull llama3.2
 
 **Этапы 1–8 реализованы** — [`roadmap`](./n8n_automation/docs/roadmap.md) · [`live checklist`](./n8n_automation/docs/live_promotion.md)
 
+### Paper-тестирование (виртуальные сделки)
+
+Режим **`paper`**: полный пайплайн signal → filter → LLM → guardrails → risk → **ордер** на Binance testnet и T-Invest sandbox.
+
+- Документация: [`n8n_automation/docs/paper_testing.md`](./n8n_automation/docs/paper_testing.md)
+- Telegram: **🤖 Автомат → 🧪 Paper тест** (эффективность, сброс MOEX sandbox, ручной прогон)
+- API: `GET /api/paper/status`, `GET /api/paper/effectiveness`, `POST /api/paper/session/reset`
+
+**Сброс баланса:** MOEX sandbox — да (новый демо-счёт ~1M ₽). Binance testnet — только baseline сессии в SQLite (полный сброс ~раз в месяц на стороне Binance).
+
+```powershell
+curl -X POST "http://localhost:8000/api/paper/session/reset"
+curl "http://localhost:8000/api/paper/effectiveness?days=7"
+```
+
 ```powershell
 docker exec trading-db-api python smoke_test.py
 ```
+
+### Управление n8n workflow из Telegram
+
+В Telegram: **🖥 Управление → 🧩 Workflows** можно:
+
+- включать/выключать workflow
+- менять cron для `Schedule Trigger` (пресеты 15m/1h/4h) или вручную через `/cron`
+
+Для этого нужен **n8n Public API key**:
+
+- В n8n UI откройте **Settings → API keys**, создайте ключ со scope:
+  `workflow:list`, `workflow:read`, `workflow:update`, `workflow:activate`
+- Добавьте в `.env` переменную `N8N_API_KEY` (см. `.env.example`)
+- Перезапустите `db-api`: `docker compose up -d --build db-api`
+
+### LLM Benchmark
+
+Оценка качества решений LLM: precision/recall, sim PnL, golden set.
+
+- Документация: [`n8n_automation/docs/llm_benchmark.md`](n8n_automation/docs/llm_benchmark.md)
+- Telegram: **🤖 Автомат → 📊 LLM Benchmark**
+- API: `GET /api/benchmark/report`, `POST /api/benchmark/run`
 
 | Workflow | Этап |
 |----------|------|
@@ -118,6 +155,7 @@ docker exec trading-db-api python smoke_test.py
 | `securities-dca-sandbox` | 5 |
 | `analysis-llm-report` | 6 |
 | `securities-swing-dry-run` | 7 |
+| `llm-benchmark-weekly` | 6+ |
 
 
 

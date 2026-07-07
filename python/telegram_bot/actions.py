@@ -8,6 +8,7 @@ from telegram_bot.api_client import get_json, post_json
 from telegram_bot.formatters import (
     format_automation_overview,
     format_automat_doc,
+    format_benchmark_report,
     format_checklist,
     format_crypto_balances,
     format_crypto_funnel,
@@ -15,6 +16,7 @@ from telegram_bot.formatters import (
     format_events,
     format_host_status,
     format_live_status,
+    format_paper_effectiveness,
     format_news_alert_settings,
     format_news_latest,
     format_news_sources,
@@ -33,20 +35,25 @@ from telegram_bot.keyboards import (
     inline_automat_docs,
     inline_kill_menu,
     inline_news_alert_settings,
+    inline_workflows,
     reply_automat_menu,
+    reply_benchmark_menu,
     reply_crypto_test_menu,
     reply_knowledge_menu,
     reply_live_menu,
     reply_main_menu,
     reply_moex_sandbox_menu,
     reply_news_menu,
+    reply_paper_menu,
     reply_system_menu,
     restart_confirm,
 )
+from telegram_bot.screen import ScreenKey, show_screen, show_screen_chat, update_panel
 
 
 async def send_welcome(message: Message) -> None:
-    await message.answer(
+    await show_screen(
+        message,
         "📱 Trading Pult\n\n"
         "🤖 Автомат — торговые flow\n"
         "📚 База знаний — wiki и конфиг\n"
@@ -54,6 +61,7 @@ async def send_welcome(message: Message) -> None:
         "🖥 Управление — инфраструктура\n"
         "🛑 Kill Switch — аварийная остановка",
         reply_markup=reply_main_menu(),
+        screen_key=ScreenKey.MAIN,
     )
 
 
@@ -62,27 +70,77 @@ async def send_welcome(message: Message) -> None:
 
 async def send_automat_menu(message: Message) -> None:
     data = await get_json("/api/automation/overview?days=7")
-    await message.answer(format_automation_overview(data), reply_markup=reply_automat_menu())
+    await show_screen(
+        message,
+        format_automation_overview(data),
+        reply_markup=reply_automat_menu(),
+        screen_key=ScreenKey.AUTOMAT,
+    )
 
 
 async def send_knowledge_menu(message: Message) -> None:
-    await message.answer("📚 База знаний", reply_markup=reply_knowledge_menu())
+    await show_screen(
+        message,
+        "📚 База знаний",
+        reply_markup=reply_knowledge_menu(),
+        screen_key=ScreenKey.KNOWLEDGE,
+    )
 
 
 async def send_news_menu(message: Message) -> None:
-    await message.answer("📰 Новости для LLM-контекста", reply_markup=reply_news_menu())
+    await show_screen(
+        message,
+        "📰 Новости для LLM-контекста",
+        reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
+    )
 
 
 async def send_system_menu(message: Message) -> None:
-    await message.answer("🖥 Управление системой", reply_markup=reply_system_menu())
+    await show_screen(
+        message,
+        "🖥 Управление системой",
+        reply_markup=reply_system_menu(),
+        screen_key=ScreenKey.SYSTEM,
+    )
+
+
+async def send_workflows_menu(message: Message) -> None:
+    data = await get_json("/api/n8n/workflows")
+    if data.get("status") != "ok":
+        msg = data.get("message", "n8n API error")
+        await show_screen(
+            message,
+            "🧩 Workflows\n\n"
+            "Не удалось подключиться к n8n Public API.\n"
+            f"Причина: {msg}\n\n"
+            "Нужно: создать API key в n8n (Settings → API keys) "
+            "и прописать `N8N_API_KEY` в `.env`, затем перезапустить `db-api`.",
+            reply_markup=reply_system_menu(),
+            screen_key=ScreenKey.SYSTEM,
+        )
+        return
+    workflows = data.get("workflows") or []
+    await show_screen(
+        message,
+        "🧩 Workflows\n\n"
+        "Нажмите на workflow чтобы включить/выключить.\n"
+        "Кнопки 15m/1h/4h — меняют cron для Schedule Trigger (если он есть).",
+        reply_markup=inline_workflows(workflows),
+        screen_key="workflows_inline",
+        inline=True,
+    )
 
 
 async def send_kill_switch_menu(message: Message) -> None:
     status = await get_json("/api/system/status")
     kill = "🔴 ВКЛЮЧЁН" if status.get("kill_switch") else "🟢 ВЫКЛЮЧЕН"
-    await message.answer(
+    await show_screen(
+        message,
         f"🛑 Kill Switch\n\nТекущее состояние: {kill}\n\nВыберите действие:",
         reply_markup=inline_kill_menu(),
+        screen_key="kill_inline",
+        inline=True,
     )
 
 
@@ -90,41 +148,62 @@ async def send_kill_switch_menu(message: Message) -> None:
 
 
 async def send_crypto_test_menu(message: Message) -> None:
-    await message.answer("₿ Крипто (testnet)", reply_markup=reply_crypto_test_menu())
+    await show_screen(
+        message,
+        "₿ Крипто (testnet)",
+        reply_markup=reply_crypto_test_menu(),
+        screen_key=ScreenKey.CRYPTO_TEST,
+    )
 
 
 async def send_moex_sandbox_menu(message: Message) -> None:
     data = await get_json("/api/testing/tinvest-sandbox?days=7")
     conn = data.get("connection", {})
     icon = "✅" if conn.get("status") == "ok" else "❌"
-    await message.answer(
+    await show_screen(
+        message,
         f"📈 MOEX (sandbox) {icon}",
         reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
     )
 
 
 async def send_crypto_live_menu(message: Message) -> None:
     checklist = await get_json("/api/live/checklist")
-    await message.answer(
+    await show_screen(
+        message,
         format_live_status("crypto", checklist),
         reply_markup=reply_live_menu(),
+        screen_key=ScreenKey.LIVE,
     )
 
 
 async def send_moex_live_menu(message: Message) -> None:
     checklist = await get_json("/api/live/checklist")
-    await message.answer(
+    await show_screen(
+        message,
         format_live_status("securities", checklist),
         reply_markup=reply_live_menu(),
+        screen_key=ScreenKey.LIVE,
     )
 
 
 async def send_confirmations(message: Message) -> None:
     pending = await get_json("/api/admin/confirmations/pending")
     if not pending:
-        await message.answer("Нет ожидающих подтверждений.", reply_markup=reply_automat_menu())
+        await show_screen(
+            message,
+            "Нет ожидающих подтверждений.",
+            reply_markup=reply_automat_menu(),
+            screen_key=ScreenKey.AUTOMAT,
+        )
         return
-    await message.answer(f"Ожидают: {len(pending)}", reply_markup=reply_automat_menu())
+    await show_screen(
+        message,
+        f"⚠️ Ожидают подтверждения: {len(pending)}\n\nВыберите действие в сообщениях ниже.",
+        reply_markup=reply_automat_menu(),
+        screen_key=ScreenKey.AUTOMAT,
+    )
     for item in pending[:5]:
         await message.answer(
             f"⚠️ {item.get('title')}\nТип: {item.get('action_type')}",
@@ -140,18 +219,23 @@ async def send_automat_events(message: Message) -> None:
         key=lambda e: e.get("event_at", ""),
         reverse=True,
     )
-    await message.answer(
+    await show_screen(
+        message,
         format_events(combined, title="🧾 События автомата"),
         reply_markup=reply_automat_menu(),
+        screen_key=ScreenKey.AUTOMAT,
     )
 
 
 async def send_automat_docs(message: Message, *, section: str = "overview") -> None:
     data = await get_json(f"/api/automation/docs?section={section}")
     sections = data.get("sections") or []
-    await message.answer(
+    await show_screen(
+        message,
         format_automat_doc(data),
         reply_markup=inline_automat_docs(section, sections),
+        screen_key="automat_docs_inline",
+        inline=True,
     )
 
 
@@ -160,12 +244,22 @@ async def send_automat_docs(message: Message, *, section: str = "overview") -> N
 
 async def send_wiki(message: Message) -> None:
     data = await get_json("/api/wiki/toc")
-    await message.answer(format_wiki_toc(data), reply_markup=reply_knowledge_menu())
+    await show_screen(
+        message,
+        format_wiki_toc(data),
+        reply_markup=reply_knowledge_menu(),
+        screen_key=ScreenKey.KNOWLEDGE,
+    )
 
 
 async def send_system_summary(message: Message) -> None:
     data = await get_json("/api/system/summary")
-    await message.answer(format_system_summary(data), reply_markup=reply_knowledge_menu())
+    await show_screen(
+        message,
+        format_system_summary(data),
+        reply_markup=reply_knowledge_menu(),
+        screen_key=ScreenKey.KNOWLEDGE,
+    )
 
 
 # --- News ---
@@ -173,16 +267,24 @@ async def send_system_summary(message: Message) -> None:
 
 async def send_news_latest(message: Message) -> None:
     items = await get_json("/api/news/latest?limit=8&include_trades=true")
-    await message.answer(format_news_latest(items), reply_markup=reply_news_menu())
+    await show_screen(
+        message,
+        format_news_latest(items),
+        reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
+    )
 
 
 async def send_news_alert_settings(message: Message) -> None:
     data = await get_json("/api/news/alerts/settings")
     news_on = data.get("news_digest", {}).get("enabled", True)
     trades_on = data.get("trade_alerts", {}).get("enabled", True)
-    await message.answer(
+    await show_screen(
+        message,
         format_news_alert_settings(data),
         reply_markup=inline_news_alert_settings(news_on, trades_on),
+        screen_key="news_alerts_inline",
+        inline=True,
     )
 
 
@@ -195,24 +297,305 @@ async def send_news_trades_toggle_info(message: Message) -> None:
         {"trade_enabled": new_state, "operator": f"telegram:{message.chat.id}"},
     )
     state = "включены" if updated.get("trade_alerts", {}).get("enabled") else "выключены"
-    await message.answer(
+    await show_screen(
+        message,
         f"💼 Сделки в ленте {state}.",
         reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
     )
 
 
 async def send_news_sources(message: Message) -> None:
     sources = await get_json("/api/news/sources")
-    await message.answer(format_news_sources(sources), reply_markup=reply_news_menu())
+    await show_screen(
+        message,
+        format_news_sources(sources),
+        reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
+    )
 
 
 async def send_news_ingest(message: Message) -> None:
-    await message.answer("🔄 Загружаю RSS…", reply_markup=reply_news_menu())
-    result = await post_json("/api/news/ingest")
-    await message.answer(
-        f"Готово: +{result.get('inserted', 0)} новых, "
-        f"дубликатов {result.get('skipped_dup', 0)}",
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "🔄 Загружаю RSS…",
         reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
+    )
+    result = await post_json("/api/news/ingest")
+    await show_screen_chat(
+        bot,
+        chat_id,
+        f"🗞 RSS обновлён\n\n"
+        f"+{result.get('inserted', 0)} новых, дубликатов {result.get('skipped_dup', 0)}",
+        reply_markup=reply_news_menu(),
+        screen_key=ScreenKey.NEWS,
+    )
+
+
+# --- Paper test ---
+
+
+async def send_paper_menu(message: Message) -> None:
+    status = await get_json("/api/paper/status")
+    mode = status.get("global_mode", "?")
+    await show_screen(
+        message,
+        f"🧪 Paper тест\n\nРежим: {mode}\n"
+        "Виртуальные сделки на testnet/sandbox.\n"
+        "Сброс MOEX → новый демо-счёт ~1M ₽.",
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+
+
+async def send_paper_effectiveness(message: Message) -> None:
+    data = await get_json("/api/paper/effectiveness?days=7")
+    await show_screen(
+        message,
+        format_paper_effectiveness(data),
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+
+
+async def send_paper_reset(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "⏳ Сброс MOEX sandbox + новая сессия…",
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+    result = await post_json(
+        "/api/paper/session/reset",
+        {"reset_moex": True, "operator": f"telegram:{message.chat.id}"},
+    )
+    moex = result.get("moex", {})
+    session = result.get("session", {})
+    await show_screen_chat(
+        bot,
+        chat_id,
+        f"✅ Paper сессия сброшена\n\n"
+        f"Сессия: {session.get('session_id', '—')[:8]}…\n"
+        f"MOEX: {moex.get('status', '—')}\n"
+        f"{result.get('binance_note', '')[:200]}",
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+
+
+async def send_paper_run_crypto(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "⏳ Crypto paper: signal + LLM + order…",
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+    result = await post_json("/api/paper/crypto/run?symbol=BTCUSDT", {}, timeout=600.0)
+    status = result.get("status", "?")
+    detail = result.get("message") or result.get("reject_reason") or ""
+    await show_screen_chat(
+        bot,
+        chat_id,
+        f"₿ Crypto paper\n\nРезультат: {status}\n{detail}"[:3500],
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+
+
+async def send_paper_run_moex(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "⏳ MOEX swing paper: signal + LLM + order…",
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+    result = await post_json("/api/paper/securities/swing?ticker=SBER", {}, timeout=600.0)
+    status = result.get("status", "?")
+    detail = result.get("message") or result.get("reject_reason") or ""
+    await show_screen_chat(
+        bot,
+        chat_id,
+        f"📈 MOEX paper\n\nРезультат: {status}\n{detail}"[:3500],
+        reply_markup=reply_paper_menu(),
+        screen_key=ScreenKey.PAPER,
+    )
+
+
+# --- LLM Benchmark ---
+
+
+def _golden_progress_text(done: int, total: int, case: dict | None, details: list[dict]) -> str:
+    passed = sum(1 for d in details if d.get("pass"))
+    lines = [
+        "📊 Golden set",
+        "",
+        f"🔄 Прогресс: {done}/{total}",
+        f"🏅 Сейчас: {passed}/{len(details)} прошли",
+    ]
+    if case:
+        lines.append(f"Текущий: {case.get('id')} ({case.get('market')})")
+        lines.append("⏳ Вызов LLM — обычно 1–3 мин на кейс.")
+    return "\n".join(lines)
+
+
+async def _run_golden_cases(message: Message) -> dict:
+    """Run golden cases one-by-one with live panel updates."""
+    chat_id = message.chat.id
+    bot = message.bot
+    cases = await get_json("/api/benchmark/golden/cases")
+    total = len(cases)
+    if not total:
+        return {"status": "error", "message": "no_golden_cases", "total": 0, "passed": 0, "details": []}
+
+    details: list[dict] = []
+    for i, case in enumerate(cases, 1):
+        await update_panel(bot, chat_id, _golden_progress_text(i - 1, total, case, details))
+        result = await post_json(
+            "/api/benchmark/golden/one",
+            {"case_id": case.get("id"), "market": case.get("market")},
+            timeout=600.0,
+        )
+        if result.get("status") == "ok":
+            details.append(result)
+        else:
+            details.append(
+                {
+                    "id": case.get("id"),
+                    "market": case.get("market"),
+                    "expected": case.get("expected_action"),
+                    "actual": "?",
+                    "pass": False,
+                    "error": result.get("message"),
+                }
+            )
+        await update_panel(bot, chat_id, _golden_progress_text(i, total, None, details))
+
+    passed = sum(1 for d in details if d.get("pass"))
+    golden = {
+        "status": "ok",
+        "total": len(details),
+        "passed": passed,
+        "pass_rate": round(passed / len(details), 4) if details else 0,
+        "details": details,
+    }
+    await post_json(
+        "/api/benchmark/snapshot",
+        {"golden": golden, "kind": "golden"},
+    )
+    return golden
+
+
+async def send_benchmark_menu(message: Message) -> None:
+    await show_screen(
+        message,
+        "📊 LLM Benchmark\n\n"
+        "Оценка качества решений LLM:\n"
+        "• Отчёт — outcome metrics + последний golden\n"
+        "• Golden set — регрессия промпта (с прогрессом)\n"
+        "• Полный прогон — sample → label → отчёт → golden",
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK,
+    )
+
+
+async def send_benchmark_report(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "📊 Отчёт\n\n⏳ Считаю benchmark…",
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK,
+    )
+    data = await get_json("/api/benchmark/report?days=30")
+    await show_screen_chat(
+        bot,
+        chat_id,
+        format_benchmark_report(data),
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK,
+    )
+
+
+async def send_benchmark_golden(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "📊 Golden set\n\n⏳ Загружаю кейсы…",
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK_RUN,
+    )
+    try:
+        golden = await _run_golden_cases(message)
+        if golden.get("status") != "ok":
+            text = f"📊 Golden set\n\nОшибка: {golden.get('message', '?')}"
+        else:
+            report = await get_json("/api/benchmark/report?days=30")
+            text = format_benchmark_report({"status": "ok", "report": report, "golden": golden})
+    except Exception as exc:
+        text = f"📊 Golden set\n\n❌ Ошибка: {exc}"
+    await show_screen_chat(
+        bot,
+        chat_id,
+        text,
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK,
+    )
+
+
+async def send_benchmark_full(message: Message) -> None:
+    chat_id = message.chat.id
+    bot = message.bot
+    days = 30
+
+    async def step(n: int, title: str) -> None:
+        await update_panel(
+            bot,
+            chat_id,
+            f"📊 Полный прогон benchmark\n\n[{n}/4] {title}…",
+        )
+
+    await show_screen(
+        message,
+        "📊 Полный прогон benchmark\n\n[1/4] Сэмплирование кейсов…",
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK_RUN,
+    )
+    try:
+        sample = await post_json(f"/api/benchmark/sample?days={days}", {})
+        await step(2, f"Разметка outcomes (новых: {sample.get('inserted', 0)})")
+        label = await post_json("/api/benchmark/label", {})
+        await step(3, f"Отчёт outcome (размечено: {label.get('labeled', 0)})")
+        report = await get_json(f"/api/benchmark/report?days={days}")
+        await update_panel(
+            bot,
+            chat_id,
+            "📊 Полный прогон benchmark\n\n[4/4] Golden set (LLM)…",
+        )
+        golden = await _run_golden_cases(message)
+        await post_json(
+            "/api/benchmark/snapshot",
+            {"kind": "full", "report": report, "golden": golden},
+        )
+        text = format_benchmark_report({"status": "ok", "report": report, "golden": golden})
+    except Exception as exc:
+        text = f"📊 Полный прогон\n\n❌ Ошибка: {exc}"
+    await show_screen_chat(
+        bot,
+        chat_id,
+        text,
+        reply_markup=reply_benchmark_menu(),
+        screen_key=ScreenKey.BENCHMARK,
     )
 
 
@@ -221,20 +604,41 @@ async def send_news_ingest(message: Message) -> None:
 
 async def send_host_status(message: Message) -> None:
     data = await get_json("/api/system/host-status")
-    await message.answer(format_host_status(data), reply_markup=reply_system_menu())
+    await show_screen(
+        message,
+        format_host_status(data),
+        reply_markup=reply_system_menu(),
+        screen_key=ScreenKey.SYSTEM,
+    )
 
 
 async def send_smoke_test(message: Message) -> None:
-    await message.answer("Запускаю smoke test…", reply_markup=reply_system_menu())
-    result = await post_json("/api/admin/smoke-test")
+    chat_id = message.chat.id
+    bot = message.bot
+    await show_screen(
+        message,
+        "🧪 Smoke test\n\n⏳ Запускаю…",
+        reply_markup=reply_system_menu(),
+        screen_key=ScreenKey.SYSTEM,
+    )
+    result = await post_json("/api/admin/smoke-test", timeout=600.0)
     text = (result.get("output") or "")[:3500] or str(result)
-    await message.answer(f"Smoke: {result.get('status')}\n\n{text}", reply_markup=reply_system_menu())
+    await show_screen_chat(
+        bot,
+        chat_id,
+        f"🧪 Smoke: {result.get('status')}\n\n{text}",
+        reply_markup=reply_system_menu(),
+        screen_key=ScreenKey.SYSTEM,
+    )
 
 
 async def send_restart_prompt(message: Message) -> None:
-    await message.answer(
+    await show_screen(
+        message,
         "🔁 Перезапуск сервисов Docker\n\nПоказать команды для хоста?",
         reply_markup=restart_confirm(),
+        screen_key="restart_inline",
+        inline=True,
     )
 
 
@@ -247,25 +651,42 @@ async def _crypto_dashboard() -> dict:
 
 async def send_crypto_overview(message: Message) -> None:
     data = await _crypto_dashboard()
-    await message.answer(format_crypto_testnet(data), reply_markup=reply_crypto_test_menu())
+    await show_screen(
+        message,
+        format_crypto_testnet(data),
+        reply_markup=reply_crypto_test_menu(),
+        screen_key=ScreenKey.CRYPTO_TEST,
+    )
 
 
 async def send_crypto_funnel(message: Message) -> None:
     data = await _crypto_dashboard()
-    await message.answer(format_crypto_funnel(data), reply_markup=reply_crypto_test_menu())
+    await show_screen(
+        message,
+        format_crypto_funnel(data),
+        reply_markup=reply_crypto_test_menu(),
+        screen_key=ScreenKey.CRYPTO_TEST,
+    )
 
 
 async def send_crypto_events(message: Message) -> None:
     events = await get_json("/api/events?market=crypto&limit=10")
-    await message.answer(
+    await show_screen(
+        message,
         format_events(events or [], title="🧾 Crypto события"),
         reply_markup=reply_crypto_test_menu(),
+        screen_key=ScreenKey.CRYPTO_TEST,
     )
 
 
 async def send_crypto_balance(message: Message) -> None:
     balances = await get_json("/api/binance/balances?testnet=true")
-    await message.answer(format_crypto_balances(balances or []), reply_markup=reply_crypto_test_menu())
+    await show_screen(
+        message,
+        format_crypto_balances(balances or []),
+        reply_markup=reply_crypto_test_menu(),
+        screen_key=ScreenKey.CRYPTO_TEST,
+    )
 
 
 # --- MOEX sandbox ---
@@ -276,31 +697,59 @@ async def _moex_dashboard() -> dict:
 
 
 async def send_moex_overview(message: Message) -> None:
-    await message.answer(format_tinvest_overview(await _moex_dashboard()), reply_markup=reply_moex_sandbox_menu())
+    await show_screen(
+        message,
+        format_tinvest_overview(await _moex_dashboard()),
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
 
 
 async def send_moex_account(message: Message) -> None:
-    await message.answer(format_tinvest_account(await _moex_dashboard()), reply_markup=reply_moex_sandbox_menu())
+    await show_screen(
+        message,
+        format_tinvest_account(await _moex_dashboard()),
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
 
 
 async def send_moex_automation(message: Message) -> None:
-    await message.answer(format_tinvest_automation(await _moex_dashboard()), reply_markup=reply_moex_sandbox_menu())
+    await show_screen(
+        message,
+        format_tinvest_automation(await _moex_dashboard()),
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
 
 
 async def send_moex_trades(message: Message) -> None:
-    await message.answer(format_tinvest_trades(await _moex_dashboard()), reply_markup=reply_moex_sandbox_menu())
+    await show_screen(
+        message,
+        format_tinvest_trades(await _moex_dashboard()),
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
 
 
 async def send_moex_performance(message: Message) -> None:
-    await message.answer(format_tinvest_performance(await _moex_dashboard()), reply_markup=reply_moex_sandbox_menu())
+    await show_screen(
+        message,
+        format_tinvest_performance(await _moex_dashboard()),
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
 
 
 async def send_moex_dca_prompt(message: Message) -> None:
     dca = (await _moex_dashboard()).get("automation", {}).get("index_dca", {})
-    await message.answer(
+    await show_screen(
+        message,
         f"▶️ Тест DCA sandbox\n\n"
         f"Купить {dca.get('ticker', 'TMOS')} на ~{dca.get('amount_rub', 10000)} ₽?",
         reply_markup=dca_sandbox_confirm(),
+        screen_key="moex_dca_inline",
+        inline=True,
     )
 
 
@@ -309,17 +758,24 @@ async def send_moex_dca_prompt(message: Message) -> None:
 
 async def send_live_checklist(message: Message) -> None:
     data = await get_json("/api/live/checklist")
-    await message.answer(format_checklist(data), reply_markup=reply_live_menu())
+    await show_screen(
+        message,
+        format_checklist(data),
+        reply_markup=reply_live_menu(),
+        screen_key=ScreenKey.LIVE,
+    )
 
 
 async def send_live_status_detail(message: Message) -> None:
     status = await get_json("/api/system/status")
     summary = await get_json("/api/system/summary")
-    await message.answer(
+    await show_screen(
+        message,
         f"📊 Статус live-окружения\n\n"
         f"Mode: {summary.get('trading_mode')}\n"
         f"Live flag: {summary.get('live_enabled')}\n"
         f"Kill: {'ON' if status.get('kill_switch') else 'OFF'}\n"
         f"Ollama: {status.get('ollama', {}).get('status', '?')}",
         reply_markup=reply_live_menu(),
+        screen_key=ScreenKey.LIVE,
     )

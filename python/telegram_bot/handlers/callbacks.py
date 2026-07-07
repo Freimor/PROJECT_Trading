@@ -16,6 +16,7 @@ from telegram_bot.formatters import (
 from telegram_bot.keyboards import (
     inline_automat_docs,
     inline_news_alert_settings,
+    inline_workflows,
     kill_confirm,
     reply_automat_menu,
     reply_main_menu,
@@ -23,8 +24,56 @@ from telegram_bot.keyboards import (
     reply_news_menu,
     reply_system_menu,
 )
+from telegram_bot.screen import ScreenKey, show_screen_chat
 
 router = Router()
+
+@router.callback_query(F.data.startswith("wf:"))
+async def workflow_callbacks(cb: CallbackQuery) -> None:
+    if not cb.message or not is_allowed(cb.message.chat.id):
+        await cb.answer("Access denied", show_alert=True)
+        return
+
+    parts = (cb.data or "").split(":", 3)
+    action = parts[1] if len(parts) > 1 else ""
+
+    if action == "help":
+        await cb.answer()
+        await cb.message.answer(
+            "✍️ Custom cron\n\n"
+            "Используйте команду:\n"
+            "`/cron <workflow_id> <cronExpression>`\n\n"
+            "Пример:\n"
+            "`/cron wfSecSwingDryRun 15 18 * * 1-5`",
+            reply_markup=reply_system_menu(),
+        )
+        return
+
+    if action == "toggle":
+        # wf:toggle:<id>:on|off
+        _, _, wid, state = (cb.data or "").split(":", 3)
+        endpoint = f"/api/n8n/workflows/{wid}/activate" if state == "on" else f"/api/n8n/workflows/{wid}/deactivate"
+        result = await post_json(endpoint, {})
+        if result.get("status") != "ok":
+            await cb.answer(result.get("message", "n8n error"), show_alert=True)
+            return
+        data = await get_json("/api/n8n/workflows")
+        workflows = (data.get("workflows") if data.get("status") == "ok" else []) or []
+        await cb.message.edit_text("🧩 Workflows", reply_markup=inline_workflows(workflows))
+        await cb.answer("Обновлено")
+        return
+
+    if action == "cron":
+        # wf:cron:<id>:<expr>
+        _, _, wid, expr = (cb.data or "").split(":", 3)
+        result = await post_json(f"/api/n8n/workflows/{wid}/cron", {"cron_expression": expr})
+        if result.get("status") != "ok":
+            await cb.answer(result.get("message", "cron error"), show_alert=True)
+            return
+        await cb.answer("Cron обновлён")
+        return
+
+    await cb.answer()
 
 
 @router.callback_query(F.data.startswith("kill:ask:"))
@@ -45,8 +94,13 @@ async def kill_ask(cb: CallbackQuery) -> None:
 @router.callback_query(F.data == "kill:cancel")
 async def kill_cancel(cb: CallbackQuery) -> None:
     if cb.message:
-        await cb.message.edit_text("Отменено.")
-        await cb.message.answer("Главное меню:", reply_markup=reply_main_menu())
+        await show_screen_chat(
+            cb.message.bot,
+            cb.message.chat.id,
+            "Отменено.",
+            reply_markup=reply_main_menu(),
+            screen_key=ScreenKey.MAIN,
+        )
     await cb.answer()
 
 
@@ -63,8 +117,13 @@ async def kill_confirm_cb(cb: CallbackQuery) -> None:
         {"enabled": enabled, "operator": operator, "source": "telegram"},
     )
     icon = "🔴" if result.get("kill_switch") else "🟢"
-    await cb.message.edit_text(f"{icon} Kill switch обновлён")
-    await cb.message.answer("Главное меню:", reply_markup=reply_main_menu())
+    await show_screen_chat(
+        cb.message.bot,
+        cb.message.chat.id,
+        f"{icon} Kill switch обновлён",
+        reply_markup=reply_main_menu(),
+        screen_key=ScreenKey.MAIN,
+    )
     await cb.answer()
 
 
@@ -86,8 +145,13 @@ async def confirmation_resolve(cb: CallbackQuery) -> None:
 @router.callback_query(F.data == "restart:cancel")
 async def restart_cancel(cb: CallbackQuery) -> None:
     if cb.message:
-        await cb.message.edit_text("Отменено.")
-        await cb.message.answer("Управление:", reply_markup=reply_system_menu())
+        await show_screen_chat(
+            cb.message.bot,
+            cb.message.chat.id,
+            "Отменено.",
+            reply_markup=reply_system_menu(),
+            screen_key=ScreenKey.SYSTEM,
+        )
     await cb.answer()
 
 
@@ -100,16 +164,26 @@ async def restart_confirm_cb(cb: CallbackQuery) -> None:
         "/api/admin/services/restart-plan",
         {"services": ["db-api", "telegram-bot", "n8n"]},
     )
-    await cb.message.edit_text("Команды перезапуска:")
-    await cb.message.answer(format_restart_plan(plan), reply_markup=reply_system_menu())
+    await show_screen_chat(
+        cb.message.bot,
+        cb.message.chat.id,
+        format_restart_plan(plan),
+        reply_markup=reply_system_menu(),
+        screen_key=ScreenKey.SYSTEM,
+    )
     await cb.answer()
 
 
 @router.callback_query(F.data == "tinvest:dca:cancel")
 async def tinvest_dca_cancel(cb: CallbackQuery) -> None:
     if cb.message:
-        await cb.message.edit_text("DCA тест отменён.")
-        await cb.message.answer("MOEX sandbox:", reply_markup=reply_moex_sandbox_menu())
+        await show_screen_chat(
+            cb.message.bot,
+            cb.message.chat.id,
+            "DCA тест отменён.",
+            reply_markup=reply_moex_sandbox_menu(),
+            screen_key=ScreenKey.MOEX_SANDBOX,
+        )
     await cb.answer()
 
 
@@ -132,9 +206,15 @@ async def tinvest_dca_confirm(cb: CallbackQuery) -> None:
         text = f"❌ {order.get('reject_reason')}: {order.get('message', '')}"
     else:
         text = f"Результат: {result}"
-    await cb.message.answer(text, reply_markup=reply_moex_sandbox_menu())
     dashboard = await get_json("/api/testing/tinvest-sandbox?days=7")
-    await cb.message.answer(format_tinvest_account(dashboard), reply_markup=reply_moex_sandbox_menu())
+    account = format_tinvest_account(dashboard)
+    await show_screen_chat(
+        cb.message.bot,
+        cb.message.chat.id,
+        f"{text}\n\n{account}",
+        reply_markup=reply_moex_sandbox_menu(),
+        screen_key=ScreenKey.MOEX_SANDBOX,
+    )
     await cb.answer()
 
 
@@ -164,12 +244,24 @@ async def news_alert_callbacks(cb: CallbackQuery) -> None:
     operator = f"telegram:{cb.from_user.id}"
 
     if action == "process":
-        await cb.message.answer("⏳ Проверяю новости и LLM…")
-        result = await post_json("/api/news/alerts/process?limit=3", {})
-        await cb.message.answer(
-            f"Готово: отправлено {result.get('sent', 0)}, "
-            f"проанализировано {result.get('analyzed', 0)}",
+        chat_id = cb.message.chat.id
+        bot = cb.message.bot
+        await show_screen_chat(
+            bot,
+            chat_id,
+            "⏳ Проверяю новости и LLM…",
             reply_markup=reply_news_menu(),
+            screen_key=ScreenKey.NEWS,
+        )
+        result = await post_json("/api/news/alerts/process?limit=3", {})
+        await show_screen_chat(
+            bot,
+            chat_id,
+            f"🔔 Алерты\n\n"
+            f"Отправлено: {result.get('sent', 0)}, "
+            f"проанализировано: {result.get('analyzed', 0)}",
+            reply_markup=reply_news_menu(),
+            screen_key=ScreenKey.NEWS,
         )
         await cb.answer()
         return

@@ -258,3 +258,86 @@ CREATE TABLE IF NOT EXISTS operator_confirmations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_confirmations_status ON operator_confirmations(status);
+
+-- ============================================================
+-- Paper trading sessions (testnet / sandbox)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS paper_sessions (
+    id              TEXT PRIMARY KEY,
+    label           TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'closed')),
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    started_by      TEXT,
+    baseline_json   TEXT,
+    notes           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS paper_portfolio_snapshots (
+    id              TEXT PRIMARY KEY,
+    session_id      TEXT,
+    captured_at     TEXT NOT NULL,
+    snapshot_json   TEXT NOT NULL,
+    trigger         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_sessions_status
+ON paper_sessions(status, started_at DESC);
+
+-- ============================================================
+-- LLM benchmark (outcome labeling + replay)
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS benchmark_cases (
+    inputs_hash     TEXT PRIMARY KEY,
+    market          TEXT NOT NULL,
+    symbol          TEXT NOT NULL,
+    decision_at     TEXT NOT NULL,
+    indicators_json TEXT NOT NULL,
+    original_action TEXT,
+    original_model  TEXT,
+    prompt_version  TEXT,
+    confidence      REAL,
+    source          TEXT NOT NULL DEFAULT 'live'
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_labels (
+    id                  TEXT PRIMARY KEY,
+    inputs_hash         TEXT NOT NULL UNIQUE,
+    horizon_bars        INTEGER NOT NULL,
+    forward_return_pct  REAL,
+    label               TEXT NOT NULL,
+    labeled_at          TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_runs (
+    id              TEXT PRIMARY KEY,
+    started_at      TEXT NOT NULL,
+    ended_at        TEXT,
+    label           TEXT NOT NULL,
+    model           TEXT,
+    prompt_version  TEXT,
+    cases_count     INTEGER NOT NULL DEFAULT 0,
+    status          TEXT NOT NULL DEFAULT 'running'
+);
+
+CREATE TABLE IF NOT EXISTS benchmark_results (
+    id                      TEXT PRIMARY KEY,
+    run_id                  TEXT NOT NULL,
+    inputs_hash             TEXT NOT NULL,
+    action                  TEXT,
+    confidence              REAL,
+    latency_ms              INTEGER,
+    changed_from_original   INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_cases_decision
+ON benchmark_cases(decision_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_labels_hash
+ON benchmark_labels(inputs_hash);
+
+CREATE INDEX IF NOT EXISTS idx_benchmark_results_run
+ON benchmark_results(run_id);

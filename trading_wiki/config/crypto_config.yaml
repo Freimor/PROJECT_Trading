@@ -4,7 +4,7 @@
 version: "1.0.0"
 env: testnet  # testnet | live (live только с manual flag + tag env/live)
 
-mode: dry_run  # dry_run | paper | shadow | live
+mode: paper  # dry_run | paper | shadow | live
 
 pairs:
   - BTCUSDT

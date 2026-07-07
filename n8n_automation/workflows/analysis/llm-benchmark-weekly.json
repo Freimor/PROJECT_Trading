@@ -1,0 +1,55 @@
+{
+  "id": "wfLlmBenchWk01",
+  "name": "llm-benchmark-weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * 0" }]
+        }
+      },
+      "id": "b7010001-0001-4000-8000-000000000001",
+      "name": "Sunday 09:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/benchmark/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { days: 30, skip_golden: false } }}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "b7010001-0001-4000-8000-000000000002",
+      "name": "Run Benchmark",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '📊 LLM Benchmark weekly\\nGolden: ' + ($json.golden?.passed ?? '?') + '/' + ($json.golden?.total ?? '?') } }}",
+        "options": {}
+      },
+      "id": "b7010001-0001-4000-8000-000000000003",
+      "name": "Telegram Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "Sunday 09:00 MSK": { "main": [[{ "node": "Run Benchmark", "type": "main", "index": 0 }]] },
+    "Run Benchmark": { "main": [[{ "node": "Telegram Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "analysis" }, { "name": "llm" }],
+  "active": false
+}

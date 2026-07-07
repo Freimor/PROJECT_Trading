@@ -119,6 +119,94 @@ def format_wiki_toc(data: dict[str, Any]) -> str:
     return _truncate("\n".join(lines))
 
 
+def format_paper_effectiveness(data: dict[str, Any]) -> str:
+    cfg = data.get("config", {})
+    pnl = data.get("pnl_vs_baseline") or {}
+    llm_c = data.get("llm_eval", {}).get("crypto", {})
+    llm_s = data.get("llm_eval", {}).get("securities", {})
+    session = data.get("session") or {}
+    lines = [
+        "📊 Paper — эффективность LLM",
+        f"Режим: {cfg.get('global_mode', '?')}",
+        f"Сессия: {session.get('label') or '—'}",
+        "",
+        f"Paper-ордера: {data.get('paper_orders_executed', 0)}/{data.get('paper_orders_total', 0)}",
+        f"LLM approve → ордер: {data.get('llm_approved_then_executed', 0)}",
+        "",
+        "LLM crypto:",
+        f"  вызовов: {llm_c.get('count', 0)}, approve: {llm_c.get('approve_rate', '—')}",
+        f"  confidence: {llm_c.get('avg_confidence', '—')}",
+        "",
+        "LLM MOEX:",
+        f"  вызовов: {llm_s.get('count', 0)}, approve: {llm_s.get('approve_rate', '—')}",
+        "",
+        "PnL vs baseline сессии:",
+        f"  USDT: {pnl.get('usdt_delta', '—')}",
+        f"  BTC: {pnl.get('btc_delta', '—')}",
+        f"  RUB: {pnl.get('rub_delta', '—')}",
+        "",
+        "⚠️ Не инвестрекомендация. Binance PnL — от baseline, не от нуля.",
+    ]
+    return _truncate("\n".join(lines))
+
+
+def format_benchmark_report(data: dict[str, Any]) -> str:
+    report = data.get("report") or data
+    if report.get("status") != "ok":
+        return f"📊 LLM Benchmark\nОшибка: {report.get('message', '?')}"
+
+    snapshot = report.get("last_snapshot") or data.get("last_snapshot") or {}
+    golden = data.get("golden") or snapshot.get("golden")
+
+    lines = [
+        "📊 LLM Benchmark",
+        f"Период: {report.get('days', 30)} дн.",
+        "",
+        "── Outcome (live/paper) ──",
+        f"Кейсов: {report.get('total_cases', 0)} | размечено: {report.get('labeled_cases', 0)}",
+    ]
+    if report.get("labeled_cases", 0) == 0:
+        lines.append(
+            "  ⏳ Размеченных кейсов пока нет (нужно ≥30ч после сделки)."
+        )
+
+    for mkt, block in (report.get("by_market") or {}).items():
+        out = block.get("outcome") or {}
+        op = block.get("operational") or {}
+        lines.append(f"\n{'₿' if mkt == 'crypto' else '📈'} {mkt.upper()}:")
+        lines.append(f"  precision approve: {out.get('precision_approve', '—')}")
+        lines.append(f"  recall: {out.get('recall', '—')}")
+        lines.append(
+            f"  good/bad approve: {out.get('good_approves', 0)}/{out.get('bad_approves', 0)}"
+        )
+        lines.append(f"  missed opportunities: {out.get('missed_opportunities', 0)}")
+        lines.append(f"  sim PnL (approve): {out.get('simulated_pnl_approve_pct', '—')}%")
+        lines.append(f"  LLM approve rate: {op.get('approve_rate', '—')}")
+        lines.append(f"  avg latency: {op.get('avg_latency_ms', '—')} ms")
+
+    if golden and golden.get("status") == "ok":
+        lines.append("")
+        lines.append("── Golden set (регрессия) ──")
+        saved = snapshot.get("saved_at", "")
+        if saved:
+            lines.append(f"  обновлено: {saved[:16]}")
+        lines.append(
+            f"  🏅 {golden.get('passed', 0)}/{golden.get('total', 0)} "
+            f"({golden.get('pass_rate', 0)})"
+        )
+        failed = [d for d in golden.get("details", []) if not d.get("pass")]
+        for d in failed[:5]:
+            lines.append(f"  ❌ {d.get('id')}: expected {d.get('expected')}, got {d.get('actual')}")
+        if not failed:
+            lines.append("  ✅ Все golden-кейсы прошли")
+
+    if not (report.get("by_market") or {}) and not golden:
+        lines.append("\nНет данных. Запустите paper/dry-run или Golden set.")
+
+    lines.append("\n⚠️ Outcome metrics — образовательный бэктест, не инвестрекомендация.")
+    return _truncate("\n".join(lines))
+
+
 def format_news_latest(items: list[dict[str, Any]]) -> str:
     if not items:
         return "🗞 Новости\nПусто. Нажмите «Обновить»."

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -26,6 +28,8 @@ BTN_MOEX_LIVE = "📈 MOEX LIVE ⚠️"
 BTN_CONFIRM = "✅ Подтверждения"
 BTN_EVENTS = "🧾 События"
 BTN_AUTOMAT_DOCS = "📖 Как работает"
+BTN_PAPER_TEST = "🧪 Paper тест"
+BTN_BENCHMARK = "📊 LLM Benchmark"
 BTN_BACK_MAIN = "⬅️ Назад"
 
 AUTOMAT_BUTTONS = {
@@ -36,7 +40,36 @@ AUTOMAT_BUTTONS = {
     BTN_CONFIRM,
     BTN_EVENTS,
     BTN_AUTOMAT_DOCS,
+    BTN_PAPER_TEST,
+    BTN_BENCHMARK,
     BTN_BACK_MAIN,
+}
+
+# --- Paper test ---
+BTN_PAPER_EFF = "📊 Эффективность"
+BTN_PAPER_RESET = "🔄 Сброс sandbox"
+BTN_PAPER_RUN_CR = "▶️ Crypto paper"
+BTN_PAPER_RUN_MX = "▶️ MOEX swing"
+BTN_BACK_AUTOMAT = "⬅️ Автомат"
+
+PAPER_BUTTONS = {
+    BTN_PAPER_EFF,
+    BTN_PAPER_RESET,
+    BTN_PAPER_RUN_CR,
+    BTN_PAPER_RUN_MX,
+    BTN_BACK_AUTOMAT,
+}
+
+# --- LLM Benchmark ---
+BTN_BM_REPORT = "📊 Отчёт"
+BTN_BM_GOLDEN = "🏅 Golden set"
+BTN_BM_FULL = "▶️ Полный прогон"
+
+BENCHMARK_BUTTONS = {
+    BTN_BM_REPORT,
+    BTN_BM_GOLDEN,
+    BTN_BM_FULL,
+    BTN_BACK_AUTOMAT,
 }
 
 # --- Knowledge ---
@@ -63,10 +96,11 @@ NEWS_BUTTONS = {
 
 # --- System ---
 BTN_HOST_STATUS = "📊 Состояние"
+BTN_WORKFLOWS = "🧩 Workflows"
 BTN_RESTART = "🔁 Перезапуск"
 BTN_SMOKE = "💨 Smoke test"
 
-SYSTEM_BUTTONS = {BTN_HOST_STATUS, BTN_RESTART, BTN_SMOKE, BTN_BACK_MAIN}
+SYSTEM_BUTTONS = {BTN_HOST_STATUS, BTN_WORKFLOWS, BTN_RESTART, BTN_SMOKE, BTN_BACK_MAIN}
 
 # --- Crypto testnet ---
 BTN_CR_OVERVIEW = "📋 Сводка"
@@ -129,7 +163,32 @@ def reply_automat_menu() -> ReplyKeyboardMarkup:
             [KeyboardButton(text=BTN_CRYPTO_LIVE), KeyboardButton(text=BTN_MOEX_LIVE)],
             [KeyboardButton(text=BTN_CONFIRM), KeyboardButton(text=BTN_EVENTS)],
             [KeyboardButton(text=BTN_AUTOMAT_DOCS)],
+            [KeyboardButton(text=BTN_PAPER_TEST), KeyboardButton(text=BTN_BENCHMARK)],
             [KeyboardButton(text=BTN_BACK_MAIN)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def reply_benchmark_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_BM_REPORT), KeyboardButton(text=BTN_BM_GOLDEN)],
+            [KeyboardButton(text=BTN_BM_FULL)],
+            [KeyboardButton(text=BTN_BACK_AUTOMAT)],
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+def reply_paper_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text=BTN_PAPER_EFF), KeyboardButton(text=BTN_PAPER_RESET)],
+            [KeyboardButton(text=BTN_PAPER_RUN_CR), KeyboardButton(text=BTN_PAPER_RUN_MX)],
+            [KeyboardButton(text=BTN_BACK_AUTOMAT)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -164,12 +223,40 @@ def reply_system_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=BTN_HOST_STATUS), KeyboardButton(text=BTN_SMOKE)],
+            [KeyboardButton(text=BTN_WORKFLOWS)],
             [KeyboardButton(text=BTN_RESTART)],
             [KeyboardButton(text=BTN_BACK_MAIN)],
         ],
         resize_keyboard=True,
         is_persistent=True,
     )
+
+
+def inline_workflows(workflows: list[dict[str, Any]]) -> InlineKeyboardMarkup:
+    """Inline toggle + schedule presets for n8n workflows."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for w in workflows[:12]:
+        wid = str(w.get("id", ""))
+        name = str(w.get("name", "workflow"))[:26]
+        active = bool(w.get("active"))
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{'✅' if active else '⏸'} {name}",
+                    callback_data=f"wf:toggle:{wid}:{'off' if active else 'on'}",
+                ),
+            ]
+        )
+        # schedule presets (best-effort; if no schedule trigger, API will return error)
+        rows.append(
+            [
+                InlineKeyboardButton(text="⏱ 15m", callback_data=f"wf:cron:{wid}:*/15 * * * *"),
+                InlineKeyboardButton(text="🕐 1h", callback_data=f"wf:cron:{wid}:0 * * * *"),
+                InlineKeyboardButton(text="🕓 4h", callback_data=f"wf:cron:{wid}:0 */4 * * *"),
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="✍️ Custom cron (/cron)", callback_data="wf:help:cron")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def reply_crypto_test_menu() -> ReplyKeyboardMarkup:

@@ -64,6 +64,34 @@ from news_alert_service import (
     resolve_watch_symbols,
     update_alert_settings,
 )
+from paper_trading_service import (
+    capture_snapshot,
+    get_paper_config,
+    paper_effectiveness,
+    reset_paper_session,
+    run_crypto_paper_trade,
+    run_securities_swing_paper,
+    start_paper_session,
+)
+from n8n_service import (
+    activate_workflow,
+    deactivate_workflow,
+    list_workflows,
+    set_workflow_cron,
+)
+from benchmark_service import (
+    aggregate_golden_results,
+    benchmark_report,
+    get_benchmark_snapshot,
+    label_outcomes,
+    list_golden_cases,
+    run_full_benchmark,
+    run_golden_benchmark,
+    run_benchmark_replay,
+    run_one_golden_case,
+    sample_benchmark_cases,
+    save_benchmark_snapshot,
+)
 from securities_pipeline import run_securities_dca_dry_run, run_securities_swing_dry_run
 from telegram_proxy import proxy_status, select_working_proxy
 
@@ -108,6 +136,12 @@ class HealthCheckItem(BaseModel):
 
 class HealthBatchRequest(BaseModel):
     checks: list[HealthCheckItem]
+
+
+class N8nCronRequest(BaseModel):
+    cron_expression: str = Field(..., min_length=1, max_length=120)
+    node_id: str | None = None
+    node_name: str | None = None
 
 
 class TradeEventRequest(BaseModel):
@@ -176,6 +210,33 @@ class ChampionRequest(BaseModel):
     champion_model: str
     challenger_model: str
     prompt_version: str = "crypto_validate_v1"
+
+
+class BenchmarkRunRequest(BaseModel):
+    days: int = 30
+    market: Literal["crypto", "securities"] | None = None
+    model: str | None = None
+    challenger_model: str | None = None
+    skip_golden: bool = False
+
+
+class BenchmarkReplayRequest(BaseModel):
+    model: str | None = None
+    prompt_version: str | None = None
+    market: Literal["crypto", "securities"] | None = None
+    limit: int = 30
+
+
+class GoldenOneRequest(BaseModel):
+    case_id: str
+    market: Literal["crypto", "securities"]
+    model: str | None = None
+
+
+class BenchmarkSnapshotRequest(BaseModel):
+    golden: dict[str, Any]
+    report: dict[str, Any] | None = None
+    kind: str = "golden"
 
 
 class KillSwitchRequest(BaseModel):
@@ -396,7 +457,7 @@ def binance_order(body: BinanceOrderRequest) -> dict[str, Any]:
     log_event(
         market="crypto", env="paper" if body.testnet else "live",
         stage="order", symbol=body.symbol,
-        decision="execute" if result.get("orderId") else "error",
+        decision="submitted" if result.get("orderId") and result.get("http_status") == 200 else "error",
         request_id=rid, payload=result,
         workflow_name="crypto-execute-testnet",
     )
@@ -487,6 +548,74 @@ def eval_champion(body: ChampionRequest) -> dict[str, Any]:
         champion_model=body.champion_model,
         challenger_model=body.challenger_model,
         prompt_version=body.prompt_version,
+    )
+
+
+# --- LLM Benchmark ---
+
+
+@app.get("/api/benchmark/report")
+def benchmark_report_endpoint(days: int = 30, market: str | None = None) -> dict[str, Any]:
+    return benchmark_report(days=days, market=market)
+
+
+@app.post("/api/benchmark/sample")
+def benchmark_sample(days: int = 30, market: str | None = None) -> dict[str, Any]:
+    return sample_benchmark_cases(days=days, market=market)
+
+
+@app.post("/api/benchmark/label")
+def benchmark_label(market: str | None = None, limit: int = 100) -> dict[str, Any]:
+    return label_outcomes(market=market, limit=limit)
+
+
+@app.post("/api/benchmark/golden")
+def benchmark_golden(model: str | None = None, market: str | None = None) -> dict[str, Any]:
+    return run_golden_benchmark(model=model, market=market)
+
+
+@app.get("/api/benchmark/golden/cases")
+def benchmark_golden_cases(market: str | None = None) -> list[dict[str, Any]]:
+    return list_golden_cases(market=market)
+
+
+@app.post("/api/benchmark/golden/one")
+def benchmark_golden_one(body: GoldenOneRequest) -> dict[str, Any]:
+    return run_one_golden_case(case_id=body.case_id, market=body.market, model=body.model)
+
+
+@app.post("/api/benchmark/snapshot")
+def benchmark_save_snapshot(body: BenchmarkSnapshotRequest, operator: str = "api") -> dict[str, Any]:
+    return save_benchmark_snapshot(
+        {"golden": body.golden, "report": body.report, "kind": body.kind},
+        operator=operator,
+    )
+
+
+@app.get("/api/benchmark/last-snapshot")
+def benchmark_last_snapshot() -> dict[str, Any]:
+    snap = get_benchmark_snapshot()
+    return snap or {"status": "empty"}
+
+
+@app.post("/api/benchmark/replay")
+def benchmark_replay(body: BenchmarkReplayRequest) -> dict[str, Any]:
+    return run_benchmark_replay(
+        model=body.model,
+        prompt_version=body.prompt_version,
+        market=body.market,
+        limit=body.limit,
+    )
+
+
+@app.post("/api/benchmark/run")
+def benchmark_run(body: BenchmarkRunRequest) -> dict[str, Any]:
+    return run_full_benchmark(
+        days=body.days,
+        market=body.market,
+        model=body.model,
+        challenger_model=body.challenger_model,
+        skip_golden=body.skip_golden,
     )
 
 
@@ -590,6 +719,98 @@ def news_alerts_settings_update(body: NewsAlertsSettingsRequest) -> dict[str, An
 @app.post("/api/news/alerts/process")
 def news_alerts_process(limit: int = 5) -> dict[str, Any]:
     return process_news_alerts(limit=limit)
+
+
+# --- Paper trading test harness ---
+
+@app.get("/api/paper/status")
+def paper_status() -> dict[str, Any]:
+    return get_paper_config()
+
+
+@app.get("/api/paper/effectiveness")
+def paper_effectiveness_endpoint(days: int = 7) -> dict[str, Any]:
+    return paper_effectiveness(days=days)
+
+
+@app.post("/api/paper/session/start")
+def paper_session_start(label: str = "paper-test", operator: str = "api") -> dict[str, Any]:
+    return start_paper_session(label=label, operator=operator)
+
+
+@app.post("/api/paper/session/reset")
+def paper_session_reset(reset_moex: bool = True, operator: str = "api") -> dict[str, Any]:
+    return reset_paper_session(reset_moex=reset_moex, operator=operator)
+
+
+@app.post("/api/paper/crypto/run")
+def paper_crypto_run(symbol: str = "BTCUSDT", skip_llm: bool = False) -> dict[str, Any]:
+    return run_crypto_paper_trade(symbol=symbol, skip_llm=skip_llm)
+
+
+@app.post("/api/paper/securities/swing")
+def paper_securities_swing(ticker: str = "SBER", skip_llm: bool = False) -> dict[str, Any]:
+    return run_securities_swing_paper(ticker=ticker, skip_llm=skip_llm)
+
+
+@app.post("/api/paper/snapshot")
+def paper_snapshot() -> dict[str, Any]:
+    return capture_snapshot(trigger="api")
+
+
+# --- n8n workflow management (Public API v1) ---
+
+
+@app.get("/api/n8n/workflows")
+def n8n_workflows(active: bool | None = None) -> dict[str, Any]:
+    try:
+        items = list_workflows(active=active)
+        # Return a stable minimal shape for the bot UI
+        out = []
+        for w in items:
+            out.append(
+                {
+                    "id": w.get("id"),
+                    "name": w.get("name"),
+                    "active": w.get("active"),
+                    "tags": [t.get("name") for t in (w.get("tags") or []) if isinstance(t, dict)],
+                }
+            )
+        return {"status": "ok", "workflows": out}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/{workflow_id}/activate")
+def n8n_activate(workflow_id: str) -> dict[str, Any]:
+    try:
+        w = activate_workflow(workflow_id)
+        return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/{workflow_id}/deactivate")
+def n8n_deactivate(workflow_id: str) -> dict[str, Any]:
+    try:
+        w = deactivate_workflow(workflow_id)
+        return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/{workflow_id}/cron")
+def n8n_set_cron(workflow_id: str, body: N8nCronRequest) -> dict[str, Any]:
+    try:
+        w = set_workflow_cron(
+            workflow_id,
+            cron_expression=body.cron_expression,
+            node_id=body.node_id,
+            node_name=body.node_name,
+        )
+        return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name")}}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.get("/api/news/for-symbol/{symbol}")

@@ -24,8 +24,8 @@ async def get_json(path: str) -> Any:
         return resp.json()
 
 
-async def post_json(path: str, body: dict[str, Any] | None = None) -> Any:
-    async with httpx.AsyncClient(timeout=300.0) as client:
+async def post_json(path: str, body: dict[str, Any] | None = None, *, timeout: float = 300.0) -> Any:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
             f"{api_base()}{path}",
             json=body or {},
