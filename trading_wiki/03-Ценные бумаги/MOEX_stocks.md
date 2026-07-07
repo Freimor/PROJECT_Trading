@@ -7,27 +7,40 @@ sources:
   - https://iss.moex.com/iss/reference/
   - https://www.investor.gov/introduction-investing/investing-basics/investment-products/stocks
   - https://tinkoff.github.io/investAPI/
-updated: 2026-07-05
+  - https://wp.hse.ru/en/fe/BRP/95/2024
+  - https://www.nber.org/papers/w28515
+  - https://www.hse.ru/ma/invest/
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Акции на MOEX
 
-> **Московская биржа (MOEX)** — крупнейшая площадка для торговли российскими акциями, облигациями и деривативами. **Акция** — доля в компании с правами на дивидendы и участие в росте капитализации (с учётом класса акций и corporate actions).
+> Московская биржа (MOEX) — крупнейшая площадка для торговли российскими акциями, облигациями и деривативами. Акция — доля в компании с правами на дивиденды и рост капитализации.
+
+## Главное
+
+- Покупка через брокера: счёт → пополнение → заявка market/limit.
+- IMOEX отражает basket ликвидных крупных акций — см. [[IMOEX_RTS]].
+- Лот, T+1 settlement и спред — проверяйте перед automation.
+- MOEX ISS — бесплатные котировки; ордера — через API брокера (T-Invest).
+- После реконституции IMOEX обновляйте whitelist бумаг в боте.
 
 ---
 
 ## Для новичка
 
-Чтобы купить акцию (например, тикер **SBER**, **LKOH** — проверяйте актуальный листинг на MOEX):
+Чтобы купить акцию (SBER, LKOH — проверяйте листинг на MOEX):
 
-1. Открыть **брокерский счёт** у лицензированного брокера (ЦБ РФ).
-2. Внести **денежные средства**.
-3. Подать **заявку** — market/limit через приложение или API.
+1. Открыть брокерский счёт у лицензированного брокера (ЦБ РФ).
+2. Внести деньги.
+3. Подать заявку через приложение или API.
 
-Вы **не** покупаете напрямую у MOEX — биржа matching orders участников через **брокеров** и **участников торгов**.
+Вы не покупаете у MOEX напрямую — биржа сводит заявки через брокеров.
 
-**IMOEX** ([moex.com/a6231](https://www.moex.com/a6231)) отражает basket наиболее ликвидных крупных акций — см. [[IMOEX_RTS]].
+IMOEX ([moex.com/a6231](https://www.moex.com/a6231)) — basket ликвидных крупных акций. См. [[IMOEX_RTS]].
 
 ---
 
@@ -35,12 +48,12 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **IMOEX** рассчитывается **09:50–19:00** MSK, free-float cap-weighted; ребаланс **3-я пятница** мар/июн/сен/дек; лимиты **15%** / **55%**. | [MOEX Indices](https://www.moex.com/a6231) |
-| 2 | Расписание торговых сессий MOEX публикуется на официальном сайте (календарь и режимы). | [MOEX: Trading calendar](https://www.moex.com/s1160) |
-| 3 | **MOEX ISS** — бесплатный Information & Statistical Server для котировок, истории, стаканов. | [MOEX ISS Reference](https://iss.moex.com/iss/reference/) |
-| 4 | SEC Investor.gov: **stock** represents ownership share in corporation; stock prices **fluctuate**. | [Investor.gov: Stocks](https://www.investor.gov/introduction-investing/investing-basics/investment-products/stocks) |
-| 5 | T-Invest API (T-Bank) документирует programmatic trading на MOEX через брокера. | [T-Invest API](https://tinkoff.github.io/investAPI/) |
-| 6 | Индекс IMOEX first calculated **22.09.1997**, base **100**. | [MOEX Indices](https://www.moex.com/a6231) |
+| 1 | IMOEX: 09:50–19:00 MSK, free-float cap-weighted; ребаланс 3-я пятница квартала; лимиты 15% / 55%. | [MOEX Indices](https://www.moex.com/a6231) |
+| 2 | Расписание торговых сессий MOEX — на официальном сайте. | [MOEX: Trading calendar](https://www.moex.com/s1160) |
+| 3 | MOEX ISS — бесплатный сервер котировок, истории, стаканов. | [MOEX ISS Reference](https://iss.moex.com/iss/reference/) |
+| 4 | Stock — доля в компании; цены fluctuate. | [Investor.gov: Stocks](https://www.investor.gov/introduction-investing/investing-basics/investment-products/stocks) |
+| 5 | T-Invest API — programmatic trading на MOEX через брокера. | [T-Invest API](https://tinkoff.github.io/investAPI/) |
+| 6 | IMOEX first calculated 22.09.1997, base 100. | [MOEX Indices](https://www.moex.com/a6231) |
 
 ---
 
@@ -169,6 +182,19 @@ MOEX factsheet + ISS analytics endpoint.
 3. **[MOEX ISS API Reference](https://iss.moex.com/iss/reference/)**
 4. **[Investor.gov: Stocks](https://www.investor.gov/introduction-investing/investing-basics/investment-products/stocks)**
 5. **[T-Invest API](https://tinkoff.github.io/investAPI/)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| ВШЭ | Manushkin — BRP 95/FE/2024 | Fama-French 5-factor на акциях MOEX, факторные премии | [wp.hse.ru/en/fe/BRP/95/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
+| NBER | Li, Ye, Zheng — w28515 (2021) | Типы заявок и микроструктура исполнения на биржах | [www.nber.org/papers/w28515](https://www.nber.org/papers/w28515) |
+| ВШЭ | Магистратура «Инвестиции на финансовых рынках» | Акции российского рынка, оценка, торговые стратегии | [www.hse.ru/ma/invest/](https://www.hse.ru/ma/invest/) |
+| ВШЭ | Financial Economics WP (2021–2025) | Эмпирические исследования российского фондового рынка | [wp.hse.ru/en/prepfr_FE](https://wp.hse.ru/en/prepfr_FE) |
 
 ---
 

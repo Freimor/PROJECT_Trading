@@ -7,28 +7,41 @@ sources:
   - https://www.cbr.ru/finmarkets/supervision/supervision_pif/
   - https://www.moex.com/a6231
   - https://www.sec.gov/answers/mutfund.htm
-updated: 2026-07-05
+  - https://explorecourses.stanford.edu/search?q=FINANCE+341
+  - https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4068889
+  - https://www.hse.ru/edu/courses/987071016
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # ETF, ПИФы и БПИФы
 
-> **ПИФ** (паевой инвестиционный фонд) — форма **коллективного инвестирования**: средства пайщиков в доверительном управлении **управляющей компании (УК)**. **БПИФ** — биржевой ПИФ (паи на MOEX). **ETF** — международный термин exchange-traded fund с аналогичной идеей.
+> ПИФ — коллективное инвестирование: средства пайщиков в управлении УК. БПИФ — биржевой ПИФ (паи на MOEX). ETF — международный термин с той же идеей.
+
+## Главное
+
+- Один пай фонда заменяет самостоятельный выбор десятков бумаг.
+- БПИФ торгуется на MOEX в течение дня; классический ПИФ — по СЧА раз в день.
+- TER уменьшает доходность — сравнивайте фонды с одним benchmark.
+- Цена пая может отличаться от СЧА (premium/discount).
+- Надзор за ПИФами в РФ — Банк России.
 
 ---
 
 ## Для новичка
 
-Вместо самостоятельного выбора 20 акций можно купить **один пай** фонда. УК формирует портфель по **правилам инвестиционной декларации** фонда.
+Вместо выбора 20 акций можно купить один пай фонда. УК формирует портфель по инвестиционной декларации.
 
 | Тип | Торгуется на бирже | Цена в течение дня |
 |-----|-------------------|-------------------|
-| **Закрытый ПИФ** | Нет (выкуп через УК) | Раз в день (СЧА) |
-| **Открытый ПИФ (не биржевой)** | Нет | Раз в день по заявке |
-| **БПИФ** | Да (MOEX) | Real-time как акция |
-| **US ETF** | Да (NYSE/NASDAQ) | Real-time |
+| Закрытый ПИФ | Нет | Раз в день (СЧА) |
+| Открытый ПИФ (не биржевой) | Нет | Раз в день |
+| БПИФ | Да (MOEX) | Real-time |
+| US ETF | Да | Real-time |
 
-**СЧА (стоимость чистых активов)** — активы фонда минус обязательства. **Цена пая** на бирже может **отличаться** от СЧА (premium/discount) — аналогично US ETF ([SEC](https://www.sec.gov/answers/etf.htm)).
+СЧА — активы фонда минус обязательства. Цена пая на бирже может отличаться от СЧА ([SEC](https://www.sec.gov/answers/etf.htm)).
 
 ---
 
@@ -36,13 +49,13 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **Mutual fund** pools money from many investors to purchase securities portfolio. | [Investor.gov: Mutual Funds & ETFs](https://www.investor.gov/introduction-investing/investing-basics/investment-products/mutual-funds-and-exchange-traded-funds-etfs) |
-| 2 | **ETF** shares trade on exchange like stock; many ETFs track index. | [Investor.gov: ETFs section](https://www.investor.gov/introduction-investing/investing-basics/investment-products/exchange-traded-funds-etfs) |
-| 3 | FINRA: mutual funds charge **fees and expenses** reducing returns. | [FINRA: Mutual Funds](https://www.finra.org/investors/investing/investment-products/mutual-funds) |
-| 4 | **Банк России** осуществляет **надзор** за деятельностью УК и ПИФов в РФ. | [CBR: Надзор за ПИФами](https://www.cbr.ru/finmarkets/supervision/supervision_pif/) |
-| 5 | **IMOEX** — benchmark MOEX; free-float weighted; расчёт **09:50–19:00** MSK; ребаланс **3-я пятница** квартала. | [MOEX Indices](https://www.moex.com/a6231) |
-| 6 | SEC: ETF market price can trade at **premium or discount** to NAV. | [SEC: ETFs](https://www.sec.gov/answers/etf.htm) |
-| 7 | SEC: **mutual fund** prices once daily at NAV after market close (traditional open-end). | [SEC: Mutual Funds](https://www.sec.gov/answers/mutfund.htm) |
+| 1 | Mutual fund pools money from investors для portfolio securities. | [Investor.gov: Mutual Funds & ETFs](https://www.investor.gov/introduction-investing/investing-basics/investment-products/mutual-funds-and-exchange-traded-funds-etfs) |
+| 2 | ETF shares торгуются на бирже; многие track index. | [Investor.gov: ETFs section](https://www.investor.gov/introduction-investing/investing-basics/investment-products/exchange-traded-funds-etfs) |
+| 3 | FINRA: mutual funds charge fees and expenses, reducing returns. | [FINRA: Mutual Funds](https://www.finra.org/investors/investing/investment-products/mutual-funds) |
+| 4 | Банк России — надзор за УК и ПИФами в РФ. | [CBR: Надзор за ПИФами](https://www.cbr.ru/finmarkets/supervision/supervision_pif/) |
+| 5 | IMOEX — benchmark MOEX; 09:50–19:00 MSK; ребаланс 3-я пятница квартала. | [MOEX Indices](https://www.moex.com/a6231) |
+| 6 | SEC: ETF market price может торговаться at premium or discount to NAV. | [SEC: ETFs](https://www.sec.gov/answers/etf.htm) |
+| 7 | SEC: mutual fund prices once daily at NAV (traditional open-end). | [SEC: Mutual Funds](https://www.sec.gov/answers/mutfund.htm) |
 
 ---
 
@@ -194,6 +207,19 @@ iNAV — intraday estimate; official NAV — по регламенту УК.
 4. **[MOEX Indices — IMOEX](https://www.moex.com/a6231)**
 5. **[SEC: Mutual Funds](https://www.sec.gov/answers/mutfund.htm)**
 6. **[SEC: ETFs](https://www.sec.gov/answers/etf.htm)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| Stanford GSB | FINANCE 341 — Modeling for Investment Management (2024–2025) | Моделирование ETF-портфелей, risk/return, ребалансировка | [explorecourses.stanford.edu/search?q=FINANCE+341](https://explorecourses.stanford.edu/search?q=FINANCE+341) |
+| SSRN | Jaeger & Marinelli (2022) — abstract 4068889 | Network diversification через фонды и ETF | [papers.ssrn.com/sol3/papers.cfm?abstract_id=406...](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4068889) |
+| ВШЭ | Курс «Инвестиционный анализ» | Оценка паевых и биржевых фондов, сравнение с акциями | [www.hse.ru/edu/courses/987071016](https://www.hse.ru/edu/courses/987071016) |
+| MIT | 15.481X Adaptive Markets (Fall 2022) | Индексные фонды в адаптивной среде рынков | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
 
 ---
 

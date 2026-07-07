@@ -1,0 +1,36 @@
+{
+  "id": "SDzJLWYiBxTqfJlk",
+  "name": "news-ingest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      },
+      "id": "n3010001-0001-4000-8000-000000000001",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/news/ingest",
+        "options": { "timeout": 60000 }
+      },
+      "id": "n3010001-0001-4000-8000-000000000002",
+      "name": "Ingest News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": { "main": [[{ "node": "Ingest News", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "shared" }],
+  "active": false
+}

@@ -7,23 +7,36 @@ sources:
   - https://www.cbr.ru/finmarkets/supervision/supervision_pif/
   - https://academy.binance.com/en/articles/what-is-bitcoin
   - https://www.fatf-gafi.org/en/topics/virtual-assets.html
-updated: 2026-07-05
+  - https://www.bis.org/publ/bppdf/bispap156.pdf
+  - https://www.bis.org/publ/bppdf/bispap159.htm
+  - https://wp.hse.ru/fe/BRP/86/2022
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Основы криптовалют
 
-> **Криптоактив** — цифровое представление ценности или прав, использующее **криптографию** и часто **распределённый реестр** (DLT, blockchain). **Криптовалюта** — подмножество криптоактивов, используемых как средство обмена и/или спекулятивный актив. Регуляторы предупреждают о **высоких рисках** и волатильности.
+> Криптоактив — цифровое представление ценности с криптографией и распределённым реестром (DLT). Криптовалюта — подмножество, используемое как средство обмена и спекулятивный актив. Регуляторы предупреждают о высоких рисках.
+
+## Главное
+
+- Блокчейн группирует транзакции в блоки; публичные сети не требуют центрального банка как единственного эмитента.
+- На CEX активы хранит биржа (counterparty risk); на DEX — вы сами через wallet.
+- Крипто не застраховано FDIC/SIPC как банковский депозит в США.
+- Для automation проекта базовый путь — CEX API (Binance) с guardrails.
+- Потеря seed phrase или взлом биржи может быть необратимой.
 
 ---
 
 ## Для новичка
 
-**Блокчейн** — тип распределённого реестра, где транзакции группируются в **блоки**, связанные криптографически. Участники сети (ноды) проверяют правила консенсуса; центральный банк как единственный эмитент **не** требуется для публичных сетей вроде Bitcoin.
+Блокчейн — распределённый реестр: транзакции в блоках, связанных криптографически. Узлы проверяют правила; центральный банк не нужен для публичных сетей вроде Bitcoin.
 
-**Bitcoin (BTC)** — первая широко известная децентрализованная криптовалюта (whitepaper 2008, запуск сети 2009). Алгоритм ограничивает общую эмиссию **~21 млн BTC** — см. [[Bitcoin_overview]].
+Bitcoin (BTC) — первая широко известная децентрализованная криптовалюта (whitepaper 2008). Эмиссия ограничена ~21 млн BTC — см. [[Bitcoin_overview]].
 
-**Важно:** криптоактивы **не** застрахованы FDIC/SIPC как банковские депозиты в США ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)). Потеря ключей или взлом биржи может быть **необратимой**.
+Криптоактивы не застрахованы FDIC/SIPC ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)). Потеря ключей или взлом биржи может быть необратимой.
 
 ---
 
@@ -31,13 +44,13 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | SEC / Investor.gov: crypto investments могут быть **extremely volatile**; fraud и scams — significant risk. | [Investor.gov: Cautionary Tale](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
-| 2 | ECB различает **central bank digital currency (CBDC)** и **private crypto-assets**; цифровой евро — отдельный проект CBDC, не Bitcoin. | [ECB: Digital euro](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html) |
-| 3 | **FATF** рекомендует странам регулировать **Virtual Asset Service Providers (VASP)** — включая биржи — по AML/CFT. | [FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html) |
-| 4 | Bitcoin whitepaper описывает **peer-to-peer electronic cash** без financial institution. | [Bitcoin whitepaper (PDF)](https://bitcoin.org/bitcoin.pdf) |
-| 5 | На **CEX** (centralized exchange) пользователь часто передаёт **custody** активов бирже — counterparty risk. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
-| 6 | **DEX** исполняет сделки через **smart contracts**; пользователь держит ключи в своём wallet (self-custody), но риски контрактов и ошибок пользователя выше. | Общепринятая индustry taxonomy; см. [[Crypto_exchanges]] |
-| 7 | Binance Academy определяет Bitcoin как **decentralized digital currency** на blockchain. | [Binance Academy: What is Bitcoin](https://academy.binance.com/en/articles/what-is-bitcoin) |
+| 1 | SEC: crypto investments extremely volatile; fraud и scams — significant risk. | [Investor.gov: Cautionary Tale](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
+| 2 | ECB различает CBDC и private crypto-assets; цифровой евро — отдельный проект. | [ECB: Digital euro](https://www.ecb.europa.eu/paym/digital_euro/html/index.en.html) |
+| 3 | FATF рекомендует регулировать VASP (включая биржи) по AML/CFT. | [FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html) |
+| 4 | Bitcoin whitepaper — peer-to-peer electronic cash без financial institution. | [Bitcoin whitepaper (PDF)](https://bitcoin.org/bitcoin.pdf) |
+| 5 | На CEX пользователь передаёт custody активов бирже — counterparty risk. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
+| 6 | DEX исполняет сделки через smart contracts; self-custody, но риски контрактов выше. | Общепринятая taxonomy; см. [[Crypto_exchanges]] |
+| 7 | Bitcoin — decentralized digital currency на blockchain. | [Binance Academy: What is Bitcoin](https://academy.binance.com/en/articles/what-is-bitcoin) |
 
 ---
 
@@ -167,6 +180,19 @@ User отправляет ERC-20 token на **Bitcoin address** — средст
 3. **[FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html)**
 4. **[Bitcoin whitepaper](https://bitcoin.org/bitcoin.pdf)**
 5. **[Binance Academy: What is Bitcoin](https://academy.binance.com/en/articles/what-is-bitcoin)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| BIS | Paper 156 (2024) — Crypto, DeFi, financial stability | Криптоактивы, DeFi, smart contracts, системные риски | [www.bis.org/publ/bppdf/bispap156.pdf](https://www.bis.org/publ/bppdf/bispap156.pdf) |
+| BIS | Paper 159 (2024) — CBDC survey | 91% ЦБ изучают CBDC; контекст цифровых активов | [www.bis.org/publ/bppdf/bispap159.htm](https://www.bis.org/publ/bppdf/bispap159.htm) |
+| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Криптовалюты и акции: общие risk factors, asset pricing | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
+| BIS | Working Paper 1146 (2023) — Stablecoins | Stablecoins: liquidity vs solvency, «money view» | [www.bis.org/publ/work1146.pdf](https://www.bis.org/publ/work1146.pdf) |
 
 ---
 

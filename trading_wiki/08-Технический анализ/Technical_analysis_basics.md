@@ -8,25 +8,34 @@ sources:
   - https://www.sec.gov/answers/technical.htm
   - https://developers.binance.com/docs/binance-spot-api-docs/rest-api#klinecandlestick-data
   - https://iss.moex.com/iss/reference/205
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Основы технического анализа
 
-> **Технический анализ (ТА)** — изучение исторических **цен** и **объёмов** для выявления паттернов, уровней и трендов. ТА **не предсказывает** будущее с certainty; это инструмент **вероятностного** принятия решений в связке с риск-менеджментом.
+> **ТА** — анализ исторических цен и объёмов для паттернов и трендов. Не предсказывает будущее; работает с риск-менеджментом.
+
+## Главное
+
+- Фундаментальный анализ: «сколько стоит?» ТА: «куда движется цена?»
+- FINRA/SEC: прошлые результаты не гарантируют будущих.
+- OHLCV — стандарт свечи; Binance и MOEX ISS отдают одинаковую логику.
+- В automation: структурированные данные для rule filter + LLM, не ручные линии.
+- Старший TF — тренд, младший — вход (практика ТА, не регуляторное правило).
 
 ---
 
 ## Для новичка
 
-**Фундаментальный анализ** спрашивает: «сколько стоит компания?» (отчётность, дивиденды, сектор).
+**Фундаментальный** — отчётность, дивиденды, сектор.
 
-**Технический анализ** спрашивает: «куда **движется цена** и где зоны спроса/предложения?»
+**Технический** — куда движется цена, где спрос/предложение.
 
-FINRA и SEC напоминают: **прошлые результаты не гарантируют будущих** ([FINRA Investing Basics](https://www.finra.org/investors/investing/investing-basics), [Investor.gov](https://www.investor.gov/introduction-investing/investing-basics)).
-
-В автоматической системе ТА — **структурированные данные** (OHLCV + индикаторы) для rule-based фильтров и LLM validation, не «рисование линий» человеком.
+В системе ТА — OHLCV + индикаторы для фильтров и LLM validation.
 
 ---
 
@@ -238,6 +247,20 @@ Minimum: 200+ для EMA200; 100 для MACD(26). Binance `limit=500`; MOEX ISS 
 4. **[SEC: Technical Analysis](https://www.sec.gov/answers/technical.htm)** — официальная позиция SEC.
 5. **[Binance Klines API](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#klinecandlestick-data)** — формат OHLCV crypto.
 6. **[MOEX ISS Candles](https://iss.moex.com/iss/reference/205)** — формат OHLCV MOEX.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Даёт контекст «что в рынках меняется со временем» (режимы) — важно для anti-overfit в ТА-сигналах | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases и framing — полезно для ограничения «чтения паттернов» и борьбы с confirmation bias в ТА | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример использования LLM/эвристик в контуре решений; полезно при обсуждении «LLM как слой над ТА» | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идея устойчивости решений/портфельных весов; релевантно для ансамблей сигналов и снижения variance | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Пример, как моделирование превращается в исполнимые веса/ордера — полезно при автоматизации TA→order | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

@@ -2,28 +2,41 @@
 title: Основы облигаций
 tags: [ценные бумаги, облигации, ОФЗ, fixed income, YTM]
 sources:
-  - https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds
+  - https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds-or-fixed-income-products/bonds
   - https://www.finra.org/investors/investing/investment-products/bonds
   - https://www.sec.gov/answers/bond.htm
   - https://www.moex.com/s1160
   - https://www.cbr.ru/hd_base/KeyRate/
-updated: 2026-07-05
+  - https://wp.hse.ru/fe/BRP/86/2022
+  - https://cfjournal.hse.ru/
+  - https://bulletin.stanford.edu/courses/2090781
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Основы облигаций
 
-> **Облигация (bond)** — долговая ценная бумага: инвестор **одалживает** деньги эмитенту (государству или компании), эмитент платит **купон** (процент) и возвращает **номинал** при погашении (если нет default).
+> Облигация (bond) — долговая ценная бумага: инвестор одалживает деньги эмитенту, получает купон и номинал при погашении (если нет default).
+
+## Главное
+
+- Купон — периодические проценты; номинал — сумма при погашении.
+- Цена на бирже колеблется: при росте ставок старые облигации обычно дешевеют.
+- ОФЗ — облигации Минфина РФ; корпоративные — выше credit risk.
+- При покупке платите цену + НКД (накопленный купонный доход).
+- Для automation облигации — invest sleeve, не intraday trading.
 
 ---
 
 ## Для новичка
 
-Упрощённая аналогия: вы даёте заём **1000 ₽** на 3 года. Каждые 6 месяцев получаете **купон** (например, 50 ₽). Через 3 года — возврат **1000 ₽** номинала.
+Упрощённо: вы даёте заём 1000 ₽ на 3 года. Каждые 6 месяцев — купон (например, 50 ₽). Через 3 года — возврат 1000 ₽ номинала.
 
-На бирже облигация торгуется **не всегда** по номиналу: если рынок требует более высокую доходность, **цена падает** ниже 100% от номинала, и наоборот.
+На бирже облигация торгуется не всегда по номиналу. Если рынок требует более высокую доходность, цена падает ниже 100% от номинала.
 
-**ОФЗ** — облигации федерального займа РФ; торгуются на MOEX. Корпоративные облигации — компании РФ.
+ОФЗ торгуются на MOEX. Корпоративные облигации — компании РФ.
 
 ---
 
@@ -31,13 +44,13 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **Bond** — loan investor makes to borrower (government/corporation); borrower pays interest and returns principal at maturity. | [Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds) |
-| 2 | SEC: bond **market price** can **differ from face value**; when rates rise, existing bond prices typically **fall**. | [SEC.gov: Bonds](https://www.sec.gov/answers/bond.htm) |
-| 3 | FINRA: **interest rate risk** — when interest rates rise, bond prices fall (inverse relationship). | [FINRA: Bonds](https://www.finra.org/investors/investing/investment-products/bonds) |
-| 4 | FINRA: **credit risk** — issuer may fail to pay interest or principal. | [FINRA: Bonds](https://www.finra.org/investors/investing/investment-products/bonds) |
-| 5 | **Ключевая ставка** Банка России публикуется на официальном сайте ЦБ. | [CBR: Key rate](https://www.cbr.ru/hd_base/KeyRate/) |
-| 6 | MOEX — площадка торговли облигациями РФ; расписание сессий на moex.com. | [MOEX calendar](https://www.moex.com/s1160) |
-| 7 | Investor.gov: **default** — issuer fails to make required payments. | [Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds) |
+| 1 | Bond — loan investor to borrower; interest и principal at maturity. | [Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds-or-fixed-income-products/bonds) |
+| 2 | SEC: bond market price может отличаться от face value; при росте ставок цена обычно падает. | [SEC.gov: Bonds](https://www.sec.gov/answers/bond.htm) |
+| 3 | FINRA: interest rate risk — при росте ставок цена облигаций падает. | [FINRA: Bonds](https://www.finra.org/investors/investing/investment-products/bonds) |
+| 4 | FINRA: credit risk — эмитент может не выплатить interest или principal. | [FINRA: Bonds](https://www.finra.org/investors/investing/investment-products/bonds) |
+| 5 | Ключевая ставка Банка России — на официальном сайте ЦБ. | [CBR: Key rate](https://www.cbr.ru/hd_base/KeyRate/) |
+| 6 | MOEX — площадка торговли облигаций РФ. | [MOEX calendar](https://www.moex.com/s1160) |
+| 7 | Default — эмитент не выполняет обязательные платежи. | [Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds-or-fixed-income-products/bonds) |
 
 ---
 
@@ -169,12 +182,25 @@ Broker terminal, MOEX ISS, fund factsheets.
 
 ## Проверенные источники
 
-1. **[Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds)**
+1. **[Investor.gov: Bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds-or-fixed-income-products/bonds)**
 2. **[FINRA: Bonds](https://www.finra.org/investors/investing/investment-products/bonds)**
 3. **[SEC.gov: Bonds](https://www.sec.gov/answers/bond.htm)**
 4. **[CBR: Key rate](https://www.cbr.ru/hd_base/KeyRate/)**
 5. **[MOEX Trading calendar](https://www.moex.com/s1160)**
 6. **[MOEX ISS Reference](https://iss.moex.com/iss/reference/)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Облигации и крипто: сравнение risk factors и pricing | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
+| ВШЭ | Журнал Corporate Finance Research — Frecautan (2024) | Зелёные облигации РФ, хеджирование в кризис | [cfjournal.hse.ru/](https://cfjournal.hse.ru/) |
+| Stanford GSB | FINANCE 201 — Investment Valuation | Оценка fixed income, duration, yield, credit risk | [bulletin.stanford.edu/courses/2090781](https://bulletin.stanford.edu/courses/2090781) |
+| ВШЭ | Lapshin — BRP 88–89/FE/2022 | Иммунизация облигационного портфеля, model risk | [wp.hse.ru/en/prepfr_FE](https://wp.hse.ru/en/prepfr_FE) |
 
 ---
 
@@ -281,7 +307,7 @@ Output: markdown paragraph only.
 
 ## Инфляционные ОФЗ (ОФЗ-ИН)
 
-Российские **inflation-linked** bonds привязаны к inflation index — защита nominal cash flows в theory; pricing depends on breakeven inflation expectations. Separate SEC analog: TIPS in US ([Investor.gov bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds)).
+Российские **inflation-linked** bonds привязаны к inflation index — защита nominal cash flows в theory; pricing depends on breakeven inflation expectations. Separate SEC analog: TIPS in US ([Investor.gov bonds](https://www.investor.gov/introduction-investing/investing-basics/investment-products/bonds-or-fixed-income-products/bonds)).
 
 ---
 

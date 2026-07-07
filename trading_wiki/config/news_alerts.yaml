@@ -1,0 +1,23 @@
+# Telegram: алерты значимых новостей + уведомления о сделках автомата
+
+version: "1.0.0"
+
+# Значимые новости (LLM-анализ → push в Telegram)
+news_digest:
+  enabled: true
+  poll_interval_sec: 300
+  min_confidence: 0.55
+  min_significance_score: 0.6
+  max_body_chars: 600
+  ollama_model: qwen3.5:9b
+  prompt_version: news_significance_v1
+
+# Операции автомата как «новости» в ленте и push
+trade_alerts:
+  enabled: true
+  push_telegram: true
+  stages: [order]
+  decisions: [approve, submitted]
+
+# Символы для мониторинга (пусто = из guardrails + securities/crypto config)
+watch_symbols: []

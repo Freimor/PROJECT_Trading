@@ -8,28 +8,32 @@ sources:
   - https://tinkoff.github.io/investAPI/sandbox/
   - https://tinkoff.github.io/investAPI/instruments/
   - https://tinkoff.github.io/investAPI/marketdata/
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # T-Invest API (T-Bank)
 
-> **T-Invest API** — официальный gRPC/REST API брокера **T-Bank** (бывш. Tinkoff Invest) для торговли ценными бумагами на MOEX, получения портфеля и рыночных данных. В проекте — **исполнение ордеров** для securities-flow; котировки — преимущественно из MOEX ISS.
+> **T-Invest API** — gRPC API брокера T-Bank для MOEX: портфель, ордера, справочники. В проекте — исполнение; котировки — ISS.
+
+## Главное
+
+- Production: `invest-public-api.tinkoff.ru:443`; sandbox — отдельный token.
+- `PostOrder`: figi, quantity (кратно lot), price (Quotation), `order_id` UUID для idempotency.
+- FIGI — глобальный ID (SBER = `BBG004730N88`); маппинг через `FindInstrument`.
+- n8n → Python FastAPI bridge → gRPC (n8n не имеет native gRPC).
+- Начинайте с Sandbox; token — только Credentials, не в wiki.
 
 ---
 
 ## Для новичка
 
-После открытия **брокерского счёта** T-Bank вы создаёте **API token** в личном кабинете (Настройки → API). Токен даёт программный доступ к:
+После открытия счёта T-Bank создайте API token (Настройки → API). Доступ: портфель, заявки, свечи, справочник (FIGI, lot).
 
-- портфелю и позициям;
-- выставлению и отмене заявок;
-- рыночным данным (свечи, стакан, last price);
-- справочнику инструментов (FIGI, lot, ticker).
-
-> **Торговля через API = реальные деньги** (в production). Начинайте с **Sandbox** (песочница) — виртуальный счёт без риска.
-
-**FIGI** — глобальный идентификатор инструмента (например, SBER = `BBG004730N88`). API часто требует FIGI, а не ticker.
+**Sandbox** — виртуальный счёт без риска. **Production** — реальные деньги.
 
 ---
 
@@ -211,6 +215,19 @@ n8n Credentials или env variable. **Никогда** в Obsidian wiki или 
 5. **[T-Invest Instruments](https://tinkoff.github.io/investAPI/instruments/)** — FindInstrument, FIGI.
 6. **[T-Invest MarketData](https://tinkoff.github.io/investAPI/marketdata/)** — GetCandles, GetLastPrices.
 7. **[T-Invest Operations](https://tinkoff.github.io/investAPI/operations/)** — GetPortfolio.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст «AI + финансы + поведение» и ограничения автоматизации; полезно при проектировании approval/kill-switch | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример применения LLM в портфельных решениях; помогает корректно разделять роли «LLM советует, код исполняет» | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идеи ансамблей/устойчивости решений — релевантно для риск-валидации перед PostOrder | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Паттерн конвертации портфельных весов в ордера — полезно при проектировании ребалансировки/хеджирования | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

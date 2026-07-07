@@ -1,0 +1,43 @@
+# Crypto trading config — этап 2 (dry_run)
+# Документация: trading_wiki/06-Стратегии автоматизированной LLM торговли/Crypto_flow_design.md
+
+version: "1.0.0"
+env: testnet  # testnet | live (live только с manual flag + tag env/live)
+
+mode: dry_run  # dry_run | paper | shadow | live
+
+pairs:
+  - BTCUSDT
+  - ETHUSDT
+
+timeframe: 4h
+schedule_cron: "5 */4 * * *"
+
+max_open_positions: 2
+risk_per_trade: 0.01
+daily_loss_limit: 0.03
+llm_min_confidence: 0.7
+
+ollama_model: qwen3.5:9b
+prompt_version: "crypto_validate_v1"
+
+# Rule filter до вызова LLM (отсекает 70–90% сигналов)
+rule_filter:
+  rsi_oversold: 35
+  rsi_overbought: 65
+  require_macd_cross: false
+
+api:
+  testnet_base_url: https://testnet.binance.vision
+  live_base_url: https://api.binance.com
+  enable_withdraw: false  # NEVER true
+
+legal_notice: "Automated trading is operator responsibility. Not legal/tax advice."
+
+compliance:
+  geo_restrictions_reviewed: false
+  legal_counsel_consulted: false
+  kyc_completed: false
+  separate_crypto_ledger: true
+  fiat_offramp_automation: false
+  tax_export_enabled: true

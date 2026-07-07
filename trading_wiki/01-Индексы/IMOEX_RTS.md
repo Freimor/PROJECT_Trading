@@ -6,25 +6,36 @@ sources:
   - https://www.moex.com/files/4c73xa32pfn18yqphareexvccg
   - https://www.moex.com/files/4r09wtqmn6b8b0w3x7epmc9fxe
   - https://iss.moex.com/iss/reference/
-updated: 2026-07-05
+  - https://wp.hse.ru/en/fe/BRP/95/2024
+  - https://www.hse.ru/ma/invest/
+  - https://cfjournal.hse.ru/
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # IMOEX и RTS — индексы MOEX
 
-> **IMOEX** (MOEX Russia Index, ранее MICEX Index до декабря 2017) и **RTSI** (RTS Index) — главные benchmark-индексы российского фондового рынка на [Московской бирже](https://www.moex.com/a6231). Оба рассчитываются по методологии **free-float capitalization-weighted** на базе цен наиболее ликвидных акций крупнейших российских эмитентов.
+> IMOEX (MOEX Russia Index) и RTSI (RTS Index) — главные benchmark-индексы российского рынка на [Московской бирже](https://www.moex.com/a6231). Оба взвешиваются по free-float капитализации ликвидных акций крупных эмитентов.
+
+## Главное
+
+- Индекс — «температура» корзины акций; крупные компании влияют сильнее мелких.
+- IMOEX в рублях, RTSI в долларах — при одних ценах акций индексы расходятся из‑за курса USD/RUB.
+- Лимиты: одна бумага — макс. 15%, топ-5 — макс. 55% веса.
+- Состав меняется в 3-ю пятницу марта, июня, сентября и декабря.
+- Данные бесплатно — через MOEX ISS API; торговать индекс напрямую нельзя, только через БПИФ или фьючерс.
 
 ---
 
 ## Для новичка
 
-**Индекс** — это условная «средняя температура» по корзине акций. Если IMOEX вырос на 2% за день, это означает, что взвешенная по капитализации корзина бумаг в среднем подорожала, при этом крупные компании влияют сильнее мелких.
+Индекс показывает, как изменилась взвешенная корзина акций. IMOEX +2% за день — корзина в среднем подорожала; крупные эмитенты тянут индекс сильнее.
 
-**IMOEX** публикуется **в рублях**, **RTSI** — **в долларах США**. При неизменных рублёвых ценах акций индексы могут расходиться из‑за изменения курса USD/RUB: рост рубля обычно «снижает» RTSI относительно IMOEX и наоборот.
+IMOEX в рублях, RTSI в долларах. При неизменных рублёвых ценах индексы расходятся из‑за курса: укрепление рубля обычно снижает RTSI относительно IMOEX.
 
-### Простая аналогия
-
-Представьте корзину из 50 продуктов (акций). Вес каждого продукта пропорционален его «рыночной стоимости в свободном обращении» (free-float). Индекс показывает, на сколько процентов изменилась стоимость всей корзины от базового уровня.
+Аналогия: корзина из десятков акций. Вес каждой — по free-float капитализации. Индекс — процентное изменение стоимости корзины от базового уровня.
 
 ---
 
@@ -32,17 +43,17 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **IMOEX** (MOEX Russia Index) — capitalization-weighted composite index с коэффициентами **free-float**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 2 | Первый расчёт IMOEX: **22 сентября 1997**, начальное значение **100**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 3 | Время расчёта IMOEX: **с 09:50 до 19:00** по московскому времени; публикация **раз в секунду**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 4 | Лимит веса **одной** бумаги в IMOEX: **15%**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 5 | Лимит суммарного веса **топ-5** бумаг в IMOEX: **55%**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 6 | Изменения состава IMOEX вступают в силу в **3-ю пятницу** марта, июня, сентября и декабря. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 7 | Коды IMOEX: Bloomberg **IMOEX**, Reuters **.IMOEX**, ISIN **RU000A0JP7K5**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 8 | До декабря 2017 индекс назывался **MICEX Index**; сейчас — **MOEX Russia Index**. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 9 | **RTS Index (RTSI)** рассчитывается на той же бирже, также по free-float капитализации; **номинирован в USD** (в отличие от рублёвого IMOEX). | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 10 | Состав обоих индексов — наиболее ликвидные акции крупнейших российских эмитентов, представленных на бирже. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
-| 11 | Бесплатные исторические данные IMOEX доступны через **MOEX ISS API** (Information & Statistical Server). | [MOEX ISS Reference](https://iss.moex.com/iss/reference/) |
+| 1 | IMOEX — composite index с free-float взвешиванием по капитализации. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 2 | Первый расчёт IMOEX: 22.09.1997, база 100. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 3 | Расчёт IMOEX: 09:50–19:00 МСК, публикация раз в секунду. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 4 | Лимит веса одной бумаги в IMOEX: 15%. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 5 | Лимит суммарного веса топ-5 бумаг: 55%. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 6 | Смена состава — 3-я пятница марта, июня, сентября, декабря. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 7 | Коды IMOEX: Bloomberg IMOEX, Reuters .IMOEX, ISIN RU000A0JP7K5. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 8 | До декабря 2017 — MICEX Index; сейчас MOEX Russia Index. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 9 | RTSI — free-float cap-weighted, номинирован в USD (IMOEX — в RUB). | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 10 | Состав — ликвидные акции крупнейших российских эмитентов на бирже. | [MOEX: Moscow Exchange Indices](https://www.moex.com/a6231) |
+| 11 | История IMOEX бесплатно — MOEX ISS API. | [MOEX ISS Reference](https://iss.moex.com/iss/reference/) |
 
 ---
 
@@ -168,6 +179,19 @@ MOEXBC — **15** наиболее капитализированных бума
 3. **[RTS Index Factsheet (PDF)](https://www.moex.com/files/4r09wtqmn6b8b0w3x7epmc9fxe)** — параметры RTSI в USD.
 4. **[MOEX ISS API Reference](https://iss.moex.com/iss/reference/)** — программный доступ к котировкам и истории.
 5. **[Blue Chip Index — MOEX](https://www.moex.com/a6232)** — родственный индекс из 15 blue chips.
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| ВШЭ | Manushkin — BRP 95/FE/2024 | Fama-French 5-factor модель на данных российского рынка (IMOEX) | [wp.hse.ru/en/fe/BRP/95/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
+| ВШЭ | Магистратура «Инвестиции на финансовых рынках» | Индексы как benchmark, методология capitalization-weighted | [www.hse.ru/ma/invest/](https://www.hse.ru/ma/invest/) |
+| ВШЭ | Журнал Corporate Finance Research | Эмпирические исследования российских индексов и blue chips | [cfjournal.hse.ru/](https://cfjournal.hse.ru/) |
+| MIT | 15.481X Adaptive Markets (Fall 2022) | Индексы как прокси рыночного риска и факторов | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
 
 ---
 

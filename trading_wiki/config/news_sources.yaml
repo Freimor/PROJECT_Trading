@@ -1,0 +1,109 @@
+# Источники новостей + правила проверки подлинности
+# allowed_domains: домены, с которых допустимы ссылки в RSS-записях
+# min_trust_tier: official | media | aggregator (social не используется для LLM)
+
+version: "1.0.0"
+
+verification:
+  # Минимальный trust_score для попадания в LLM-контекст
+  min_trust_for_llm: 0.55
+  # Только verified (домен совпал + источник enabled)
+  require_verified: true
+  reject_on_domain_mismatch: true
+
+tier_trust:
+  official: 1.0
+  media: 0.75
+  aggregator: 0.5
+  social: 0.2
+
+sources:
+  - id: cbr_press
+    name: ЦБ РФ — пресс-релизы
+    source_tier: official
+    feed_type: rss
+    feed_url: http://www.cbr.ru/rss/RssPress
+    allowed_domains: [cbr.ru, www.cbr.ru]
+    ttl_hours: 72
+    fetch_interval_min: 30
+    default_symbols: [RUB, MOEX]
+
+  - id: moex_news
+    name: MOEX — новости биржи
+    source_tier: official
+    feed_type: rss
+    feed_url: https://www.moex.com/export/news.aspx?cat=100
+    allowed_domains: [moex.com, www.moex.com]
+    ttl_hours: 48
+    fetch_interval_min: 20
+    default_symbols: [MOEX]
+
+  - id: moex_issuers
+    name: MOEX — эмитенты
+    source_tier: official
+    feed_type: rss
+    feed_url: https://www.moex.com/export/news.aspx?cat=101
+    allowed_domains: [moex.com, www.moex.com]
+    ttl_hours: 48
+    fetch_interval_min: 20
+    default_symbols: [MOEX, SBER, GAZP, LKOH, GMKN, YNDX, TMOS]
+
+  - id: minfin_press
+    name: Минфин РФ — пресс-центр
+    source_tier: official
+    feed_type: rss
+    feed_url: https://minfin.gov.ru/ru/press-center/rss/
+    allowed_domains: [minfin.gov.ru, www.minfin.gov.ru]
+    ttl_hours: 72
+    fetch_interval_min: 60
+    default_symbols: [RUB, MOEX]
+
+  - id: interfax_business
+    name: Интерфакс — экономика
+    source_tier: media
+    feed_type: rss
+    feed_url: https://www.interfax.ru/rss.asp
+    allowed_domains: [interfax.ru, www.interfax.ru]
+    ttl_hours: 36
+    fetch_interval_min: 15
+    default_symbols: [MOEX, RUB, SBER, GAZP, LKOH, GMKN]
+
+  - id: rbc_economics
+    name: РБК — экономика
+    source_tier: media
+    feed_type: rss
+    feed_url: https://rssexport.rbc.ru/rbcnews/news/30/full.rss
+    allowed_domains: [rbc.ru, www.rbc.ru]
+    ttl_hours: 24
+    fetch_interval_min: 15
+    default_symbols: [MOEX, RUB, SBER, GAZP]
+
+  - id: coindesk
+    name: CoinDesk
+    source_tier: media
+    feed_type: rss
+    feed_url: https://www.coindesk.com/arc/outboundfeeds/rss/
+    allowed_domains: [coindesk.com, www.coindesk.com]
+    ttl_hours: 24
+    fetch_interval_min: 15
+    default_symbols: [BTC, ETH, CRYPTO]
+
+  - id: binance_announcements
+    name: Binance — анонсы
+    source_tier: official
+    feed_type: rss
+    feed_url: https://www.binance.com/en/support/announcement/rss
+    allowed_domains: [binance.com, www.binance.com]
+    ttl_hours: 48
+    fetch_interval_min: 30
+    default_symbols: [BTC, ETH, CRYPTO]
+
+  - id: smartlab_allnews
+    name: Smart-Lab — все новости
+    source_tier: media
+    feed_type: rss
+    feed_url: https://smart-lab.ru/allnews/rss/
+    allowed_domains: [smart-lab.ru, www.smart-lab.ru]
+    ttl_hours: 36
+    fetch_interval_min: 10
+    default_symbols: [MOEX, SBER, GAZP, LKOH, GMKN, YNDX, TMOS, RUB, BTC, ETH]

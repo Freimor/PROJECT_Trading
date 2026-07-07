@@ -1,0 +1,62 @@
+{
+  "id": "wfCryptoSigDry01",
+  "name": "crypto-signal-dry-run",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 4 }]
+        }
+      },
+      "id": "c1010001-0001-4000-8000-000000000001",
+      "name": "Every 4 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/crypto/pairs",
+        "options": {}
+      },
+      "id": "c1010001-0001-4000-8000-000000000002",
+      "name": "Get Pairs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pairs = $input.first().json;\nconst list = Array.isArray(pairs) ? pairs : [];\nreturn list.map(symbol => ({ json: { symbol, env: 'dry_run' } }));"
+      },
+      "id": "c1010001-0001-4000-8000-000000000003",
+      "name": "Split Pairs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/crypto/signal",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { symbol: $json.symbol, env: $json.env, skip_llm: false } }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "c1010001-0001-4000-8000-000000000004",
+      "name": "Run Signal Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    }
+  ],
+  "connections": {
+    "Every 4 hours": { "main": [[{ "node": "Get Pairs", "type": "main", "index": 0 }]] },
+    "Get Pairs": { "main": [[{ "node": "Split Pairs", "type": "main", "index": 0 }]] },
+    "Split Pairs": { "main": [[{ "node": "Run Signal Pipeline", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "crypto" }, { "name": "env/testnet" }],
+  "active": false
+}

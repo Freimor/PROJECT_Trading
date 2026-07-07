@@ -8,28 +8,34 @@ sources:
   - https://www.investor.gov/additional-resources/spotlight/formerdirectorlorischock-directors-take/say-no-go-fomo
   - https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-18
   - https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/the-behavioral-biases-of-individuals
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Психология трейдера
 
-> **Психология трейдера** — совокупность эмоций, привычек и **дисциплины**, влияющих на исполнение торгового плана. Регуляторы (SEC, FINRA) и CFA Institute подчёркивают: **импульсивные** и **эмоционально driven** решения систематически **ухудшают** инвестиционные результаты — независимо от качества «идеи».
+> Эмоции и привычки влияют на исполнение плана не меньше, чем индикаторы. SEC, FINRA и CFA Institute: импульсивные решения систематически ухудшают результат.
+
+## Главное
+
+- FOMO, «отыграться», revenge trading и overtrading — типичные ловушки, не «слабость характера».
+- План до входа: thesis, stop, size, max loss — см. [[Stop_loss_take_profit]], [[Position_sizing]].
+- Эмоциональные bias (CFA) не убирают — снижают правилами: cooldown, журнал, фиксированный sizing.
+- Автоматизация исполняет stop без колебаний; оператор всё равно может override — нужны guardrails.
+- SEC: active trading в среднем даёт underperformance; держите written rule.
 
 ---
 
 ## Для новичка
 
-Вы изучили индикаторы, прочитали про стоп-лосс — и всё равно:
+Знаете RSI и стоп — и всё равно покупаете на пике (FOMO), держите убыток («отыграюсь»), удваиваете ставку после минуса (revenge), торгуете от скуки (overtrading).
 
-- покупаете на **пике**, потому что «все покупают» (FOMO);
-- **не закрываете** убыток, потому что «отыграюсь»;
-- после минуса **увеличиваете** ставку (revenge trading);
-- от **скуки** открываете лишние сделки (overtrading).
+SEC перечисляет девять поведенческих паттернов, бьющих по результату — от active trading до manias ([Bulletin #72](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72)).
 
-Это **не** слабость характера — это **нормальные** человеческие реакции. SEC в Investor Bulletin перечисляет **девять** поведенческих паттернов, подрывающих performance — от active trading до manias ([SEC Bulletin #72](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72)).
-
-**Автоматизация (n8n + правила)** не заменяет психологию полностью — оператор может отключить стопы или override config. Но **формализованные правила** снижают долю impulsive decisions в момент stress.
+n8n и правила не заменят психологию: оператор может отключить стоп. Но формализованные правила снижают импульс в стрессе.
 
 ---
 
@@ -49,78 +55,25 @@ level: beginner
 
 ---
 
-## Подробно: эмоциональные ловушки трейдера
+## Подробно: эмоциональные ловушки
 
-### 1. FOMO (Fear of Missing Out)
-
-**Проявление:** вход после резкого роста, покупка «hot stock» / meme / crypto из-за social media и influencers.
-
-**Регуляторная позиция:** SEC — «NO GO to FOMO»; не инвестировать **только** по рекомендации influencer; trendy assets могут терять **20–50% за день** (гипотетический вопрос SEC для self-reflection, не статистика рынка).
-
-**Противоядие:** written plan, whitelist тикеров, cooldown после missed move.
-
-### 2. Loss aversion и «отыграться»
-
-Связано с **disposition effect** (SEC) и **loss aversion** (CFA: emotional bias). Держать loser «до нуля», не ставить stop — см. [[Stop_loss_take_profit]], [[Cognitive_biases]].
-
-**Противоядие:** обязательный stop **до** входа; правило «no averaging down» без отдельного written thesis.
-
-### 3. Revenge trading
-
-**Проявление:** после убытка — **увеличение** size или frequency «вернуть деньги».
-
-**Связь с regulation:** FINRA Rule 2270 предупреждает о **extreme risk** day trading; revenge amplifies leverage/margin risk.
-
-**Противоядие:** daily loss limit + 24h cooldown ([[Position_sizing]] circuit breaker).
-
-### 4. Overtrading
-
-SEC: **active trading** → underperformance. Комиссии, slippage, emotional exhaustion.
-
-**Противоядие:** max trades/day в config; quality filter (confidence threshold).
-
-### 5. Overconfidence после серии wins
-
-CFA: **overconfidence** — emotional bias; после wins трейдер **увеличивает** risk.
-
-**Противоядие:** **fixed** position sizing — LLM confidence **не** меняет quantity.
-
-### 6. Panic selling на дне
-
-FINRA: volatile markets → impulse sell. SEC: **manias and panics** — collective panic после bubble.
-
-**Противоядие:** IPS (investment policy statement) в Obsidian; pre-commitment «не продавать equity leg без rebalance review».
-
-### 7. Paralysis / analysis freeze
-
-Противоположность overtrading — **страх** войти даже при valid signal.
-
-**Противоядие:** чеклист входа; paper trading phase; automation исполняет **механически** при pass all checks.
+| Ловушка | Проявление | Противоядие |
+|---------|------------|-------------|
+| **FOMO** | Вход после pump, meme stock | Written plan, whitelist, cooldown ([SEC FOMO](https://www.investor.gov/additional-resources/spotlight/formerdirectorlorischock-directors-take/say-no-go-fomo)) |
+| **Loss aversion** | Держать loser, не ставить stop | Stop до входа ([[Stop_loss_take_profit]]) |
+| **Revenge trading** | Увеличение size после убытка | `daily_loss_limit` + 24h cooldown ([[Position_sizing]]) |
+| **Overtrading** | Лишние сделки от скуки | max trades/day, quality filter |
+| **Overconfidence** | Size ↑ после серии wins | Fixed fractional sizing |
+| **Panic selling** | Продать всё на crash | IPS в Obsidian; stops по плану ([FINRA Volatility](https://www.finra.org/investors/investing/investing-basics/volatility)) |
+| **Paralysis** | Страх войти при valid signal | Чеклист; paper trading; механическое исполнение |
 
 ---
 
-## Дисциплина: торговый план и журнал
+## Дисциплина: план и журнал
 
-### Торговый план (до входа)
+**Чеклист до входа:** thesis → entry → stop ([[Stop_loss_take_profit]]) → target → size ([[Position_sizing]]) → max loss → time stop → counter-thesis.
 
-Минимальный checklist:
-
-| Элемент | Вопрос |
-|---------|--------|
-| Thesis | Почему long/short? |
-| Entry | Цена / условие |
-| Stop | Где invalidation? ([[Stop_loss_take_profit]]) |
-| Target | TP или trailing rule |
-| Size | [[Position_sizing]] расчёт |
-| Max loss | ₽ и % equity |
-| Time stop | Закрыть через N баров? |
-| Counter-thesis | Что если не прав? |
-
-### Журнал сделок (planned vs actual)
-
-SEC не требует journal, но CFA и практики wealth management рекомендуют **document decisions** when calm — refer back in volatility.
-
-**Поля Obsidian:**
+**Журнал Obsidian** — planned vs actual:
 ```yaml
 planned_entry: 250
 actual_entry: 252        # slippage / FOMO chase
@@ -144,25 +97,18 @@ deviation_notes: "Вошёл на +0.8% выше плана"
 
 ## Психология vs автоматизация
 
+**Решает хорошо:** исполнение stop/TP, fixed sizing, cooldown после daily loss.
+
+**Не решает:** отключение flow оператором, смена config «в гневе», игнор alerts.
+
 ```mermaid
 flowchart LR
   A[Signal] --> B{Rules pass?}
   B -->|Yes| C[Code: size + bracket]
   B -->|No| D[Reject]
   C --> E[Exchange]
-  F[Human operator] -.->|override risk| G[Config change only via PR]
-  F -.->|micromanage| H[Discouraged: read-only UI]
+  F[Operator] -.->|override| G[Config via PR only]
 ```
-
-**Что автоматизация решает хорошо:**
-- Исполнение stop/TP без hesitation.
-- Fixed sizing без «удвоения после win».
-- Cooldown после daily loss.
-
-**Что автоматизация НЕ решает:**
-- Оператор отключает flow «на одну сделку».
-- Изменение config в anger (нужен PR + delay).
-- Игнорирование alerts.
 
 ---
 
@@ -215,27 +161,19 @@ FINRA: спросите — как action повлияет на **future** portf
 
 ### Можно ли «полностью убрать эмоции»?
 
-**Нет.** CFA: emotional biases **adapt to**, не eliminate. Цель — **процессы**, снижающие damage.
+Нет (CFA). Цель — процессы, снижающие ущерб.
 
-### Автоматизация делает меня бесстрастным?
+### Автоматизация делает бесстрастным?
 
-**Нет.** Stress переходит на **мониторинг** и temptation override. Read-only UI + delayed config changes — by design.
+Нет. Stress переходит на мониторинг и temptation override. Read-only UI + delayed config — by design.
 
-### Сколько убытков подряд — повод остановиться?
+### Сколько убытков подряд — остановиться?
 
-Система: **3 losses** или **daily_loss_limit** — что наступит раньше. Лично — SEC не фиксирует число; важна **written rule**.
+Система: 3 losses или `daily_loss_limit`. Важна **written rule**.
 
-### Нужен ли перерыв после big win?
+### Как LLM помогает?
 
-Не обязателен regulatorом, но **fixed sizing** уже prevents oversize после win. Опционально: «no increase risk 24h after +5% day».
-
-### Как LLM помогает психологии?
-
-Structured output: `counter_thesis`, `biases_detected` — см. [[Cognitive_biases]], [[LLM_prompts_trading]]. LLM **не** должен hype language — [[LLM_rules_and_guardrails]].
-
-### Day trading и психология
-
-FINRA: day trading **extremely risky**; margin → losses **beyond** initial investment. Психологически — highest overtrading/revenge risk.
+`counter_thesis`, `biases_detected` — [[Cognitive_biases]], [[LLM_prompts_trading]]. Без hype — [[LLM_rules_and_guardrails]].
 
 ---
 
@@ -261,6 +199,23 @@ FINRA: day trading **extremely risky**; margin → losses **beyond** initial inv
 5. **[Investing Basics — FINRA](https://www.finra.org/investors/investing/investing-basics)** — goals, patience, avoid hot tips.
 6. **[The Behavioral Biases of Individuals — CFA Institute](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/the-behavioral-biases-of-individuals)** — cognitive vs emotional biases, adaptation strategies.
 7. **Library of Congress Report** (cited in SEC Bulletin #72) — первичный обзор investor behavior.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| ВШЭ (курс) | Behavioral Finance (2024/2025) | Психология инвестора и систематические ошибки принятия решений; базовая теория для чеклистов и guardrails | https://nes.hse.ru/edu/courses/902185688 |
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Логика «адаптивных рынков» и связь поведения/режимов рынка с риском и исполнением | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases, framing, prospect theory, mental accounting — полезно для построения дисциплины и процедур снижения ошибок | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Риски экосистемы крипто/DeFi (фрагментация, централизация, системные риски) — полезно для crypto-flow risk gates | https://www.bis.org/publ/othp72.pdf |
+| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Макропруденциальные риски (stablecoins, crypto-investment products, multi-function groups) | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример академического подхода к LLM в портфельных эвристиках; полезно для сравнения с вашими prompt/guardrails | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Практическая схема «обучать модель под решение» + ансамбли для устойчивости портфельных весов | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Пример end-to-end подхода: модель выдаёт веса хедж-портфеля → можно маппить на ордера (важно для автоматизации) | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

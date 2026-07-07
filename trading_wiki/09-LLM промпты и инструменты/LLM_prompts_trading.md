@@ -6,28 +6,34 @@ sources:
   - https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/
   - https://www.investor.gov/introduction-investing
   - https://www.finra.org/investors/investors-need-know
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # LLM промпты для трейдинга
 
-> Готовые шаблоны промптов для **Ollama** в n8n-flows. LLM **валидирует** rule-based сигналы (approve/reject), **не** подменяет риск-менеджмент и **не** выставляет ордера. Все промпты хранятся в Obsidian `prompts/` и версионируются git.
+> Шаблоны промптов для Ollama в n8n. LLM **валидирует** rule-based сигналы; size и ордера — код. Промпты в `prompts/`, версионируются git.
+
+## Главное
+
+- System prompt — роль и JSON schema; user prompt — тикер, индикаторы, macro.
+- Обязательные поля: `action`, `confidence`, `counter_thesis`, `biases_detected`.
+- `format: json`, temperature 0.1; `prompt_version` в каждом trade log.
+- Отдельные шаблоны: crypto, MOEX, macro weekly (без buy/sell).
+- LLM не знает баланс и API keys; quantity в output → reject.
 
 ---
 
 ## Для новичка
 
-**Prompt (промпт)** — текстовая инструкция для LLM. В торговой системе промпт говорит модели:
+**Prompt** — инструкция для LLM. В системе: «ты валидатор, не советник» + «только JSON».
 
-- «Ты — валидатор сигналов, не финансовый советник»
-- «Ответь только JSON по схеме»
-- «Если данных мало — reject»
+**System** — постоянные правила. **User** — конкретный тикер и индикаторы.
 
-**System prompt** — постоянные правила (роль, schema, ограничения).  
-**User prompt** — конкретная ситуация (тикер, индикаторы, macro).
-
-LLM **не знает** ваш баланс и **не должен** знать API keys. Quantity и ордера — Code node.
+Quantity и ордера — Code node, не LLM.
 
 ---
 
@@ -345,6 +351,21 @@ const raw = content.replace(/```json\n?/g, '').replace(/```/g, '').trim();
 3. **[n8n HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/)** — POST to Ollama.
 4. **[Investor.gov — Introduction to Investing](https://www.investor.gov/introduction-investing)** — risk disclosure context.
 5. **[FINRA — Investors Need to Know](https://www.finra.org/investors/investors-need-know)** — investor responsibilities.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| ВШЭ (курс) | Behavioral Finance (2024/2025) | Помогает формализовать bias taxonomy для обязательных полей `biases_detected` и `counter_thesis` | https://nes.hse.ru/edu/courses/902185688 |
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст «AI + финансы» и ограничения — обоснование для строгого JSON-only и fail-safe промптов | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases, framing, prospect theory, mental accounting — полезно для требования `counter_thesis` и обнаружения biases | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Академический пример «LLM в контуре решений»; помогает формулировать требования к воспроизводимости prompt_version | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идея устойчивости через ансамбли — применимо к нескольким промптам/моделям и консенсусу | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Пример end-to-end решений: output должен быть однозначно маппим на действия (approve/reject) | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

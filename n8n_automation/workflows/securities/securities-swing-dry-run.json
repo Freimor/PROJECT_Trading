@@ -1,0 +1,62 @@
+{
+  "id": "wfSecSwingDryRun",
+  "name": "securities-swing-dry-run",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "15 18 * * 1-5" }]
+        }
+      },
+      "id": "s7010001-0001-4000-8000-000000000001",
+      "name": "Weekdays 18:15 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/securities/swing-universe",
+        "options": {}
+      },
+      "id": "s7010001-0001-4000-8000-000000000002",
+      "name": "Get Universe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tickers = $input.first().json;\nconst list = Array.isArray(tickers) ? tickers : [];\nreturn list.map(ticker => ({ json: { ticker, env: 'dry_run' } }));"
+      },
+      "id": "s7010001-0001-4000-8000-000000000003",
+      "name": "Split Tickers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/securities/swing",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { ticker: $json.ticker, env: $json.env, skip_llm: false } }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "s7010001-0001-4000-8000-000000000004",
+      "name": "Run Swing Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    }
+  ],
+  "connections": {
+    "Weekdays 18:15 MSK": { "main": [[{ "node": "Get Universe", "type": "main", "index": 0 }]] },
+    "Get Universe": { "main": [[{ "node": "Split Tickers", "type": "main", "index": 0 }]] },
+    "Split Tickers": { "main": [[{ "node": "Run Swing Pipeline", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "securities" }, { "name": "env/testnet" }],
+  "active": false
+}

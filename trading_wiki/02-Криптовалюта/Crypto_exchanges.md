@@ -7,30 +7,40 @@ sources:
   - https://testnet.binance.vision/
   - https://www.fatf-gafi.org/en/topics/virtual-assets.html
   - https://academy.binance.com/en/articles/what-is-a-cex
-updated: 2026-07-05
+  - https://www.bis.org/publ/bppdf/bispap156.pdf
+  - https://www.bis.org/publ/bppdf/bispap159.htm
+  - https://www.bis.org/publ/work1146.pdf
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Криптобиржи
 
-> **Криптобиржа** — площадка для обмена криптоактивами. **CEX** (centralized) управляет order book и custody; **DEX** (decentralized) исполняет сделки через smart contracts. Для автоматической системы проекта базовый провайдер — **Binance Spot API** (production + testnet).
+> Криптобиржа — площадка для обмена криптоактивами. CEX управляет order book и custody; DEX исполняет сделки через smart contracts. Для автоматической системы — Binance Spot API (production + testnet).
+
+## Главное
+
+- CEX: регистрация, KYC, торговля через order book, активы на exchange wallet.
+- DEX: wallet + smart contract, self-custody, вы сами отвечаете за seed и gas.
+- API-ключи для ботов: только trade, never withdraw.
+- Testnet (testnet.binance.vision) — тестирование без реальных денег.
+- Превышение rate limits → бан 429; нужен backoff в automation.
 
 ---
 
 ## Для новичка
 
-### CEX — как брокер + биржа
+### CEX
 
-1. Регистрация и часто **KYC** (identity verification).
-2. Пополнение (crypto или fiat, если доступно).
-3. Торговля через **order book** (limit/market).
-4. Активы на **exchange wallet** — биржа хранит ключи от pooled wallets.
+Регистрация, часто KYC. Пополнение, торговля через order book, активы на exchange wallet — биржа хранит ключи.
 
-Investor.gov предупреждает: платформы могут **fail**, assets могут быть **lost**; due diligence обязателен ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)).
+Investor.gov: платформы могут fail, assets могут быть lost ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)).
 
-### DEX — контракт вместо оператора
+### DEX
 
-Пользователь подключает wallet (MetaMask и др.), swap через **liquidity pool** (AMM) или order book on-chain. **Self-custody**, но вы сами отвечаете за seed, gas, wrong contract.
+Пользователь подключает wallet, swap через liquidity pool (AMM). Self-custody, но вы сами отвечаете за seed, gas, wrong contract.
 
 ---
 
@@ -38,13 +48,13 @@ Investor.gov предупреждает: платформы могут **fail**,
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | FATF: **VASP** (в т.ч. exchanges) должны соблюдать AML/CFT, включая customer due diligence. | [FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html) |
-| 2 | SEC Investor.gov: crypto platforms **not all regulated** same as securities exchanges; fraud risk. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
-| 3 | Binance Spot **REST API** base URL production: `https://api.binance.com`. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
-| 4 | Binance предоставляет **Spot Testnet** для тестирования без real funds: `https://testnet.binance.vision/`. | [Binance Spot Testnet](https://testnet.binance.vision/) |
-| 5 | API requests требуют **API Key**; signed endpoints — **HMAC SHA256** signature. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
-| 6 | Binance Academy: **CEX** — company-operated platform matching buyers/sellers, often holds user funds. | [Binance Academy: What is a CEX](https://academy.binance.com/en/articles/what-is-a-cex) |
-| 7 | Rate limits apply to REST and WebSocket — превышение → HTTP 429 / disconnect. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
+| 1 | FATF: VASP (включая exchanges) должны соблюдать AML/CFT. | [FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html) |
+| 2 | SEC Investor.gov: crypto platforms not all regulated same as securities exchanges. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
+| 3 | Binance Spot REST API production: `https://api.binance.com`. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
+| 4 | Binance Spot Testnet: `https://testnet.binance.vision/`. | [Binance Spot Testnet](https://testnet.binance.vision/) |
+| 5 | API requests требуют API Key; signed endpoints — HMAC SHA256. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
+| 6 | CEX — company-operated platform, often holds user funds. | [Binance Academy: What is a CEX](https://academy.binance.com/en/articles/what-is-a-cex) |
+| 7 | Rate limits apply; превышение → HTTP 429 / disconnect. | [Binance Spot API Docs](https://developers.binance.com/docs/binance-spot-api-docs/rest-api) |
 
 ---
 
@@ -187,6 +197,19 @@ WS для klines realtime; REST для account/orders. Hybrid — standard.
 3. **[Investor.gov: Crypto risks](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)**
 4. **[FATF: Virtual Assets](https://www.fatf-gafi.org/en/topics/virtual-assets.html)**
 5. **[Binance Academy: What is a CEX](https://academy.binance.com/en/articles/what-is-a-cex)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| BIS | Paper 156 (2024) — Crypto, DeFi | CEX/DEX, DeFi-протоколы, риски централизованных бирж | [www.bis.org/publ/bppdf/bispap156.pdf](https://www.bis.org/publ/bppdf/bispap156.pdf) |
+| BIS | Paper 159 (2024) — CBDC survey | Регуляторный контекст цифровых активов и бирж | [www.bis.org/publ/bppdf/bispap159.htm](https://www.bis.org/publ/bppdf/bispap159.htm) |
+| BIS | Working Paper 1146 (2023) — Stablecoins | Роль stablecoins на криптобиржах, риски ликвидности | [www.bis.org/publ/work1146.pdf](https://www.bis.org/publ/work1146.pdf) |
+| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Криптоактивы на биржах: pricing и risk factors | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
 
 ---
 

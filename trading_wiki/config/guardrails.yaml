@@ -1,0 +1,45 @@
+# Guardrails — source of truth для автоматической системы
+# Версионируется в git. n8n читает при старте каждого trading workflow.
+# Документация: trading_wiki/09-LLM промпты и инструменты/LLM_rules_and_guardrails.md
+
+version: "1.0.0"
+
+llm:
+  min_confidence: 0.7
+  max_tokens: 4096
+  require_counter_thesis: true
+  counter_thesis_min_chars: 10
+  timeout_ms: 900000
+  temperature: 0.1
+  allowed_actions: [approve, reject]
+  forbidden_output_fields: [quantity, leverage, size, api_key]
+
+trading:
+  kill_switch: false
+  mode: dry_run  # dry_run | paper | shadow | live
+  allowed_envs: [dry_run, paper, shadow, testnet, sandbox]
+  live_requires_manual_flag: true
+  max_open_positions_crypto: 2
+  max_open_positions_securities: 3
+  daily_loss_limit_pct: 0.03
+  risk_per_trade_pct: 0.01
+  max_notional_pct_equity: 0.05
+  min_stop_distance_pct: 0.015
+
+symbols:
+  crypto_whitelist: [BTCUSDT, ETHUSDT]
+  moex_whitelist: [SBER, GAZP, LKOH, GMKN, YNDX]
+
+session:
+  moex_start_hour: 10
+  moex_end_hour: 19
+  timezone: Europe/Moscow
+
+alerts:
+  telegram_enabled: false  # включить после настройки credentials в n8n
+  disclaimer: "Automated signal. Not financial advice. Operator responsibility."
+
+portfolio:
+  # Общий лимит убытка по crypto + securities (в % от equity)
+  combined_daily_loss_limit_pct: 0.03
+  base_currency: RUB

@@ -1,0 +1,82 @@
+{
+  "id": "wfCryptoExeTnet1",
+  "name": "crypto-execute-testnet",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crypto-execute",
+        "options": {}
+      },
+      "id": "c4010001-0001-4000-8000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300],
+      "webhookId": "crypto-execute-testnet"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/crypto/signal",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { symbol: $json.body.symbol, env: 'paper', skip_llm: false } }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "c4010001-0001-4000-8000-000000000002",
+      "name": "Signal Paper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ready_for_order",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c4010001-0001-4000-8000-000000000003",
+      "name": "Ready for Order",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/binance/order",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { symbol: $json.symbol, side: 'BUY', quantity: $json.sizing.quantity, testnet: true, env: 'paper' } }}",
+        "options": {}
+      },
+      "id": "c4010001-0001-4000-8000-000000000004",
+      "name": "Place Testnet Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Signal Paper", "type": "main", "index": 0 }]] },
+    "Signal Paper": { "main": [[{ "node": "Ready for Order", "type": "main", "index": 0 }]] },
+    "Ready for Order": {
+      "main": [
+        [{ "node": "Place Testnet Order", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "crypto" }, { "name": "env/testnet" }],
+  "active": false
+}

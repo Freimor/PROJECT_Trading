@@ -7,29 +7,35 @@ sources:
   - https://developers.binance.com/docs/binance-spot-api-docs/testnet
   - https://developers.binance.com/docs/binance-spot-api-docs/rest-api#signed-trade-and-user_data-endpoint-security
   - https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # Binance API
 
-> **Binance Spot API** — официальный REST и WebSocket интерфейс для рыночных данных и торговли spot-парами. В проекте используется для **crypto-flow**: klines → indicators → orders.
+> **Binance Spot API** — REST и WebSocket для данных и spot-торговли. В проекте: klines → indicators → orders в crypto-flow.
+
+## Главное
+
+- Production: `api.binance.com`; testnet: `testnet.binance.vision` — **разные keys**.
+- Signed endpoints: HMAC SHA256 + `X-MBX-APIKEY`; withdrawals **disabled**.
+- `GET /api/v3/klines` — OHLCV; `POST /api/v3/order` — заявка.
+- Rate limits: HTTP 429 → backoff; кэшируйте `exchangeInfo` (LOT_SIZE, MIN_NOTIONAL).
+- WebSocket v2: `btcusdt@kline_4h`; v1 достаточно REST по Schedule.
 
 ---
 
 ## Для новичка
 
-Binance предоставляет два способа получать данные и торговать:
+| | REST | WebSocket |
+|---|------|-----------|
+| Когда | Запрос по требованию | Поток обновлений |
+| Пример | GET `/api/v3/klines` | `btcusdt@kline_4h` |
 
-| Тип | Когда использовать | Пример |
-|-----|-------------------|--------|
-| **REST** | Запрос по требованию (свечи, баланс, ордер) | GET `/api/v3/klines` |
-| **WebSocket** | Потоковые обновления в реальном времени | `btcusdt@kline_4h` |
-
-**REST** — вы отправляете HTTP-запрос и получаете ответ.  
-**WebSocket** — постоянное соединение; биржа «пушит» обновления (новая свеча, исполнение ордера).
-
-**Testnet** (`testnet.binance.vision`) — тестовая среда с **отдельными** API keys, без реальных денег.
+Testnet — отдельные keys, без реальных денег.
 
 ---
 
@@ -248,6 +254,20 @@ Exponential backoff: 5s → 10s → 20s. Max 3 retries. Затем skip cycle + 
 5. **[Binance WebSocket Streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams)** — kline, trade streams.
 6. **[Binance Spot Testnet](https://developers.binance.com/docs/binance-spot-api-docs/testnet)** — testnet URLs.
 7. **[n8n HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/)** — интеграция в n8n.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Формулирует ключевые риски крипто-экосистемы; полезно для консервативных ограничений API-торговли и risk manager | https://www.bis.org/publ/othp72.pdf |
+| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Макро-риски (stablecoins, CIPs, MFGs); помогает обосновать ограничения по продуктам и custody | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Академический контекст LLM в контуре портфеля/стратегий; полезно для постановки требований к аудиту и бэктесту | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — идея для «двойного» approve/reject в автоматизации | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Иллюстрирует pipeline «weights → orders», релевантно при автоматизации хеджирования/ребалансировки | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

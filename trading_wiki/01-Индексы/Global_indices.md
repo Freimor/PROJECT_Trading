@@ -7,21 +7,34 @@ sources:
   - https://www.msci.com/indexes
   - https://www.moex.com/a6231
   - https://fred.stlouisfed.org/
-updated: 2026-07-05
+  - https://wp.hse.ru/en/fe/BRP/95/2024
+  - https://bulletin.stanford.edu/courses/2090781
+  - https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Мировые индексы
 
-> **Мировые индексы** — измерители сегментов глобального фондового рынка. Они служат benchmark для портфелей, базой для ETF и **макро-контекстом** для автоматических торговых систем — в том числе при торговле на MOEX и криптовалютами.
+> Мировые индексы измеряют сегменты глобального фондового рынка. Они служат benchmark для портфелей, базой для ETF и макро-контекстом для автоматических систем — в том числе при торговле на MOEX и криптовалютами.
+
+## Главное
+
+- S&P 500 — главный benchmark крупных компаний США; NASDAQ-100 — tech-heavy корзина из 100 non-financial бумаг.
+- Индексы не торгуются напрямую — только через ETF, фонды или деривативы.
+- IMOEX — локальный benchmark России; сравнивайте с global индексами с учётом валюты.
+- Падение US-индексов часто совпадает с risk-off на EM и crypto — но это не правило без исключений.
+- Для automation: FRED (SP500) и MOEX ISS (IMOEX) — бесплатные источники данных.
 
 ---
 
 ## Для новичка
 
-Если **IMOEX** — «термометр» ликвидной части российского рынка (см. [[IMOEX_RTS]]), то **S&P 500** — один из главных benchmark **крупных компаний США**. **NASDAQ-100** отражает 100 крупнейших **нефинансовых** компаний, торгуемых на NASDAQ — с заметным перекосом в технологии.
+IMOEX — «термометр» ликвидной части российского рынка ([[IMOEX_RTS]]). S&P 500 — benchmark крупных компаний США. NASDAQ-100 — 100 крупнейших non-financial бумаг NASDAQ с перекосом в технологии.
 
-Индексы **не торгуются напрямую**. На них ориентируются фонды (ETF), деривативы и аналитики. Для новичка важно понимать **метод расчёта** (cap-weighted vs price-weighted) и **что именно** входит в корзину.
+Индексы не торгуются напрямую. На них ориентируются фонды и аналитики. Важно понимать метод расчёта (cap-weighted vs price-weighted) и состав корзины.
 
 ---
 
@@ -29,14 +42,14 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **S&P 500** — индекс **500** leading companies США; широко используется как мера состояния **large-cap** сегмента US equity market. | [S&P Dow Jones Indices: S&P 500](https://www.spglobal.com/spdji/en/indices/equity/sp-500/) |
-| 2 | S&P 500 рассчитывается **S&P Dow Jones Indices** (подразделение S&P Global). | [S&P 500 — Overview](https://www.spglobal.com/spdji/en/indices/equity/sp-500/) |
-| 3 | **NASDAQ-100** включает **100** крупнейших domestic и international **non-financial** securities, listed on NASDAQ по market capitalization. | [Nasdaq-100 Index](https://www.nasdaq.com/solutions/global-indexes/nasdaq-100) |
-| 4 | **MSCI** публикует семейства индексов для developed, emerging и других сегментов рынков — включая **MSCI World** и **MSCI Emerging Markets**. | [MSCI Indexes](https://www.msci.com/indexes) |
-| 5 | **Dow Jones Industrial Average (DJIA)** — индекс **30** prominent US companies; метод **price-weighted** (редкий среди major benchmarks). | [S&P DJI: Dow Jones](https://www.spglobal.com/spdji/en/indices/equity/dow-jones-industrial-average/) |
-| 6 | **IMOEX** (Россия) — free-float cap-weighted, расчёт 09:50–19:00 MSK, ребаланс 3-я пятница квартальных месяцев — для сравнения с global benchmarks. | [MOEX Indices](https://www.moex.com/a6231) |
-| 7 | **FRED** (Federal Reserve Economic Data) — бесплатный источник макро- и рыночных time series, включая процентные ставки и индексы. | [FRED](https://fred.stlouisfed.org/) |
-| 8 | SEC **Investor.gov** описывает ETF как инструмент, часто **tracking** stock или bond **indexes**. | [Investor.gov: ETFs](https://www.investor.gov/introduction-investing/investing-basics/investment-products/exchange-traded-funds-etfs) |
+| 1 | S&P 500 — индекс 500 leading companies США; мера large-cap сегмента US equity. | [S&P Dow Jones Indices: S&P 500](https://www.spglobal.com/spdji/en/indices/equity/sp-500/) |
+| 2 | S&P 500 рассчитывается S&P Dow Jones Indices (S&P Global). | [S&P 500 — Overview](https://www.spglobal.com/spdji/en/indices/equity/sp-500/) |
+| 3 | NASDAQ-100 — 100 крупнейших non-financial securities на NASDAQ по market cap. | [Nasdaq-100 Index](https://www.nasdaq.com/solutions/global-indexes/nasdaq-100) |
+| 4 | MSCI публикует индексы для developed, emerging и других сегментов (MSCI World, MSCI EM). | [MSCI Indexes](https://www.msci.com/indexes) |
+| 5 | DJIA — 30 prominent US companies; метод price-weighted. | [S&P DJI: Dow Jones](https://www.spglobal.com/spdji/en/indices/equity/dow-jones-industrial-average/) |
+| 6 | IMOEX — free-float cap-weighted, 09:50–19:00 MSK, ребаланс 3-я пятница квартала. | [MOEX Indices](https://www.moex.com/a6231) |
+| 7 | FRED — бесплатный источник макро- и рыночных time series. | [FRED](https://fred.stlouisfed.org/) |
+| 8 | SEC Investor.gov: ETF часто tracking stock или bond indexes. | [Investor.gov: ETFs](https://www.investor.gov/introduction-investing/investing-basics/investment-products/exchange-traded-funds-etfs) |
 
 ---
 
@@ -211,6 +224,19 @@ US Dollar Index — сила USD vs корзина валют. Данные — 
 5. **[FRED — Federal Reserve Economic Data](https://fred.stlouisfed.org/)**
 6. **[MOEX Indices — IMOEX](https://www.moex.com/a6231)** — локальный benchmark для сравнения
 7. **[Investor.gov: ETFs](https://www.investor.gov/introduction-investing/investing-basics/investment-products/exchange-traded-funds-etfs)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| ВШЭ | Manushkin — BRP 95/FE/2024 | Факторные модели на российском рынке vs глобальные индексы | [wp.hse.ru/en/fe/BRP/95/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
+| Stanford GSB | FINANCE 201 — Investment Valuation | Глобальные индексы как benchmark, CAPM, risk premium | [bulletin.stanford.edu/courses/2090781](https://bulletin.stanford.edu/courses/2090781) |
+| MIT | 15.481X Adaptive Markets (Fall 2022) | Международная диверсификация, корреляции рынков | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
+| SSRN | Torrente & Uberti (2024) — abstract 4840399 | Диверсификация через глобальные risk measures | [papers.ssrn.com/sol3/papers.cfm?abstract_id=484...](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4840399) |
 
 ---
 

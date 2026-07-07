@@ -1,49 +1,54 @@
 ---
 title: Trading Wiki — Home
 tags: [moc, home]
+updated: 2026-07-06
+style: informational
 ---
 
 # Trading Wiki
 
-Добро пожаловать в базу знаний **PROJECT Trading**.
+База знаний **PROJECT Trading**: финансы, риск, автоматизация (n8n + Ollama + Obsidian).
+
+## Главное
+
+- Новичкам — с [[Finance_basics]] и [[Position_sizing]].
+- Автоматизации — разделы 06–09 и [[Writing_style_guide]].
+- Факты — в таблицах «Подтверждённые факты»; углубление — [[Academic_sources]].
+- **Термины** — [[Financial_glossary]] (~150+ определений).
+- Материалы образовательные, не инвестиционная рекомендация.
+
+---
 
 ## Быстрый старт
 
-**Я новичок в финансах:**
-1. [[Finance_basics]] — что такое акции и облигации
-2. [[What_is_trading]] — трейдинг vs инвестирование
-3. [[Position_sizing]] — как не потерять капитал
-4. [[Trader_psychology]] — эмоции и дисциплина
+**Новичок:**
+1. [[Finance_basics]] → [[What_is_trading]] → [[Position_sizing]] → [[Trader_psychology]]
 
-**Я настраиваю автоматизацию:**
-1. [[n8n_architecture_overview]] — общая схема
-2. [[Crypto_flow_design]] + [[Binance_API]]
-3. [[Securities_flow_design]] + [[MOEX_ISS_API]] + [[Tinkoff_Invest_API]]
-4. [[LLM_prompts_trading]] + [[LLM_rules_and_guardrails]]
+**Автоматизация:**
+1. [[Automation_system]] — обзор системы и документация (этап 1 ✅)
+2. [[n8n_architecture_overview]]
+3. [[Crypto_flow_design]] + [[Binance_API]]
+4. [[Securities_flow_design]] + [[MOEX_ISS_API]] + [[Tinkoff_Invest_API]]
+5. [[LLM_prompts_trading]] + [[LLM_rules_and_guardrails]]
 
 ## Разделы
 
-- [[Wiki_structure]] — полная карта wiki
-- [[00-Основы/Finance_basics|Основы]]
-- [[01-Индексы/IMOEX_RTS|Индексы]]
-- [[02-Криптовалюта/Crypto_basics|Криптовалюта]]
-- [[03-Ценные бумаги/MOEX_stocks|Ценные бумаги]]
-- [[04-Риск менеджмент/Position_sizing|Риск-менеджмент]]
-- [[05-Психология/Trader_psychology|Психология]]
-- [[06-Стратегии автоматизированной LLM торговли/n8n_architecture_overview|Автоматизация n8n]]
-- [[07-API/MOEX_ISS_API|API]]
-- [[08-Технический анализ/Technical_analysis_basics|Технический анализ]]
-- [[09-LLM промпты и инструменты/LLM_prompts_trading|LLM промпты]]
-- [[10-Налоги и регулирование/Russia_tax_basics|Налоги и регулирование]]
+- [[Wiki_structure]] — карта wiki
+- [[00-Основы/Finance_basics|Основы]] · [[04-Риск менеджмент/Position_sizing|Риск]] · [[05-Психология/Trader_psychology|Психология]]
+- [[06-Стратегии автоматизированной LLM торговли/n8n_architecture_overview|Автоматизация]] · [[07-API/MOEX_ISS_API|API]] · [[08-Технический анализ/Technical_analysis_basics|ТА]]
+- [[09-LLM промпты и инструменты/LLM_prompts_trading|LLM]] · [[10-Налоги и регулирование/Russia_tax_basics|Налоги]]
+- [[Academic_sources]] · [[Writing_style_guide]] · **[[Financial_glossary]]**
 
-## Как устроена каждая статья
+## Структура статьи
 
-1. **Для новичка** — пошаговое объяснение
-2. **Подтверждённые факты** — таблица с цитатами и ссылками на первоисточники
-3. **Подробно** — механизмы, формулы, детали
-4. **Примеры**, **FAQ**, **Частые ошибки**
+1. **Главное** — 3–5 тезисов
+2. **Для новичка** — простой язык
+3. **Подтверждённые факты** — таблица со ссылками
+4. **Подробно** · **Примеры** · **FAQ**
 5. **В автоматической системе** — n8n, Ollama, Obsidian
+
+Стиль текстов: [[Writing_style_guide]].
 
 ## Дисклеймер
 
-Материалы носят **образовательный** характер. Это не инвестиционная, налоговая или юридическая рекомендация. Факты сверяйте по ссылкам в разделе **«Подтверждённые факты»** каждой статьи.
+Образовательные материалы. Не инвестиционная, налоговая и юридическая рекомендация. Факты сверяйте по ссылкам в статьях.

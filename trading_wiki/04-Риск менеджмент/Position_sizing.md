@@ -7,29 +7,42 @@ sources:
   - https://www.finra.org/rules-guidance/notices/24-13
   - https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72
   - https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order
-updated: 2026-07-05
+  - https://doi.org/10.1038/s41598-025-26337-x
+  - https://doi.org/10.1109/access.2025.3624652
+  - https://arxiv.org/html/2503.13544
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Размер позиции (Position Sizing)
 
-> **Position sizing (размер позиции)** — определение, **сколько капитала** (или сколько единиц актива) выделяется на одну сделку с учётом **риска на сделку**, **расстояния до стоп-лосса** и **лимитов концентрации** портфеля. Это мост между торговой идеей и выживанием счёта при серии убытков.
+> Position sizing — сколько капитала выделяется на одну сделку с учётом риска, расстояния до стоп-лосса и лимитов концентрации. Мост между идеей и выживанием счёта при серии убытков.
+
+## Главное
+
+- Не «сколько уверен», а «сколько потеряю, если сработает стоп».
+- Fixed fractional: рискуете фиксированным % equity на сделку (часто 1–2% — эвристика, не норма SEC).
+- Размер позиции = risk_amount / |entry − stop|.
+- Без стопа нет верхней границы убытка.
+- SEC не устанавливает обязательный «1% на сделку» — это ваше правило или правило системы.
 
 ---
 
 ## Для новичка
 
-Представьте: вы уверены, что акция вырастет. Покупаете на **весь депозит** — 500 000 ₽. Цена падает на 10% → минус 50 000 ₽ за одну сделку. Ещё две такие — и счёт потерял треть капитала.
+Покупаете на весь депозит 500 000 ₽. Падение 10% — минус 50 000 ₽ за одну сделку.
 
-**Position sizing** отвечает на другой вопрос: «Сколько я могу купить так, чтобы **один** стоп-лосс не разрушил мой план?»
+Position sizing отвечает иначе: сколько купить так, чтобы один стоп-лосс не разрушил план?
 
-Типичная логика (используется в профессиональном риск-менеджменте и автоматизации):
+Типичная логика:
 
-1. Решите, **сколько % капитала** готовы потерять, если сработает стоп (часто 1–2% — эвристика трейдеров; регуляторы задают рамку через **risk tolerance**, а не конкретный процент).
-2. Определите **расстояние до стопа** (в ₽ или %).
-3. Рассчитайте количество акций/контрактов так, чтобы убыток при стопе ≤ выбранному лимиту.
+1. Решите, сколько % капитала готовы потерять при стопе.
+2. Определите расстояние до стопа (в ₽ или %).
+3. Рассчитайте количество так, чтобы убыток при стопе ≤ лимиту.
 
-FINRA напоминает: изучайте **asset allocation и diversification**, чтобы **не ставить всё на одну инвестицию** («don't bet the ranch on a single investment») — см. [[Portfolio_diversification]].
+FINRA: не ставьте всё на одну инвестицию — см. [[Portfolio_diversification]].
 
 ---
 
@@ -37,13 +50,13 @@ FINRA напоминает: изучайте **asset allocation и diversificati
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **Risk tolerance** — способность и готовность инвестора **потерять часть или весь** первоначальный капитал ради потенциально более высокой доходности; при росте риска инвесторы обычно требуют большей компенсации. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
-| 2 | **Asset allocation** — распределение инвестиций между классами активов (акции, облигации, cash); решение **личное** и меняется с горизонтом и tolerance. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
-| 3 | FINRA: успешное инвестирование — это **цели, информированные действия и баланс рисков**; важно изучать allocation/diversification и **не ставить всё на одну сделку**. | [FINRA: Investing Basics](https://www.finra.org/investors/investing/investing-basics) |
-| 4 | **Inadequate diversification** — портфель **слишком сконцентрирован** в одном типе инвестиций; повышает риск-exposure (SEC Investor Bulletin по отчёту Library of Congress). | [SEC: Behavioral Patterns](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72) |
-| 5 | FINRA Rule 2270 (day trading disclosure): day trading **может быть крайне рискованным**; торговля **с маржой** может привести к **убыткам сверх** первоначальных вложений. | [FINRA Regulatory Notice 24-13](https://www.finra.org/rules-guidance/notices/24-13) |
-| 6 | **Stop order** после активации становится market order; цена исполнения **может отличаться** от stop price — это влияет на **фактический** убыток и должен учитываться при sizing. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
-| 7 | **Rebalancing** — возврат портфеля к целевым весам; при росте одного класса (например, акции 60% → 80%) нужно **продать часть** «победителей» и докупить другие классы. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
+| 1 | Risk tolerance — готовность потерять часть капитала ради потенциально более высокой доходности. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
+| 2 | Asset allocation — распределение между акциями, облигациями, cash; личное решение. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
+| 3 | FINRA: не ставить всё на одну сделку; изучать allocation и diversification. | [FINRA: Investing Basics](https://www.finra.org/investors/investing/investing-basics) |
+| 4 | Inadequate diversification — портфель слишком сконцентрирован; повышает risk exposure. | [SEC: Behavioral Patterns](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72) |
+| 5 | FINRA Rule 2270: day trading с маржой может привести к убыткам сверх депозита. | [FINRA Regulatory Notice 24-13](https://www.finra.org/rules-guidance/notices/24-13) |
+| 6 | Stop order после активации — market; цена может отличаться — влияет на фактический убыток. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
+| 7 | Rebalancing — возврат к целевым весам при дрейфе портфеля. | [Investor.gov: Asset Allocation](https://www.investor.gov/introduction-investing/getting-started/asset-allocation) |
 
 > **Важно:** SEC и FINRA **не устанавливают** обязательный «1% на сделку» для всех инвесторов. Конкретный процент риска — **ваше правило** (или правило автоматической системы), согласованное с tolerance, горизонтом и регуляторными лимитами брокера.
 
@@ -241,6 +254,19 @@ Kelly требует точных `p` и `b` (редко известны live).
 5. **[Stop Order — Investor.gov](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order)** — исполнение stop, slippage.
 6. **Kelly, J. L. (1956).** *A New Interpretation of Information Rate.* — теоретическая основа optimal bet sizing (Bell System Technical Journal).
 7. **[[IMOEX_RTS]]** — лимит веса бумаги 15% в индексе MOEX как ориентир концентрации.
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| Nature Scientific Reports | Agal, Raulji, Odedra (2025) | ML-оптимизация размера позиций и аллокации | [doi.org/10.1038/s41598-025-26337-x](https://doi.org/10.1038/s41598-025-26337-x) |
+| IEEE Access | CVaR + DRL + LLM sentiment (2025) | Risk-based position sizing с CVaR и deep reinforcement learning | [doi.org/10.1109/access.2025.3624652](https://doi.org/10.1109/access.2025.3624652) |
+| arXiv | Kim et al. — 2503.13544 (2025) | Deep Ensembles для robust portfolio optimization и sizing | [arxiv.org/html/2503.13544](https://arxiv.org/html/2503.13544) |
+| Stanford GSB | FINANCE 341 — Modeling for Investment Management | Формальные модели sizing и risk budgeting | [explorecourses.stanford.edu/search?q=FINANCE+341](https://explorecourses.stanford.edu/search?q=FINANCE+341) |
 
 ---
 

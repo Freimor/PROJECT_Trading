@@ -7,25 +7,32 @@ sources:
   - https://www.consultant.ru/document/cons_doc_LAW_28165/
   - https://www.nalog.gov.ru/rn77/fl/interest/taxation/investment/
   - https://www.investor.gov/introduction-investing/crypto-assets
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Регулирование криптовалют в РФ
 
-> Правовой статус **криптовалют** в России **ограничен и развивается**. Криптовалюта **не является** законным платёжным средством. Операции связаны с требованиями законодательства о **ЦФА**, **валютном регулировании**, **AML** и **налогообложении**. Wiki — информационный обзор, **не юридическая консультация**.
+> Статус crypto в России **ограничен**. Crypto — не законное платёжное средство. Wiki — обзор, не юридическая консультация.
+
+## Главное
+
+- **259-ФЗ** — ЦФА и цифровая валюта с 2021 г.; crypto ≠ рубль как платёж.
+- ЦБ предупреждает о рисках ([cbr.ru/finmarkets/digital](https://www.cbr.ru/finmarkets/digital/)).
+- Доход от crypto может облагаться НДФЛ — отдельный PnL ledger от MOEX.
+- Automation v1: **no fiat off-ramp**; API key без withdrawals; compliance flags перед live.
+- Закон меняется — проверяйте актуальную редакцию и консультируйтесь с юристом.
 
 ---
 
 ## Для новичка
 
-**Криптовалюта** (Bitcoin, Ethereum и др.) — цифровой актив на блокчейне. В России:
+В России crypto нельзя использовать как официальные деньги. Владеть и торговать на биржах — в определённых рамках, правила ужесточаются.
 
-- **Нельзя** использовать crypto как официальные деньги для оплаты товаров/услуг (законный платёж — рубль).
-- **Можно** (в определённых рамках) владеть, торговать на биржах, майнить — но правила **ужесточаются** и требуют мониторинга.
-- **ЦБ РФ** последовательно предупреждает о **высоких рисках** crypto ([cbr.ru/finmarkets/digital](https://www.cbr.ru/finmarkets/digital/)).
-
-Для **автоматизированной торговли** через Binance API (часто зарубежная биржа) — дополнительные вопросы: валютный контроль, санкции, блокировки банковских переводов, KYC, **налоги**.
+Для Binance API: валютный контроль, KYC, налоги, санкции — ответственность оператора.
 
 ---
 
@@ -218,6 +225,20 @@ Testnet — для **technical** testing без real money. Compliance review н
 3. **[КонсультантПлюс: НК РФ](https://www.consultant.ru/document/cons_doc_LAW_28165/)** — налоговые нормы.
 4. **[ФНС — Налогообложение инвестиций](https://www.nalog.gov.ru/rn77/fl/interest/taxation/investment/)** — НДФЛ context.
 5. **[Investor.gov — Crypto Assets](https://www.investor.gov/introduction-investing/crypto-assets)** — SEC/OIEA risk education (general).
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Структурные риски крипто/DeFi и варианты политики — полезно для обоснования «консервативных» ограничений в crypto-flow | https://www.bis.org/publ/othp72.pdf |
+| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Системные риски stablecoins/CIPs/MFGs — релевантно для комплаенс флагов и мониторинга интеграции с TradFi | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст AI/поведения/риска — полезно при формулировке guardrails и ответственности оператора | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Академический пример использования LLM в финансовых решениях — полезно как фон, но не как «разрешение» на live trading | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — актуально для контроля рисков и снижения нестабильности | https://arxiv.org/abs/2503.13544 |
 
 ---
 

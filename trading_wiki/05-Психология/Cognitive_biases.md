@@ -8,28 +8,34 @@ sources:
   - https://www.investor.gov/additional-resources/spotlight/formerdirectorlorischock-directors-take/say-no-go-fomo
   - https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/the-behavioral-biases-of-individuals
   - https://rpc.cfainstitute.org/sites/default/files/-/media/documents/article/rf-brief/rfbr-v2-n1-1-pdf.pdf
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Когнитивные искажения
 
-> **Когнитивные искажения (cognitive biases)** — систематические отклонения мышления от «рациональной» модели, влияющие на торговые решения. **Behavioral finance** (Kahneman, Tversky; CFA Institute) показывает: инвесторы **не всегда** действуют рационально — отсюда disposition effect, FOMO, loss aversion и др. Осознание bias + **формализованные правила** (и автоматизация) снижают, но **не устраняют** их влияние.
+> **Cognitive biases** — систематические ошибки мышления на рынке. Kahneman, Tversky, CFA: инвесторы не всегда рациональны. Правила и автоматизация снижают влияние bias, но не убирают его.
+
+## Главное
+
+- Мозг использует heuristics — на рынке они часто дорого стоят (recency, anchoring, confirmation).
+- **Loss aversion** и **disposition effect**: держим losers, режем winners — нужен stop до входа.
+- CFA: cognitive errors частично лечатся чеклистами; emotional biases — только адаптация через процессы.
+- LLM обязан выдавать `counter_thesis` и `biases_detected`; код reject при конфликте с rules.
+- Осознание bias ≠ его исчезновение — нужен журнал с тегами `#bias/FOMO`.
 
 ---
 
 ## Для новичка
 
-Мозг **экономит усилия** — использует shortcuts (heuristics). На рынке shortcuts часто дорого стоят:
+Три зелёные свечи — «тренд навсегда» (recency). Купили @ 100, цена 90 — «дешево» (anchoring). Ищете только новости «за» long (confirmation). Боитесь −5%, но фиксируете +2% (loss aversion / disposition).
 
-- видите 3 зелёные свечи → «тренд навсегда» (**recency**);
-- купили @ 100, цена 90 → «дешево, докуплю» (**anchoring**);
-- ищете только новости «за» long (**confirmation bias**);
-- боитесь закрыть −5%, но фиксируете +2% (**loss aversion** / **disposition effect**).
+SEC в Bulletin #72 — девять investing behaviors, многие совпадают с biases ([источник](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-72)).
 
-SEC в Investor Bulletin #72 (на основе отчёта Library of Congress) перечисляет **9 investing behaviors**, undermining performance — многие напрямую связаны с biases.
-
-**Автоматизация:** LLM генерирует `counter_thesis` и `biases_detected`; **код** reject signal при конфликте с rules — см. [[LLM_prompts_trading]], [[LLM_rules_and_guardrails]].
+В системе: LLM → `counter_thesis` + `biases_detected`; код reject — [[LLM_prompts_trading]], [[LLM_rules_and_guardrails]].
 
 ---
 
@@ -77,83 +83,26 @@ SEC в Investor Bulletin #72 (на основе отчёта Library of Congress
 
 ## Ключевые искажения в трейдинге (детально)
 
-### 1. Loss aversion и Prospect Theory
+### 1. Loss aversion (Prospect Theory)
 
-Kahneman & Tversky (1979): decisions modeled with **reference-dependent** value function; **losses loom larger** than equivalent gains — foundation of **loss aversion**.
+Kahneman & Tversky (1979): потери «весят» больше прибыли → hold losers, sell winners early, skip stop.
 
-**Trading manifestation (CFA + SEC):**
-- Hold losers too long (**disposition effect**).
-- Sell winners too early.
-- Reluctance to realize loss → skip stop.
+**Mitigation:** pre-set stop ([[Stop_loss_take_profit]]); exit по правилам, не «когда почувствую».
 
-**Mitigation:**
-- Pre-set stop orders ([[Stop_loss_take_profit]]).
-- Rules-based exit — не «when it feels right».
+### 2–10. Остальные bias
 
-### 2. Disposition effect
-
-SEC (Library of Congress report): sell winners too soon, hold losers too long; **winners sold often keep outperforming** held losers.
-
-**Mitigation:**
-- Symmetric SL/TP rules.
-- Time stop for stagnant losers.
-
-### 3. FOMO (Fear of Missing Out)
-
-SEC OIEA: investment decisions from FOMO **not** best way to plan financial future; resist influencers and trends; **time in market** not timing.
-
-**Mitigation:**
-- Entry rules (indicator, not price chase).
-- Cooldown after missed breakout.
-- Tag `#bias/FOMO` in journal.
-
-### 4. Anchoring and adjustment
-
-Investor «привязан» к entry price, 52-week high, или «BTC был 100k».
-
-**Mitigation (automation):**
-```javascript
-// Code node: ignore user_avg_entry for SL/TP
-const reference = $json.market_structure_invalidation; // not purchase_price
-```
-
-### 5. Confirmation bias
-
-Ищете только bullish news для long.
-
-**Mitigation:** LLM **обязан** output `counter_thesis` — [[LLM_prompts_trading]].
-
-### 6. Recency bias
-
-Последние 3 green candles → overestimate continuation.
-
-**Mitigation:** backtest window ≥ 60–90 days; LLM prompt: «consider 90d base rate».
-
-### 7. Overconfidence
-
-CFA: emotional bias; после wins — larger bets.
-
-**Mitigation:** [[Position_sizing]] **не зависит** от confidence above threshold.
-
-### 8. Momentum / Mania (SEC)
-
-**Momentum investing (SEC definition):** expect continued trend after large moves.
-
-**Mania/bubble (SEC):** collective enthusiasm → panic sell-off.
-
-**Mitigation:** vol filter; no entry after >N% day without pullback rule.
-
-### 9. Familiarity bias (SEC)
-
-Home country, employer stock, glamour names.
-
-**Mitigation:** [[Portfolio_diversification]] whitelist; cap single name.
-
-### 10. Naïve diversification (SEC)
-
-Equal weights across N assets ignoring risk.
-
-**Mitigation:** risk-parity or cap-weight by inverse volatility; correlation monitor.
+| Bias | Mitigation |
+|------|------------|
+| Disposition effect | Симметричные SL/TP, time stop |
+| FOMO | Entry rules, cooldown, `#bias/FOMO` |
+| Anchoring | SL от market structure, не от purchase price |
+| Confirmation | LLM `counter_thesis` обязателен |
+| Recency | Backtest ≥ 60–90 дней |
+| Overconfidence | Fixed sizing ([[Position_sizing]]) |
+| Momentum/Mania | Vol filter, no chase после >N% day |
+| Familiarity | Whitelist, caps ([[Portfolio_diversification]]) |
+| Naïve diversification | Risk-parity, correlation monitor |
+| Noise trading | Checklist, no social-only signals |
 
 ---
 
@@ -286,6 +235,23 @@ SEC называет их **investing behaviors**, не clinical biases — но
 5. **[The Behavioral Biases of Individuals — CFA Institute](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/the-behavioral-biases-of-individuals)** — cognitive vs emotional taxonomy, mitigation framework.
 6. **[Risk Profiling through a Behavioral Finance Lens — CFA Institute Research Foundation (PDF)](https://rpc.cfainstitute.org/sites/default/files/-/media/documents/article/rf-brief/rfbr-v2-n1-1-pdf.pdf)** — loss aversion in client profiling.
 7. **Library of Congress Report** (2010, cited in SEC Bulletin #72) — primary behavioral investor research.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| ВШЭ (курс) | Behavioral Finance (2024/2025) | Академическая база по biases/heuristics; помогает формализовать таксономию `biases_detected` для LLM и правил reject | https://nes.hse.ru/edu/courses/902185688 |
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Объясняет «режимность» рынков и адаптацию поведения — полезно для режимных фильтров и anti-overfit guardrails | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases, framing, prospect theory, mental accounting — полезно для расширения таксономии bias и тестируемых гипотез | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Полезно как «крипто-риски по умолчанию» для LLM промптов и risk manager (DeFi, централизация, фрагментация) | https://www.bis.org/publ/othp72.pdf |
+| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Макропруденциальный взгляд на stablecoins/CIPs/MFGs — для risk flags в crypto-flow | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример исследовательского дизайна «LLM + самокоррекция»; можно использовать как benchmark идей, не как готовую стратегию | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли; полезно для идеи «несколько LLM/моделей → консенсус» | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Практика end-to-end: модель выдаёт веса портфеля → исполнимые ордера (паттерн для automation) | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

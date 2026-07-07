@@ -8,26 +8,39 @@ sources:
   - https://www.finra.org/investors/investing/investment-products/stocks/order-types
   - https://developers.binance.com/docs/binance-spot-api-docs/rest-api#new-order-trade
   - https://tinkoff.github.io/investAPI/orders/
-updated: 2026-07-05
+  - https://www.nber.org/papers/w28515
+  - https://www.gsb.stanford.edu/experience/learning/experiential-learning/rail/curricular-integration
+  - https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Стоп-лосс и тейк-профит
 
-> **Stop-loss (стоп-лосс)** — заранее заданное условие выхода из позиции при неблагоприятном движении цены. **Take-profit (тейк-профит)** — заранее заданная цель для фиксации прибыли. Оба инструмента формализуют правила выхода до входа в сделку и снижают влияние эмоций.
+> Stop-loss — заранее заданный выход при неблагоприятном движении цены. Take-profit — заранее заданная цель для фиксации прибыли. Оба формализуют правила до входа и снижают влияние эмоций.
+
+## Главное
+
+- Stop-loss на бирже — тип заявки, не «обещание себе».
+- Stop-market после активации = market; цена может отличаться от stop price.
+- Stop-limit контролирует цену, но при gap может не исполниться.
+- Take-profit через limit sell — исполнение не гарантировано при резком ралли.
+- R:R (risk/reward) — инструмент планирования, не гарантия прибыли.
 
 ---
 
 ## Для новичка
 
-Представьте, что вы купили акцию за 100 ₽. Вы **не знаете**, куда пойдёт цена завтра. Но вы **можете решить заранее**:
+Купили акцию за 100 ₽. Заранее решаете:
 
-- «Если цена упадёт до 95 ₽ — продам и ограничу убыток» → это **stop-loss**.
-- «Если цена вырастет до 110 ₽ — продам и зафиксирую прибыль» → это **take-profit**.
+- Цена упадёт до 95 ₽ — продам, ограничу убыток → stop-loss.
+- Цена вырастет до 110 ₽ — продам, зафиксирую прибыль → take-profit.
 
-Без этих правил трейдер часто держит убыточную позицию в надежде «отыграться» (см. [[Cognitive_biases]], [[Trader_psychology]]) или закрывает прибыль слишком рано от страха.
+Без правил трейдер держит убыток в надежде «отыграться» ([[Trader_psychology]]) или закрывает прибыль слишком рано.
 
-**Важно:** стоп-лосс на бирже — это **тип заявки**, а не абстрактное «обещание себе». На MOEX и криптобиржах его можно выставить через брокера/API; условия исполнения зависят от типа ордера.
+Стоп-лосс на бирже — тип заявки через брокера/API. Условия исполнения зависят от типа ордера.
 
 ---
 
@@ -35,13 +48,13 @@ level: beginner
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **Stop order (stop-loss):** заявка на покупку или продажу активируется, когда цена достигает указанной **stop price**; после этого заявка становится **рыночной (market order)**. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
-| 2 | **Sell stop** выставляют **ниже** текущей рыночной цены — обычно чтобы ограничить убыток по уже открытой long-позиции или защитить прибыль по short. | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
-| 3 | **Stop-limit order:** при достижении stop price активируется не market, а **limit order** — исполнение только по limit price или лучше; цена исполнения контролируется, но **исполнение не гарантировано**. | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
-| 4 | **Limit order** исполняется только по указанной цене или лучше; **не гарантирует** исполнение, если рынок не дошёл до limit price. | [SEC: Limit Orders](https://www.sec.gov/answers/limit.htm) |
-| 5 | Недостаток stop order: цена исполнения **может отличаться** от stop price, особенно в **быстро движущемся рынке**; краткосрочные колебания могут **случайно активировать** стоп. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
-| 6 | FINRA: **sell stop** помогает ограничить убытки, если акция падает сильнее, чем вы готовы терпеть; после срабатывания — market order по текущей рыночной цене. | [FINRA: Order Types](https://www.finra.org/investors/investing/investment-products/stocks/order-types) |
-| 7 | **Trailing stop** — разновидность stop order, где stop price **следует за ценой** при благоприятном движении (описан в SEC Investor Bulletin среди типов заявок). | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
+| 1 | Stop order: при stop price активируется, становится market order. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
+| 2 | Sell stop ниже текущей цены — ограничение убытка long или защита short. | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
+| 3 | Stop-limit: при stop price активируется limit order; исполнение не гарантировано. | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
+| 4 | Limit order — по указанной цене или лучше; исполнение не гарантировано. | [SEC: Limit Orders](https://www.sec.gov/answers/limit.htm) |
+| 5 | Stop order: цена исполнения может отличаться от stop price в быстром рынке. | [Investor.gov: Stop Order](https://www.investor.gov/introduction-investing/investing-basics/glossary/stop-order) |
+| 6 | FINRA: sell stop ограничивает убытки; после срабатывания — market по текущей цене. | [FINRA: Order Types](https://www.finra.org/investors/investing/investment-products/stocks/order-types) |
+| 7 | Trailing stop — stop price следует за ценой при благоприятном движении. | [SEC Investor Bulletin: Order Types](https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins-14) |
 
 ---
 
@@ -199,6 +212,19 @@ Stop sell на 95 ₽. Новость → gap open 90 ₽. Market order испо
 4. **[Order Types — FINRA](https://www.finra.org/investors/investing/investment-products/stocks/order-types)** — sell stop, buy stop, stop-limit для розничных инвесторов.
 5. **[T-Invest API: Orders](https://tinkoff.github.io/investAPI/orders/)** — программное выставление стоп- и лимитных заявок на MOEX через брокера.
 6. **[Binance Spot API: New Order](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#new-order-trade)** — типы ордеров для crypto-flow.
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| NBER | Li, Ye, Zheng — w28515 (2021) | Эмпирика stop/limit ордеров; поведение информированных трейдеров | [www.nber.org/papers/w28515](https://www.nber.org/papers/w28515) |
+| Stanford GSB | FINANCE 562 — Financial Trading Strategies | Stop-loss и take-profit в алгоритмических стратегиях | [www.gsb.stanford.edu/experience/learning/experi...](https://www.gsb.stanford.edu/experience/learning/experiential-learning/rail/curricular-integration) |
+| MIT | 15.481X Adaptive Markets (Fall 2022) | Динамическое управление риском: volatility scaling, stops | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
+| SSRN | Li, Ye — abstract 3795035 (2021) | Классификация stop orders и клиентские сегменты | [papers.ssrn.com/sol3/papers.cfm?abstract_id=379...](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3795035) |
 
 ---
 

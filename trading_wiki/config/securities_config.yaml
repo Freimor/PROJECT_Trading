@@ -1,0 +1,41 @@
+# Securities trading config — MOEX via T-Invest
+# Документация: trading_wiki/06-Стратегии автоматизированной LLM торговли/Securities_flow_design.md
+
+version: "1.0.0"
+env: sandbox  # sandbox | live
+
+mode: dry_run  # dry_run | paper | shadow | live
+
+# Режимы: index_dca (без LLM) | swing_signals (с LLM)
+active_mode: index_dca
+
+index_dca:
+  ticker: TMOS
+  amount_rub: 10000
+  order_type: MARKET
+  schedule_cron: "0 10 1 * *"  # 10:00 MSK, 1-е число месяца
+
+swing_signals:
+  universe: [SBER, GAZP, LKOH, GMKN, YNDX]
+  timeframe: 1d
+  schedule_cron: "15 18 * * 1-5"  # 18:15 MSK, будни
+  llm_min_confidence: 0.7
+  ollama_model: qwen3.5:9b
+  prompt_version: "securities_validate_v1"
+  prefer_limit_orders: true
+
+session:
+  timezone: Europe/Moscow
+  start_hour: 10
+  end_hour: 19
+
+risk:
+  risk_per_trade: 0.01
+  daily_loss_limit: 0.03
+  max_open_positions: 3
+
+tax:
+  track_deals: true
+  export_enabled: true
+
+legal_notice: "Automated trading is operator responsibility. Not legal/tax advice."

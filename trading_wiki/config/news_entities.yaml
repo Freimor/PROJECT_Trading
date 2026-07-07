@@ -1,0 +1,45 @@
+# Сопоставление тикеров с ключевыми словами для извлечения новостей
+# Используется news_service при ingest и при формировании LLM-контекста
+
+version: "1.0.0"
+
+entities:
+  SBER:
+    market: securities
+    aliases: [Сбербанк, Сбер, Sberbank, SBER]
+  GAZP:
+    market: securities
+    aliases: [Газпром, Gazprom, GAZP]
+  LKOH:
+    market: securities
+    aliases: [Лукойл, Lukoil, LKOH]
+  GMKN:
+    market: securities
+    aliases: [Норникель, Nornickel, GMKN, «Норильский никель»]
+  YNDX:
+    market: securities
+    aliases: [Яндекс, Yandex, YNDX]
+  TMOS:
+    market: securities
+    aliases: [TMOS, Тинькофф, Tinkoff, БПИФ, ETF TMOS, «Tinkoff iMOEX»]
+  MOEX:
+    market: securities
+    aliases: [MOEX, Московская биржа, «Московская биржа»]
+  RUB:
+    market: macro
+    aliases: [рубль, RUB, ключевая ставка, ЦБ РФ, Банк России]
+  BTC:
+    market: crypto
+    aliases: [Bitcoin, BTC, биткоин, BTCUSDT]
+  ETH:
+    market: crypto
+    aliases: [Ethereum, ETH, эфир, ETHUSDT]
+  CRYPTO:
+    market: crypto
+    aliases: [криптовалют, crypto, bitcoin, ethereum, блокчейн]
+
+  # Smart-Lab частые упоминания
+  DIVIDEND:
+    market: macro
+    aliases: [дивиденд, dividend, дивиденды, выплата акционерам]
+

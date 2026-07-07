@@ -7,29 +7,32 @@ sources:
   - https://www.nalog.gov.ru/rn77/fl/interest/taxation/iis/
   - https://www.consultant.ru/document/cons_doc_LAW_28165/
   - https://tinkoff.github.io/investAPI/operations/
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Налоги на доходы от ценных бумаг (РФ)
 
-> Доход от операций с **ценными бумагами** на российском рынке облагается **НДФЛ**. Брокер часто выступает **налоговым агентом** — удерживает налог при выводе средств или в конце налогового периода. Wiki **не заменяет** консультацию налогового специалиста; законы меняются.
+> Доход от ценных бумаг облагается **НДФЛ**. Брокер часто — налоговый агент. Wiki не заменяет налогового специалиста.
+
+## Главное
+
+- Налогооблагаемый доход ≈ продажа − покупка − комиссии (уточняйте у брокера и ФНС).
+- Ставки: 13% до лимита, 15% на превышение ([ФНС](https://www.nalog.gov.ru/rn77/fl/interest/taxation/tax_rates/)).
+- **ИИС** тип А (вычет на взнос) или Б (освобождение дохода) — отдельный счёт и ограничения.
+- Tax event — обычно **продажа**, не покупка; дивиденды — отдельный порядок.
+- Automation v1: сбор данных в trade log; расчёт НДФЛ — брокер + специалист.
 
 ---
 
 ## Для новичка
 
-**Налогооблагаемый доход** от продажи акций (упрощённо):
+Продали дороже покупки — возник доход. Убыток можно зачесть в определённых случаях ([ФНС](https://www.nalog.gov.ru/rn77/fl/interest/taxation/investment/)).
 
-```
-Доход = цена продажи × количество − цена покупки × количество − комиссии (уточняйте у брокера и ФНС)
-```
-
-Если продали дороже, чем купили — возник **налогооблагаемый доход**. Если убыток — его можно **зачесть** против дохода в определённых случаях (см. ФНС).
-
-**Брокер** (T-Bank, Сбер и др.) ведёт учёт сделок и часто **сам удерживает НДФЛ** — но **ответственность** за корректность декларирования остаётся у инвестора.
-
-**ИИС** (индивидуальный инвестиционный счёт) — особый режим с налоговыми льготами (тип А или Б).
+Брокер часто удерживает НДФЛ, но проверять справки — ваша задача.
 
 ---
 
@@ -207,6 +210,18 @@ tax_note: "consult broker 2-NDFL report"
 3. **[ФНС — ИИС](https://www.nalog.gov.ru/rn77/fl/interest/taxation/iis/)** — типы А и Б.
 4. **[КонсультантПлюс: НК РФ ч. II](https://www.consultant.ru/document/cons_doc_LAW_28165/)** — Налоговый кодекс.
 5. **[T-Invest API — Operations](https://tinkoff.github.io/investAPI/operations/)** — данные операций от брокера для reconciliation.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст рисков автоматизации и «оператор отвечает» — важно для корректных дисклеймеров в налоговых/комплаенс-выгрузках | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases и самоконтроль — полезно для снижения «churn» (лишних сделок) и количества tax events | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Пример системного подхода к «решение → сделка → учёт»; полезно при проектировании tax-export пайплайна | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

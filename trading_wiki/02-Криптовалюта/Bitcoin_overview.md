@@ -7,23 +7,36 @@ sources:
   - https://academy.binance.com/en/articles/what-is-bitcoin
   - https://academy.binance.com/en/articles/bitcoin-halving
   - https://mempool.space/
-updated: 2026-07-05
+  - https://www.bis.org/publ/bppdf/bispap156.pdf
+  - https://wp.hse.ru/fe/BRP/86/2022
+  - https://www.bis.org/publ/work1146.pdf
+updated: 2026-07-06
 level: beginner
+academic_sources: true
+style: informational
 ---
 
 # Bitcoin — обзор
 
-> **Bitcoin (BTC)** — децентрализованная цифровая валюта, описанная в whitepaper **«Bitcoin: A Peer-to-Peer Electronic Cash System»** (Satoshi Nakamoto, 2008). Сеть работает без центрального эмитента; правила эмиссии и консенсуса заданы протоколом и open-source клиентами.
+> Bitcoin (BTC) — децентрализованная цифровая валюта из whitepaper Satoshi Nakamoto (2008). Сеть работает без центрального эмитента; правила эмиссии и консенсуса заданы протоколом.
+
+## Главное
+
+- BTC передаёт ценность через интернет без обязательного банка-посредника.
+- Максимум 21 млн BTC; темп эмиссии снижается через halving каждые ~210 000 блоков (~4 года).
+- Mining (Proof-of-Work) — майнеры включают транзакции в блоки за block reward + комиссии.
+- Цена на биржах волатильна; SEC предупреждает о риске потери всего вложения.
+- В automation BTCUSDT — основная пара; halving — macro context, не сигнал к покупке.
 
 ---
 
 ## Для новичка
 
-Bitcoin решает задачу **передачи ценности** через интернет **без** обязательного посредника-банка. Вместо «баланса на счёте у банка» — **глобальный реестр** транзакций, который поддерживают тысячи независимых узлов.
+Bitcoin решает задачу передачи ценности через интернет без банка. Вместо баланса на счёте — глобальный реестр транзакций, который поддерживают тысячи узлов.
 
-**Mining (майнинг)** — процесс включения транзакций в блоки через **Proof-of-Work**: майнеры перебирают nonce, пока hash блока не станет ниже target difficulty. За успешный блок — **block reward** + комиссии транзакций.
+Mining — включение транзакций в блоки через Proof-of-Work: майнеры ищут hash ниже target difficulty. За блок — block reward и комиссии.
 
-**Ограниченная эмиссия:** протокол предусматривает максимум **21 000 000 BTC**; темп новой эмиссии снижается через **halving** — см. подтверждённые факты ниже.
+Протокол ограничивает эмиссию 21 000 000 BTC. Темп снижается через halving — см. таблицу фактов ниже.
 
 ---
 
@@ -31,13 +44,13 @@ Bitcoin решает задачу **передачи ценности** чере
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | Whitepaper предлагает **peer-to-peer electronic cash** без financial institution. | [Bitcoin whitepaper (PDF)](https://bitcoin.org/bitcoin.pdf) |
-| 2 | Сеть использует **Proof-of-Work** и **timestamp server** (blockchain) для ordering транзакций. | [Bitcoin whitepaper](https://bitcoin.org/bitcoin.pdf) |
-| 3 | Binance Academy: максимальный supply Bitcoin — **21 million coins**. | [Binance Academy: What is Bitcoin](https://academy.binance.com/en/articles/what-is-bitcoin) |
-| 4 | **Halving:** block reward для miners **уменьшается вдвое** примерно каждые **four years** (каждые 210 000 blocks). | [Binance Academy: Bitcoin Halving](https://academy.binance.com/en/articles/bitcoin-halving) |
-| 5 | Investor.gov / SEC: crypto assets **highly volatile**; investors могут lose entire investment. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
-| 6 | Все подтверждённые транзакции **публичны** в blockchain (pseudonymity addresses, not full anonymity). | [Bitcoin whitepaper](https://bitcoin.org/bitcoin.pdf) |
-| 7 | Block time **target ~10 minutes** (adjustment difficulty каждые 2016 blocks) — protocol design, см. Bitcoin Core documentation. | [Bitcoin.org / Core docs](https://bitcoin.org/en/developer-documentation) |
+| 1 | Whitepaper предлагает peer-to-peer electronic cash без financial institution. | [Bitcoin whitepaper (PDF)](https://bitcoin.org/bitcoin.pdf) |
+| 2 | Сеть использует Proof-of-Work и timestamp server (blockchain) для ordering транзакций. | [Bitcoin whitepaper](https://bitcoin.org/bitcoin.pdf) |
+| 3 | Максимальный supply Bitcoin — 21 million coins. | [Binance Academy: What is Bitcoin](https://academy.binance.com/en/articles/what-is-bitcoin) |
+| 4 | Halving: block reward уменьшается вдвое примерно каждые four years (210 000 blocks). | [Binance Academy: Bitcoin Halving](https://academy.binance.com/en/articles/bitcoin-halving) |
+| 5 | SEC: crypto assets highly volatile; investors могут lose entire investment. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
+| 6 | Подтверждённые транзакции публичны в blockchain (pseudonymity addresses). | [Bitcoin whitepaper](https://bitcoin.org/bitcoin.pdf) |
+| 7 | Block time target ~10 minutes (adjustment difficulty каждые 2016 blocks). | [Bitcoin.org / Core docs](https://bitcoin.org/en/developer-documentation) |
 
 ---
 
@@ -163,6 +176,19 @@ Layer-2 для faster/smaller payments — отдельная инфрастру
 4. **[Investor.gov: Crypto risks](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)**
 5. **[Bitcoin Developer Documentation](https://bitcoin.org/en/developer-documentation)**
 6. **[Mempool.space — explorer](https://mempool.space/)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| BIS | Paper 156 (2024) — Crypto, DeFi | Bitcoin в контексте криптоэкосистемы и финансовой стабильности | [www.bis.org/publ/bppdf/bispap156.pdf](https://www.bis.org/publ/bppdf/bispap156.pdf) |
+| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Bitcoin как актив: факторы риска, корреляция с акциями | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
+| BIS | Working Paper 1146 (2023) | Сравнение Bitcoin со stablecoins: ликвидность и риски | [www.bis.org/publ/work1146.pdf](https://www.bis.org/publ/work1146.pdf) |
+| BIS | Paper 159 (2024) — CBDC survey | Место Bitcoin на фоне цифровых валют ЦБ | [www.bis.org/publ/bppdf/bispap159.htm](https://www.bis.org/publ/bppdf/bispap159.htm) |
 
 ---
 

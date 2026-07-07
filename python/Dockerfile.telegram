@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt requirements-telegram.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-telegram.txt
+
+COPY db/ ./db/
+COPY telegram_bot/ ./telegram_bot/
+COPY proxy_gateway/ ./proxy_gateway/
+COPY indicators/ ./indicators/
+COPY bridges/ ./bridges/
+COPY evaluation/ ./evaluation/
+COPY backtest/ ./backtest/
+COPY config_loader.py guardrails.py utils.py event_log.py llm_client.py ./
+COPY runtime_settings.py effective_config.py admin_service.py ./
+COPY telegram_notify.py telegram_proxy.py smoke_test.py bot_data_service.py testing_service.py ./
+COPY crypto_pipeline.py securities_pipeline.py binance_client.py news_service.py ./
+
+ENV DB_API_URL=http://db-api:8000
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+CMD ["python", "-m", "telegram_bot.main"]

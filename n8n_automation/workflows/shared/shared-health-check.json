@@ -1,0 +1,181 @@
+{
+  "id": "wfHealthCheck001",
+  "name": "shared-health-check",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111101",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://ollama:11434/api/tags",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111102",
+      "name": "Check Ollama",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.binance.com/api/v3/ping",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111103",
+      "name": "Check Binance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://iss.moex.com/iss/index.json",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111104",
+      "name": "Check MOEX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/health",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "11111111-1111-1111-1111-111111111105",
+      "name": "Check DB API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, 300],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const specs = [\n  { node: 'Check Ollama', service: 'ollama' },\n  { node: 'Check Binance', service: 'binance' },\n  { node: 'Check MOEX', service: 'moex_iss' },\n  { node: 'Check DB API', service: 'db_api' },\n];\n\nconst checks = specs.map(({ node, service }) => {\n  const item = $(node).first();\n  const json = item?.json ?? {};\n  const hasError = Boolean(json.error);\n  const statusCode = json.statusCode ?? json.status;\n  const ok = !hasError && statusCode >= 200 && statusCode < 400;\n\n  return {\n    service_name: service,\n    status: ok ? 'ok' : (hasError ? 'critical' : 'warn'),\n    latency_ms: json.timings?.total ?? null,\n    details: {\n      http_code: statusCode ?? null,\n      error: hasError ? (json.error?.message ?? 'request failed') : null,\n    },\n    workflow_id: $workflow.id,\n    execution_id: $execution.id,\n  };\n});\n\nconst hasCritical = checks.some((c) => c.status === 'critical');\n\nreturn [{\n  json: {\n    checks,\n    summary: {\n      ok: checks.filter((c) => c.status === 'ok').length,\n      warn: checks.filter((c) => c.status === 'warn').length,\n      critical: checks.filter((c) => c.status === 'critical').length,\n      has_critical: hasCritical,\n    },\n  },\n}];"
+      },
+      "id": "11111111-1111-1111-1111-111111111106",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/health/batch",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { checks: $json.checks } }}",
+        "options": {}
+      },
+      "id": "11111111-1111-1111-1111-111111111107",
+      "name": "Log to DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 300]
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Check Ollama",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Ollama": {
+      "main": [
+        [
+          {
+            "node": "Check Binance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Binance": {
+      "main": [
+        [
+          {
+            "node": "Check MOEX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check MOEX": {
+      "main": [
+        [
+          {
+            "node": "Check DB API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check DB API": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Log to DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "shared-global-error-handler"
+  },
+  "tags": [
+    { "name": "shared" },
+    { "name": "env/testnet" }
+  ],
+  "active": false
+}

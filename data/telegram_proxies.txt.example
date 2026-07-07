@@ -1,0 +1,12 @@
+# Список прокси для Telegram (по одному на строку).
+# Форматы:
+#   socks5://host:port
+#   http://host:port
+#   host:port
+#   host:port:user:pass
+#
+# Docker на Windows: локальный Clash/V2Ray обычно доступен как:
+#   socks5://host.docker.internal:7890
+#   socks5://host.docker.internal:10808
+
+socks5://host.docker.internal:7890

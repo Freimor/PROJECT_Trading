@@ -7,34 +7,37 @@ sources:
   - https://docs.n8n.io/integrations/builtin/cluster-nodes/sub-nodes/n8n-nodes-langchain.lmchatollama/
   - https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/
   - https://docs.n8n.io/hosting/installation/docker/
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # Интеграция Ollama в n8n
 
-> **Ollama** запускает open-source LLM **локально**. n8n подключается через **HTTP API** (`localhost:11434`) или **LangChain Ollama Chat Model node**. В торговой системе Ollama **валидирует** сигналы (approve/reject), не исполняет ордера.
+> **Ollama** запускает LLM локально. n8n вызывает HTTP API (`:11434`) или LangChain node. В системе Ollama **валидирует** сигналы, не исполняет ордера.
+
+## Главное
+
+- `POST /api/chat` + `"format": "json"` — structured output для approve/reject.
+- Fail-closed: Ollama недоступен → не торговать ([[LLM_rules_and_guardrails]]).
+- temperature 0.0–0.2; `stream: false` для n8n; timeout 120 с.
+- Rule pre-filter до LLM экономит 70–90% GPU-вызовов.
+- Sub-workflow `llm-validate-signal` + audit log в `logs/llm/`.
 
 ---
 
 ## Для новичка
 
-Вместо отправки торговых данных в облачный ChatGPT вы вызываете модель на своём ПК или сервере:
+Вместо облачного ChatGPT — модель на своём ПК:
 
 ```
 POST http://localhost:11434/api/chat
-{
-  "model": "llama3.2",
-  "messages": [...],
-  "format": "json",
-  "stream": false
-}
+{ "model": "llama3.2", "messages": [...], "format": "json", "stream": false }
 ```
 
-**Плюсы:** приватность, нет платы за tokens, работа offline.  
-**Минусы:** нужен GPU/CPU, качество зависит от модели, latency 5–120 сек.
-
-**Fail-closed правило:** если Ollama недоступен → **не торговать**. См. [[LLM_rules_and_guardrails]].
+Плюсы: приватность, без платы за tokens. Минусы: нужен CPU/GPU, latency 5–120 с.
 
 ---
 
@@ -328,6 +331,19 @@ Start with **llama3.2** for latency; upgrade if too many false approvals.
 3. **[n8n Ollama Chat Model](https://docs.n8n.io/integrations/builtin/cluster-nodes/sub-nodes/n8n-nodes-langchain.lmchatollama/)** — LangChain integration.
 4. **[n8n HTTP Request](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/)** — REST calls to Ollama.
 5. **[n8n Docker](https://docs.n8n.io/hosting/installation/docker/)** — co-deploy with Ollama.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Обсуждает AI в финансовом консалтинге и ограничения LLM; полезно для формулировки fail-safe/guardrails | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример, где LLM используется в контуре оптимизации; помогает корректно ставить требования к воспроизводимости и аудиту | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идея ансамблей для устойчивости решений — релевантно при выборе «несколько моделей → консенсус» | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Показывает путь от ML-модели к исполнимым портфельным весам/ордерам — важный паттерн интеграции | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

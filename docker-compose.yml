@@ -1,0 +1,163 @@
+# PROJECT Trading — локальная инфраструктура (этап 1)
+# Запуск: docker compose up -d
+# Документация: n8n_automation/README.md
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: trading-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-changeme}
+      - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Moscow}
+      - TZ=${GENERIC_TIMEZONE:-Europe/Moscow}
+      - DB_API_URL=http://db-api:8000
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./trading_wiki:/data/trading_wiki:ro
+      - ./n8n_automation:/data/n8n_automation:ro
+      - ./data:/data/db
+    depends_on:
+      db-api:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    networks:
+      - trading_net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: trading-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_MAX_TRANSFER_STREAMS=2
+    volumes:
+      # Общая папка с Ollama на Windows — модель качается через `ollama pull` на хосте
+      - ${OLLAMA_MODELS_PATH:-${USERPROFILE}/.ollama}:/root/.ollama
+    networks:
+      - trading_net
+
+  db-api:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: trading-db-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - TRADING_DB_PATH=/data/trading.db
+      - WIKI_CONFIG_PATH=/data/trading_wiki
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - TZ=${GENERIC_TIMEZONE:-Europe/Moscow}
+      - BINANCE_TESTNET_API_KEY=${BINANCE_TESTNET_API_KEY:-}
+      - BINANCE_TESTNET_API_SECRET=${BINANCE_TESTNET_API_SECRET:-}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+      - TINKOFF_SANDBOX_TOKEN=${TINKOFF_SANDBOX_TOKEN:-}
+      - TINKOFF_TOKEN=${TINKOFF_TOKEN:-}
+      - LIVE_TRADING_ENABLED=${LIVE_TRADING_ENABLED:-false}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_PROXY=${TELEGRAM_PROXY:-}
+      - TELEGRAM_PROXY_LIST=${TELEGRAM_PROXY_LIST:-}
+      - TELEGRAM_PROXY_FILE=${TELEGRAM_PROXY_FILE:-/data/telegram_proxies.txt}
+      - TELEGRAM_PROXY_FETCH_URL=${TELEGRAM_PROXY_FETCH_URL:-}
+      - TELEGRAM_PROXY_PROBE_TIMEOUT_SEC=${TELEGRAM_PROXY_PROBE_TIMEOUT_SEC:-8}
+      - TELEGRAM_AWESOME_VPN_ENABLED=${TELEGRAM_AWESOME_VPN_ENABLED:-true}
+      - TELEGRAM_PROXY_GATEWAY=${TELEGRAM_PROXY_GATEWAY:-socks5://proxy-gateway:17890}
+      - TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC=${TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC:-60}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - ./data:/data
+      - ./trading_wiki:/data/trading_wiki:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - trading_net
+
+  proxy-gateway:
+    build:
+      context: ./python
+      dockerfile: Dockerfile.proxy-gateway
+    container_name: trading-proxy-gateway
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_AWESOME_VPN_MAX_NODES=${TELEGRAM_AWESOME_VPN_MAX_NODES:-50}
+      - TELEGRAM_AWESOME_VPN_SINGBOX_URLS=${TELEGRAM_AWESOME_VPN_SINGBOX_URLS:-}
+      - PROXY_GATEWAY_PORT=17890
+      - PROXY_GATEWAY_REFRESH_SEC=${PROXY_GATEWAY_REFRESH_SEC:-3600}
+      - SINGBOX_URLTEST_INTERVAL=${SINGBOX_URLTEST_INTERVAL:-5m}
+    ports:
+      - "17890:17890"
+    networks:
+      - trading_net
+    profiles:
+      - telegram
+
+  telegram-bot:
+    build:
+      context: ./python
+      dockerfile: Dockerfile.telegram
+    container_name: trading-telegram-bot
+    restart: unless-stopped
+    environment:
+      - DB_API_URL=http://db-api:8000
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - TELEGRAM_ALLOWED_CHAT_IDS=${TELEGRAM_ALLOWED_CHAT_IDS:-${TELEGRAM_CHAT_ID:-}}
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-}
+      - TELEGRAM_PROXY=${TELEGRAM_PROXY:-}
+      - TELEGRAM_PROXY_LIST=${TELEGRAM_PROXY_LIST:-}
+      - TELEGRAM_PROXY_FILE=${TELEGRAM_PROXY_FILE:-/data/telegram_proxies.txt}
+      - TELEGRAM_PROXY_FETCH_URL=${TELEGRAM_PROXY_FETCH_URL:-}
+      - TELEGRAM_PROXY_PROBE_TIMEOUT_SEC=${TELEGRAM_PROXY_PROBE_TIMEOUT_SEC:-8}
+      - TELEGRAM_AWESOME_VPN_ENABLED=${TELEGRAM_AWESOME_VPN_ENABLED:-true}
+      - TELEGRAM_PROXY_GATEWAY=${TELEGRAM_PROXY_GATEWAY:-socks5://proxy-gateway:17890}
+      - TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC=${TELEGRAM_GATEWAY_PROBE_TIMEOUT_SEC:-60}
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      proxy-gateway:
+        condition: service_started
+      db-api:
+        condition: service_healthy
+    networks:
+      - trading_net
+    profiles:
+      - telegram
+
+  console:
+    build:
+      context: ./console
+      dockerfile: Dockerfile
+    container_name: trading-console
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      db-api:
+        condition: service_healthy
+    networks:
+      - trading_net
+    profiles:
+      - console
+
+volumes:
+  n8n_data:
+
+networks:
+  trading_net:
+    driver: bridge

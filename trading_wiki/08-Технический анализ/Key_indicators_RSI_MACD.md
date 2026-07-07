@@ -7,25 +7,34 @@ sources:
   - https://www.investopedia.com/terms/m/movingaverage.asp
   - https://www.investopedia.com/terms/r/rsi.asp
   - https://www.investopedia.com/terms/e/ema.asp
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # RSI, MACD и скользящие средние
 
-> Три базовых индикатора для автоматических стратегий проекта: **RSI** (momentum/перекупленность), **MACD** (тренд + momentum), **EMA/SMA** (сглаженная цена и trend filter). Рассчитываются в Code/Python node; LLM получает **готовые числа**, не сырые свечи.
+> Три базовых индикатора проекта: **RSI** (momentum), **MACD** (тренд + momentum), **EMA/SMA** (фильтр тренда). Считаются в Code/Python; LLM получает готовые числа.
+
+## Главное
+
+- RSI(14): >70 overbought, <30 oversold — не автоматический buy/sell.
+- MACD = EMA(12)−EMA(26); Signal = EMA(9) MACD; cross — сигнал в TA-литературе.
+- EMA50/EMA200 + golden/death cross — фильтр тренда в automation.
+- Индикаторы **запаздывают** — нужны stop ([[Stop_loss_take_profit]]) и бэктест.
+- Sub-workflow `calculate-indicators` — общий для crypto и securities flows.
 
 ---
 
 ## Для новичка
 
-**Индикатор** — математическое преобразование цены (и объёма) во **временной ряд чисел**. Помогает формализовать правила («RSI < 30») для automation.
+**Индикатор** — числа из цены и объёма. Формализует правила («RSI < 30»).
 
-**RSI** — «насколько быстро и сильно росла/падала цена».  
-**MACD** — «короткая EMA минус длинная EMA» + сигнальная линия.  
-**EMA/SMA** — «средняя цена за N периодов» — показывает тренд.
+**RSI** — скорость и сила движения. **MACD** — разница короткой и длинной EMA. **EMA/SMA** — средняя цена за N периодов.
 
-> Индикаторы **запаздывают** (lagging) — строятся на прошлых ценах. Не magic; требуют бэктеста и [[Stop_loss_take_profit]].
+Не магия: строятся на прошлых ценах. Требуют бэктеста и stop.
 
 ---
 
@@ -254,6 +263,19 @@ Fixed CSV input → expected output vs manual calculation or ta-lib reference. U
 3. **[Investopedia: MACD](https://www.investopedia.com/terms/m/macd.asp)** — MACD components.
 4. **[Investopedia: Moving Average](https://www.investopedia.com/terms/m/movingaverage.asp)** — SMA, golden cross.
 5. **[Investopedia: EMA](https://www.investopedia.com/terms/e/ema.asp)** — exponential MA.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Про «режимы рынка» и адаптацию — важно для понимания, что параметры индикаторов не универсальны | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример, где LLM/эвристики используются поверх сигналов; полезно как академический фон для связки «индикаторы → портфель» | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — можно применять к ансамблю сигналов/индикаторов | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Показательный пример «модель → веса → сделки», полезно для понимания связки сигналов и исполнения | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

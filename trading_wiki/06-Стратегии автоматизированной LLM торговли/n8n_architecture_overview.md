@@ -8,31 +8,36 @@ sources:
   - https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.httprequest/
   - https://github.com/ollama/ollama/blob/main/docs/api.md
   - https://ollama.com/
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # Архитектура n8n — обзор
 
-> Автоматическая система трейдинга строится на **n8n** (оркестрация workflow), **Ollama** (локальный LLM), **Obsidian** (база знаний, конфиг, журнал) и **Python** (тяжёлые расчёты и бэктест). LLM **не исполняет ордера** — только валидирует сигналы; размер позиции и API-вызовы — код.
+> Система: n8n (оркестрация), Ollama (локальный LLM), Obsidian (wiki, config, журнал), Python (расчёты). LLM валидирует сигналы; ордера — код.
+
+## Главное
+
+- Конвейер: биржа → индикаторы → LLM approve/reject → risk → order → log.
+- Crypto (24/7) и securities (сессия MOEX) — **разные flows**.
+- Fail-closed: Ollama недоступен → не торговать.
+- API keys — только n8n Credentials; промпты и config — в git (Obsidian).
+- Paper (testnet/sandbox) минимум 4 недели перед live.
 
 ---
 
 ## Для новичка
 
-Представьте конвейер на фабрике:
+**n8n** — визуальный конструктор workflows (узлы: HTTP, условие, Telegram).
 
-```
-Данные с биржи → Индикаторы → LLM проверяет сигнал → Риск-менеджмент → Ордер → Запись в журнал
-```
+**Ollama** — LLM на вашем ПК; данные не уходят в облако.
 
-**n8n** — визуальный конструктор таких конвейеров (workflows). Каждый «узел» (node) выполняет одно действие: HTTP-запрос, расчёт, условие, отправка в Telegram.
+**Obsidian** — markdown: правила риска, промпты, история сделок, RAG.
 
-**Ollama** запускает языковую модель **локально** на вашем ПК или сервере — данные не уходят в облако.
-
-**Obsidian** — папка с markdown-файлами: правила риска, промпты для LLM, история сделок, wiki для RAG.
-
-**Python** — опционально, когда в n8n Code node не хватает библиотек (pandas, ta-lib).
+**Python** — когда в Code node не хватает pandas/ta-lib.
 
 ---
 
@@ -251,26 +256,23 @@ return $input.all();
 
 ### Почему n8n, а не чистый Python?
 
-n8n даёт **визуальную оркестрацию**, встроенные triggers, retry, credentials, мониторинг executions. Python остаётся для расчётов, где нужны pandas/ta-lib. Гибрид снижает время итерации для нетехнического оператора.
+n8n — визуальная оркестрация, triggers, retry, credentials. Python — для pandas/ta-lib. Гибрид быстрее для итерации.
 
 ### Где хранить API-ключи?
 
-Только в **n8n Credentials** (encrypted at rest). Никогда в Obsidian markdown, промптах LLM или git. См. [[LLM_rules_and_guardrails]] правило G7.
+Только **n8n Credentials**. Не в Obsidian, промптах, git. См. [[LLM_rules_and_guardrails]] G7.
 
 ### Нужен ли GPU для Ollama?
 
-Не обязательно, но **рекомендуется** для моделей 7B+ при частых вызовах. CPU-режим работает, но latency 30–120 с на запрос — учитывайте в timeout HTTP node (60–120 с).
+Не обязательно; для 7B+ при частых вызовах — рекомендуется. CPU: latency 30–120 с — учитывайте в timeout.
 
-### Как обновлять workflows между dev и prod?
+### Как обновлять workflows?
 
-1. Разработка в n8n UI на testnet.
-2. Export JSON → `n8n_automation/workflows/`.
-3. Git commit.
-4. Import на prod instance; credentials настраиваются отдельно на каждом хосте.
+Export JSON → `n8n_automation/workflows/` → git → import на prod; credentials отдельно на каждом хосте.
 
-### Что делать при падении Ollama?
+### Что при падении Ollama?
 
-**Fail-closed:** все сигналы → reject. Telegram alert «Ollama unreachable». Не fallback на cloud LLM без явного решения оператора (утечка данных, compliance).
+Fail-closed: reject все сигналы. Не fallback на cloud без решения оператора.
 
 ---
 
@@ -296,6 +298,19 @@ n8n даёт **визуальную оркестрацию**, встроенны
 5. **[n8n Error Handling](https://docs.n8n.io/flow-logic/error-handling/)** — обработка ошибок.
 6. **[Ollama API Reference](https://github.com/ollama/ollama/blob/main/docs/api.md)** — `/api/chat`, `/api/generate`.
 7. **[Ollama — Local LLM Runtime](https://ollama.com/)** — установка и модели.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст «AI + финансы + поведение» и ограничения автоматизации; полезно для принципа «LLM не исполняет ордера» | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример исследовательского дизайна для LLM в портфельных задачах; помогает формировать требования к аудит-логу/воспроизводимости | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идеи устойчивости решений (ансамбли) — релевантно для «двойной проверки» сигналов и снижения variance | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Демонстрирует end-to-end pipeline: модель → веса → ордера (архитектурный паттерн для sidecar сервисов) | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

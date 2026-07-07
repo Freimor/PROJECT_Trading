@@ -1,0 +1,21 @@
+FROM ghcr.io/sagernet/sing-box:v1.11.8 AS singbox-bin
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY --from=singbox-bin /usr/local/bin/sing-box /usr/local/bin/sing-box
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY proxy_gateway/ ./proxy_gateway/
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV PROXY_GATEWAY_PORT=17890
+ENV PROXY_GATEWAY_LISTEN=0.0.0.0
+
+EXPOSE 17890
+
+CMD ["python", "-m", "proxy_gateway.main"]

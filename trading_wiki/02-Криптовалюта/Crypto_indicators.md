@@ -7,23 +7,36 @@ sources:
   - https://www.investopedia.com/terms/m/macd.asp
   - https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data
   - https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities
-updated: 2026-07-05
+  - https://doi.org/10.1109/access.2025.3624652
+  - https://arxiv.org/html/2503.13544
+  - https://www.gsb.stanford.edu/experience/learning/experiential-learning/rail/curricular-integration
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # Крипто-индикаторы
 
-> **Индикаторы** на крипторынке делятся на **технические** (из цены/объёма) и **on-chain** (из данных blockchain). Оба типа описывают **прошлое** и формализуют правила; они **не гарантируют** будущую доходность ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)).
+> Индикаторы на крипторынке: технические (из цены/объёма) и on-chain (из blockchain). Оба описывают прошлое и не гарантируют будущую доходность ([Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)).
+
+## Главное
+
+- TA строит индикаторы из OHLCV-свечей; Binance API отдаёт klines в JSON.
+- RSI >70 — overbought, <30 — oversold; на crypto часто используют 80/20 из‑за волатильности.
+- MACD показывает связь двух EMA; histogram выше нуля — bullish momentum.
+- On-chain метрики (active addresses, exchange inflow) — macro context, не HFT-триггер.
+- Правило automation: индикатор → rule → LLM validate → risk → order.
 
 ---
 
 ## Для новичка
 
-**Технический анализ (TA)** строит индикаторы из **OHLCV** свечей — Open, High, Low, Close, Volume. Binance API отдаёт klines в JSON ([Binance Kline Data](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data)).
+Технический анализ строит индикаторы из OHLCV — Open, High, Low, Close, Volume. Binance API отдаёт klines ([Binance Kline Data](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data)).
 
-**On-chain аналитика** использует публичный ledger: число active addresses, потоки на/с бирж, UTXO age bands. Интерпретация **субъективна** и часто запаздывает относительно price.
+On-chain аналитика использует публичный ledger: active addresses, потоки на/с бирж. Интерпретация субъективна и часто запаздывает.
 
-> Правило automation: **индикатор → rule → LLM validate → risk → order**. Индикатор alone не отправляет market buy.
+Индикатор alone не отправляет market buy. Цепочка: индикатор → rule → LLM validate → risk → order.
 
 ---
 
@@ -31,12 +44,12 @@ level: intermediate
 
 | # | Факт | Источник |
 |---|------|----------|
-| 1 | **RSI (Relative Strength Index)** — momentum oscillator, scale **0–100**; developed by J. Welles Wilder Jr. | [Investopedia: RSI](https://www.investopedia.com/terms/r/rsi.asp) |
-| 2 | Binance Academy: традиционно RSI **>70 overbought**, **<30 oversold**; not perfect signals. | [Binance Academy: RSI](https://academy.binance.com/en/articles/what-is-the-rsi-indicator) |
-| 3 | **MACD** — trend-following momentum indicator showing relationship between two EMAs. | [Investopedia: MACD](https://www.investopedia.com/terms/m/macd.asp) |
-| 4 | Binance kline array: `[open time, open, high, low, close, volume, close time, ...]`. | [Binance API: Klines](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data) |
-| 5 | Crypto markets trade **24/7** — нет «overnight gap» как на MOEX, но **weekend liquidity** может отличаться. | Market structure observation |
-| 6 | SEC: crypto **highly volatile** — indicators based on past volatility may fail in regime change. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
+| 1 | RSI — momentum oscillator, scale 0–100; developed by J. Welles Wilder Jr. | [Investopedia: RSI](https://www.investopedia.com/terms/r/rsi.asp) |
+| 2 | Binance Academy: RSI >70 overbought, <30 oversold; not perfect signals. | [Binance Academy: RSI](https://academy.binance.com/en/articles/what-is-the-rsi-indicator) |
+| 3 | MACD — trend-following momentum indicator; relationship between two EMAs. | [Investopedia: MACD](https://www.investopedia.com/terms/m/macd.asp) |
+| 4 | Binance kline array: [open time, open, high, low, close, volume, close time, ...]. | [Binance API: Klines](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data) |
+| 5 | Crypto markets trade 24/7 — нет overnight gap как на MOEX. | Market structure observation |
+| 6 | SEC: crypto highly volatile — indicators based on past volatility may fail in regime change. | [Investor.gov](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities) |
 
 ---
 
@@ -197,6 +210,19 @@ Raw blockchain data public; aggregated metrics often paid.
 3. **[Investopedia: MACD](https://www.investopedia.com/terms/m/macd.asp)**
 4. **[Binance API: Kline/Candlestick Data](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#kline-candlestick-data)**
 5. **[Investor.gov: Crypto volatility](https://www.investor.gov/additional-resources/spotlight/directors-take/cautionary-tale-crypto-asset-securities)**
+
+---
+
+## Академические источники
+
+Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+
+| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
+|-----------|----------------|--------------------------------|--------|
+| IEEE Access | CVaR + DRL + LLM sentiment (2025) | Технические индикаторы + FinBERT sentiment для торговых сигналов | [doi.org/10.1109/access.2025.3624652](https://doi.org/10.1109/access.2025.3624652) |
+| arXiv | Kim et al. — 2503.13544 (2025) | Deep Ensembles для robust portfolio optimization на крипторынке | [arxiv.org/html/2503.13544](https://arxiv.org/html/2503.13544) |
+| Stanford GSB | FINANCE 562 — Financial Trading Strategies | Технический анализ и алгоритмические торговые стратегии | [www.gsb.stanford.edu/experience/learning/experi...](https://www.gsb.stanford.edu/experience/learning/experiential-learning/rail/curricular-integration) |
+| MIT | 15.481X Adaptive Markets (Fall 2022) | Ограничения технического анализа в адаптивных рынках | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
 
 ---
 

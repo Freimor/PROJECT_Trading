@@ -7,31 +7,37 @@ sources:
   - https://docs.n8n.io/flow-logic/error-handling/
   - https://github.com/ollama/ollama/blob/main/docs/api.md
   - https://developers.binance.com/docs/binance-spot-api-docs/rest-api#endpoint-security-type
-updated: 2026-07-05
+  - [[Academic_sources]]
+updated: 2026-07-06
 level: intermediate
+academic_sources: true
+style: informational
 ---
 
 # Правила и guardrails для LLM
 
-> **Guardrails** — жёсткие ограничения, которые **код enforce'ит** независимо от ответа LLM. LLM может галлюцинировать, поддаваться hype и не нести ответственности за убытки. Guardrails — **детерминированный** слой безопасности между AI и реальными деньгами.
+> **Guardrails** — жёсткие ограничения, которые код enforce'ит независимо от LLM. Между AI и деньгами — детерминированный слой безопасности.
+
+## Главное
+
+- LLM = стажёр: approve/reject + confidence; ордера и size — Code node.
+- G1–G12: JSON schema, confidence ≥ 0.7, counter_thesis, whitelist, daily loss, kill_switch.
+- Fail-closed всегда: ошибка LLM → не торговать.
+- API keys — только Credentials; withdrawals disabled на Binance.
+- `guardrails.yaml` в Obsidian — source of truth, версионируется git.
 
 ---
 
 ## Для новичка
 
-Представьте LLM как **стажёра-аналитика**:
-- Может дать полезное мнение (approve/reject)
-- Может ошибиться, «придумать» данные, переоценить сигнал
-- **Не имеет права** нажимать кнопку «Купить»
+LLM может ошибиться и «придумать» данные. Поэтому:
 
-Поэтому в системе:
+1. LLM → approve/reject + counter_thesis.
+2. Size → [[Position_sizing]] (код).
+3. Ордера → Binance / T-Invest API.
+4. Сбой LLM → no trade.
 
-1. LLM только **approve/reject** + confidence + counter_thesis.
-2. **Размер позиции** считает Code node ([[Position_sizing]]).
-3. **Ордера** выставляет n8n → Binance / T-Invest API.
-4. При сбое LLM → **no trade** (fail-closed).
-
-SEC/FINRA: инвестируйте осознанно, понимайте риски ([Investor.gov](https://www.investor.gov/introduction-investing)). Автоматизация **не снимает** ответственность оператора.
+Автоматизация не снимает ответственность оператора ([Investor.gov](https://www.investor.gov/introduction-investing)).
 
 ---
 
@@ -264,6 +270,20 @@ Wiki **не** юридическая консультация.
 3. **[n8n Error Handling](https://docs.n8n.io/flow-logic/error-handling/)** — global error workflows.
 4. **[Ollama API](https://github.com/ollama/ollama/blob/main/docs/api.md)** — timeout, JSON mode.
 5. **[Binance API Security](https://developers.binance.com/docs/binance-spot-api-docs/rest-api#endpoint-security-type)** — key permissions.
+
+---
+
+## Академические источники
+
+См. также: [[Academic_sources]].
+
+| Категория | Что изучать | Почему полезно | URL |
+|---|---|---|---|
+| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Про «AI в финансах» и риск ошибок/стимулов — помогает обосновать строгие guardrails и fail-closed дизайн | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
+| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Глубже про heuristics/biases/фрейминг — полезно для правил против hype/confirmation и структурированных outputs | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
+| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример, почему без аудита/воспроизводимости LLM-решения трудно валидировать; поддерживает требование audit log | https://ieeexplore.ieee.org/document/11200704/ |
+| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — аргумент в пользу «двухмодельной» проверки и консенсуса | https://arxiv.org/abs/2503.13544 |
+| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Демонстрирует end-to-end принятие решений; полезно для требований «модель не должна напрямую исполнять ордера» | https://www.hse.ru/en/edu/vkr/929592108 |
 
 ---
 

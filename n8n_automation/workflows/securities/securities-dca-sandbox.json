@@ -1,0 +1,86 @@
+{
+  "id": "wfSecDcaSandbox1",
+  "name": "securities-dca-sandbox",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 10 1 * *" }]
+        }
+      },
+      "id": "s5010001-0001-4000-8000-000000000001",
+      "name": "Monthly 10:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/config/securities_config",
+        "options": {}
+      },
+      "id": "s5010001-0001-4000-8000-000000000002",
+      "name": "Read Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "dry_run",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "s5010001-0001-4000-8000-000000000003",
+      "name": "Not Dry Run",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/securities/dca?dry_run=false&env=paper",
+        "options": { "timeout": 120000 }
+      },
+      "id": "s5010001-0001-4000-8000-000000000004",
+      "name": "Execute DCA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/securities/dca?dry_run=true&env=dry_run",
+        "options": {}
+      },
+      "id": "s5010001-0001-4000-8000-000000000005",
+      "name": "Dry Run DCA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 400]
+    }
+  ],
+  "connections": {
+    "Monthly 10:00 MSK": { "main": [[{ "node": "Read Config", "type": "main", "index": 0 }]] },
+    "Read Config": { "main": [[{ "node": "Not Dry Run", "type": "main", "index": 0 }]] },
+    "Not Dry Run": {
+      "main": [
+        [{ "node": "Execute DCA", "type": "main", "index": 0 }],
+        [{ "node": "Dry Run DCA", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "securities" }, { "name": "env/testnet" }],
+  "active": false
+}
