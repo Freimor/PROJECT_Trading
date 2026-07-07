@@ -119,15 +119,61 @@ def get_portfolio_snapshot(sandbox: bool = True) -> dict[str, Any]:
 
     try:
         account_id = client.get_account_id()
-        positions = client.get_portfolio(account_id)
+        portfolio = client.get_portfolio(account_id)
         return {
             "status": "ok",
             "account_id": account_id,
-            "positions": positions,
+            "positions": portfolio.get("positions", []),
+            "total_amount": portfolio.get("total_amount", 0.0),
             "sandbox": sandbox,
         }
     except Exception as exc:
         return {"status": "error", "reject_reason": "tinkoff_api_error", "message": str(exc)}
+
+
+def get_tinvest_sandbox_bundle(sandbox: bool = True) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Single T-Invest session: connection probe + portfolio (avoids duplicate GetAccounts)."""
+    client = _client(sandbox)
+    if client is None:
+        missing = {
+            "status": "skipped",
+            "reject_reason": "missing_tinkoff_token",
+            "sandbox": sandbox,
+        }
+        return missing, {"status": "error", "reject_reason": "missing_tinkoff_token"}
+
+    try:
+        account_id = client.get_account_id()
+        portfolio_data = client.get_portfolio(account_id)
+        connection = {
+            "status": "ok",
+            "sandbox": sandbox,
+            "accounts": 1,
+            "account_id": account_id,
+        }
+        portfolio = {
+            "status": "ok",
+            "account_id": account_id,
+            "positions": portfolio_data.get("positions", []),
+            "total_amount": portfolio_data.get("total_amount", 0.0),
+            "sandbox": sandbox,
+        }
+        return connection, portfolio
+    except Exception as exc:
+        return (
+            {
+                "status": "error",
+                "reject_reason": "tinkoff_api_error",
+                "message": str(exc),
+                "sandbox": sandbox,
+            },
+            {
+                "status": "error",
+                "reject_reason": "tinkoff_api_error",
+                "message": str(exc),
+                "sandbox": sandbox,
+            },
+        )
 
 
 def check_tinvest_connection(sandbox: bool = True) -> dict[str, Any]:

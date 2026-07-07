@@ -101,8 +101,7 @@ docker exec -it trading-ollama ollama pull llama3.2
 | Ollama | http://localhost:11434 |
 
 | DB API | http://localhost:8000/docs |
-
-
+| **Web Console** | http://localhost:3000 (`docker compose --profile console up -d console`) |
 
 **Этапы 1–8 реализованы** — [`roadmap`](./n8n_automation/docs/roadmap.md) · [`live checklist`](./n8n_automation/docs/live_promotion.md)
 
@@ -145,16 +144,28 @@ docker exec trading-db-api python smoke_test.py
 
 - Документация: [`n8n_automation/docs/llm_benchmark.md`](n8n_automation/docs/llm_benchmark.md)
 - Telegram: **🤖 Автомат → 📊 LLM Benchmark**
-- API: `GET /api/benchmark/report`, `POST /api/benchmark/run`
+curl "http://localhost:8000/api/benchmark/report", `POST /api/benchmark/run`
+
+### Web Console (админ-панель)
+
+Операционный центр: обзор портфеля, графики с маркерами LLM, журнал событий, управление риском.
+
+- Документация: [`n8n_automation/docs/control_panel.md`](n8n_automation/docs/control_panel.md)
+- Запуск: `docker compose --profile console up -d console` → http://localhost:3000
+- Разделы: **Обзор** · **₿ Crypto** · **📈 MOEX** · **События** · **LLM** · **Paper** · **Benchmark** · **n8n** · **Управление**
+- Chart API: `GET /api/charts/candles`, `/markers`, `/equity`
+- LLM: `GET /api/llm/decisions`, `POST /api/evaluation/replay`
 
 | Workflow | Этап |
 |----------|------|
-| `crypto-signal-dry-run` | 2 |
+| `crypto-signal-dry-run` | 2 (демо) |
 | `news-ingest` | 3 |
-| `crypto-execute-testnet` | 4 |
+| `crypto-signal-paper` | 4 (paper) |
+| `crypto-monitor-testnet` | 4 |
 | `securities-dca-sandbox` | 5 |
 | `analysis-llm-report` | 6 |
-| `securities-swing-dry-run` | 7 |
+| `securities-swing-dry-run` | 7 (демо) |
+| `securities-swing-paper` | 7 (paper) |
 | `llm-benchmark-weekly` | 6+ |
 
 

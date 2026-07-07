@@ -202,6 +202,23 @@ def services_restart_plan(services: list[str] | None = None) -> dict[str, Any]:
 def apply_kill_switch(*, enabled: bool, operator: str, source: str) -> dict[str, Any]:
     yaml_kill = bool(load_config("guardrails").get("trading", {}).get("kill_switch", False))
     set_kill_switch(enabled, operator=operator)
+    try:
+        from activity_feed_service import log_system_activity
+
+        if enabled:
+            log_system_activity(
+                f"Kill switch включён ({operator})",
+                category="risk",
+                level="error",
+            )
+        else:
+            log_system_activity(
+                f"Kill switch выключен ({operator})",
+                category="risk",
+                level="success",
+            )
+    except Exception:
+        pass
     log_event(
         market="shared",
         env="dry_run",

@@ -186,7 +186,8 @@ def format_benchmark_report(data: dict[str, Any]) -> str:
 
     if golden and golden.get("status") == "ok":
         lines.append("")
-        lines.append("── Golden set (регрессия) ──")
+        tier = golden.get("tier", "synthetic")
+        lines.append(f"── {'Синтетика' if tier == 'synthetic' else 'Golden'} (известные данные) ──")
         saved = snapshot.get("saved_at", "")
         if saved:
             lines.append(f"  обновлено: {saved[:16]}")
@@ -196,14 +197,127 @@ def format_benchmark_report(data: dict[str, Any]) -> str:
         )
         failed = [d for d in golden.get("details", []) if not d.get("pass")]
         for d in failed[:5]:
+            summary = (d.get("summary") or "").strip()
             lines.append(f"  ❌ {d.get('id')}: expected {d.get('expected')}, got {d.get('actual')}")
+            if summary:
+                lines.append(f"     {summary}")
         if not failed:
             lines.append("  ✅ Все golden-кейсы прошли")
 
-    if not (report.get("by_market") or {}) and not golden:
+    hist_snap = report.get("last_historical_snapshot") or data.get("last_historical_snapshot") or {}
+    historical = data.get("historical") or hist_snap
+    if historical and historical.get("status") == "ok":
+        lines.append("")
+        lines.append("── История (реальные котировки) ──")
+        saved_h = hist_snap.get("saved_at", "")
+        if saved_h:
+            lines.append(f"  обновлено: {saved_h[:16]}")
+        lines.append(
+            f"  🏅 {historical.get('passed', 0)}/{historical.get('total', 0)} "
+            f"({historical.get('pass_rate', 0)})"
+        )
+        failed_h = [d for d in historical.get("details", []) if not d.get("pass")]
+        for d in failed_h[:5]:
+            summary = (d.get("summary") or "").strip()
+            as_of = (d.get("as_of") or "")[:10]
+            lines.append(f"  ❌ {d.get('id')} ({as_of}): {d.get('actual')} ≠ {d.get('expected')}")
+            if summary:
+                lines.append(f"     {summary}")
+
+    if not (report.get("by_market") or {}) and not golden and not historical:
         lines.append("\nНет данных. Запустите paper/dry-run или Golden set.")
 
+    cal_snap = report.get("last_calibration_snapshot") or data.get("last_calibration_snapshot") or {}
+    if cal_snap and cal_snap.get("status") == "ok":
+        lines.append("")
+        lines.append("── Offline-калибровка (последняя) ──")
+        saved_c = cal_snap.get("saved_at", "")
+        if saved_c:
+            lines.append(f"  обновлено: {saved_c[:16]}")
+        rec = cal_snap.get("recommended") or {}
+        if rec:
+            lines.append(
+                f"  рекомендация: temp={rec.get('temperature')}, "
+                f"min_conf={rec.get('min_confidence')}, score={rec.get('composite_score')}"
+            )
+        cur = cal_snap.get("current_guardrails") or {}
+        lines.append(
+            f"  текущие guardrails: temp={cur.get('temperature')}, min_conf={cur.get('min_confidence')}"
+        )
+        lines.append("  (применение вручную в guardrails.yaml)")
+
     lines.append("\n⚠️ Outcome metrics — образовательный бэктест, не инвестрекомендация.")
+    return _truncate("\n".join(lines))
+
+
+def format_calibration_report(data: dict[str, Any]) -> str:
+    if data.get("status") != "ok":
+        return f"🎛 Калибровка\nОшибка: {data.get('message', data.get('status', '?'))}"
+
+    lines = ["🎛 Offline-калибровка LLM", ""]
+
+    fixtures = data.get("fixtures") or {}
+    lines.append(
+        f"Фикстуры: синт. {fixtures.get('synthetic_total', '?')} "
+        f"(train {fixtures.get('synthetic_train', '?')}, "
+        f"holdout {fixtures.get('synthetic_holdout', '?')}), "
+        f"история {fixtures.get('historical', '?')}"
+    )
+
+    grid_size = data.get("grid_size") or {}
+    lines.append(
+        f"Сетка: {grid_size.get('temperatures', '?')} temp × "
+        f"{grid_size.get('min_confidence', '?')} conf = {grid_size.get('cells', '?')} ячеек"
+    )
+
+    cur = data.get("current_guardrails") or {}
+    lines.append(
+        f"\nТекущие guardrails: temp={cur.get('temperature')}, min_conf={cur.get('min_confidence')}"
+    )
+
+    rec = data.get("recommended")
+    if rec:
+        lines.append(
+            f"\n✅ Рекомендация: temp={rec.get('temperature')}, "
+            f"min_conf={rec.get('min_confidence')}"
+        )
+        lines.append(f"   composite={rec.get('composite_score')}")
+        lines.append(
+            f"   hist={rec.get('historical_pass')}, train={rec.get('synthetic_train_pass')}, "
+            f"holdout={rec.get('synthetic_holdout_pass')}"
+        )
+        lines.append(f"   outcome precision={rec.get('outcome_precision')}")
+
+    note = data.get("recommendation_note")
+    if note:
+        lines.append(f"\n{note}")
+
+    heatmap = data.get("heatmap") or {}
+    temps = heatmap.get("temperatures") or []
+    confs = heatmap.get("min_confidence") or []
+    scores = heatmap.get("composite_scores") or []
+    if temps and confs and scores:
+        lines.append("\n── Heatmap (composite score) ──")
+        header = "      " + " ".join(f"{c:.2f}" for c in confs)
+        lines.append(header)
+        for i, temp in enumerate(temps):
+            row = scores[i] if i < len(scores) else []
+            cells: list[str] = []
+            for j in range(len(confs)):
+                val = row[j] if j < len(row) else None
+                cells.append(f"{val:.2f}" if val is not None else " — ")
+            lines.append(f"T={temp:g} " + " ".join(cells))
+
+    saved = data.get("saved_at", "")
+    if saved:
+        lines.append(f"\nСохранено: {saved[:16]}")
+
+    unload = data.get("ollama_unload")
+    if unload:
+        lines.append(f"Ollama unload: {unload.get('status', unload)}")
+
+    lines.append("\n⚠️ min_confidence — порог guardrails после LLM, не параметр Ollama.")
+    lines.append("⚠️ Не инвестрекомендация.")
     return _truncate("\n".join(lines))
 
 
@@ -333,11 +447,18 @@ def format_crypto_funnel(data: dict[str, Any]) -> str:
     return _truncate("\n".join(_funnel_lines(funnel, f"🔄 Воронка crypto ({data.get('days')}d)")))
 
 
-def format_crypto_balances(balances: list[dict[str, Any]]) -> str:
-    if not balances:
+def format_crypto_balances(balances: list[dict[str, Any]] | dict[str, Any]) -> str:
+    rows: list[dict[str, Any]]
+    if isinstance(balances, dict):
+        if balances.get("status") == "empty":
+            return f"💰 Binance testnet\n{balances.get('message', 'Нет данных или ключи не заданы.')}"
+        rows = balances.get("balances") or []
+    else:
+        rows = balances or []
+    if not rows:
         return "💰 Binance testnet\nНет данных или ключи не заданы."
     lines = ["💰 Binance testnet"]
-    for b in balances[:10]:
+    for b in rows[:10]:
         lines.append(f"  {b.get('asset')}: {b.get('free', b.get('balance', '?'))}")
     return "\n".join(lines)
 

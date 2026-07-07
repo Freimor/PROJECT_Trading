@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
-
 from config_loader import load_config
+from market_data import fetch_moex_candles_as_of
 from event_log import log_event, log_llm_decision
 from guardrails import enforce_guardrails
 from indicators.technical import compute_indicators, rule_filter
@@ -16,28 +15,10 @@ from utils import inputs_hash
 
 
 def _fetch_moex_candles(secid: str, interval: int = 24) -> list[dict[str, float]]:
-    url = (
-        f"https://iss.moex.com/iss/engines/stock/markets/shares/"
-        f"boards/TQBR/securities/{secid}/candles.json"
-    )
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(url, params={"interval": interval, "limit": 100})
-        resp.raise_for_status()
-        data = resp.json()
-    cols = data["candles"]["columns"]
-    rows = data["candles"]["data"]
-    candles = []
-    for row in rows:
-        rec = dict(zip(cols, row))
-        candles.append({
-            "t": rec.get("begin", 0),
-            "o": float(rec.get("open", 0)),
-            "h": float(rec.get("high", 0)),
-            "l": float(rec.get("low", 0)),
-            "c": float(rec.get("close", 0)),
-            "v": float(rec.get("volume", 0)),
-        })
-    return candles
+    from datetime import datetime, timezone
+
+    as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return fetch_moex_candles_as_of(secid, interval=interval, as_of=as_of, limit=120)
 
 
 def run_securities_swing_dry_run(

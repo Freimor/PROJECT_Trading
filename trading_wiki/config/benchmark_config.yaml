@@ -1,5 +1,5 @@
 # LLM benchmark — пороги разметки исходов и горизонты
-version: "1.0.0"
+version: "1.1.0"
 
 crypto:
   timeframe: "4h"
@@ -19,6 +19,37 @@ sampling:
   max_cases_per_run: 80
   min_age_hours: 30        # не размечать свежие (нет будущих баров)
 
+# Два уровня оценки модели:
+# 1) synthetic — заранее известные индикаторы/новости (регрессия промпта)
+# 2) historical — реальные котировки на as_of + новости из БД или snapshot
+synthetic:
+  crypto_files:
+    - benchmark/crypto_golden_v1.yaml
+    - benchmark/synthetic/crypto_extra_v2.yaml
+  securities_files:
+    - benchmark/moex_golden_v1.yaml
+    - benchmark/synthetic/moex_extra_v2.yaml
+
+historical:
+  crypto_file: benchmark/historical/crypto_historical_v1.yaml
+  securities_file: benchmark/historical/moex_historical_v1.yaml
+  min_candles: 30
+  cache_ohlcv: true
+
+# Обратная совместимость API /golden
 golden:
-  crypto_file: benchmark/crypto_golden_v1.yaml
-  securities_file: benchmark/moex_golden_v1.yaml
+  tier: synthetic
+
+# Офлайн-калибровка: сетка temperature × min_confidence
+calibration:
+  temperatures: [0.0, 0.05, 0.1, 0.15]
+  min_confidence: [0.60, 0.65, 0.70, 0.75, 0.80]
+  synthetic_holdout_ratio: 0.3
+  outcome_days: 30
+  min_outcome_cases: 5
+  recall_floor: 0.0
+  weights:
+    historical: 0.40
+    synthetic_train: 0.20
+    synthetic_holdout: 0.15
+    outcome_precision: 0.25

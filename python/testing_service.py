@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from admin_service import ping_ollama, stats_digest
 from backtest.metrics import dry_run_funnel, signal_summary
-from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot
+from bridges.tinvest_bridge import get_tinvest_sandbox_bundle
 from config_loader import load_config
 from db.connection import get_connection
 from effective_config import get_guardrails
 from evaluation.replay import evaluation_metrics
+
+_TINVEST_DASH_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_TINVEST_DASH_TTL_SEC = 30.0
 
 
 def _recent_events(
@@ -89,16 +93,40 @@ def get_testing_overview(*, days: int = 7) -> dict[str, Any]:
 
 
 def get_tinvest_sandbox_dashboard(*, days: int = 7) -> dict[str, Any]:
+    cache_key = f"tinvest_sandbox_{days}"
+    now = time.monotonic()
+    cached = _TINVEST_DASH_CACHE.get(cache_key)
+    if cached and now - cached[0] < _TINVEST_DASH_TTL_SEC:
+        return cached[1]
+
+    try:
+        payload = _build_tinvest_sandbox_dashboard(days=days)
+    except Exception as exc:
+        payload = {
+            "days": days,
+            "status": "error",
+            "message": str(exc),
+            "connection": {"status": "error", "message": str(exc)},
+            "portfolio": {"status": "error", "message": str(exc)},
+            "funnel": dry_run_funnel(market="securities", days=days),
+        }
+
+    _TINVEST_DASH_CACHE[cache_key] = (now, payload)
+    return payload
+
+
+def _build_tinvest_sandbox_dashboard(*, days: int = 7) -> dict[str, Any]:
     sec = load_config("securities_config")
     guardrails = get_guardrails()
     dca = sec.get("index_dca", sec.get("dca", {}))
     swing = sec.get("swing_signals", {})
+    connection, portfolio = get_tinvest_sandbox_bundle(sandbox=True)
 
     sandbox_envs = ("dry_run", "paper", "sandbox")
     return {
         "days": days,
-        "connection": check_tinvest_connection(sandbox=True),
-        "portfolio": get_portfolio_snapshot(sandbox=True),
+        "connection": connection,
+        "portfolio": portfolio,
         "automation": {
             "env": sec.get("env"),
             "mode": sec.get("mode"),

@@ -200,6 +200,52 @@ def migrate_benchmark_v1(conn: sqlite3.Connection) -> list[str]:
     return applied
 
 
+def migrate_benchmark_v2(conn: sqlite3.Connection) -> list[str]:
+    """News archive for historical benchmark + published_at index."""
+    applied: list[str] = []
+
+    if not _column_exists(conn, "news_items", "benchmark_retained"):
+        conn.execute(
+            "ALTER TABLE news_items ADD COLUMN benchmark_retained INTEGER NOT NULL DEFAULT 0"
+        )
+        applied.append("news_items.benchmark_retained")
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_news_published_at
+        ON news_items(published_at DESC)
+        """
+    )
+    applied.append("idx_news_published_at")
+    return applied
+
+
+def migrate_system_activity_v1(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS system_activity (
+            id              TEXT PRIMARY KEY,
+            occurred_at     TEXT NOT NULL,
+            category        TEXT NOT NULL,
+            level           TEXT NOT NULL DEFAULT 'info',
+            message         TEXT NOT NULL,
+            ref_type        TEXT,
+            ref_id          TEXT,
+            payload_json    TEXT NOT NULL DEFAULT '{}'
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_system_activity_at
+        ON system_activity(occurred_at DESC)
+        """
+    )
+    applied.append("system_activity_v1")
+    return applied
+
+
 def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str]]:
     close = False
     if conn is None:
@@ -212,12 +258,16 @@ def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str
         alerts = migrate_news_alerts_v1(conn)
         paper = migrate_paper_v1(conn)
         benchmark = migrate_benchmark_v1(conn)
+        benchmark_v2 = migrate_benchmark_v2(conn)
+        system_activity = migrate_system_activity_v1(conn)
         conn.commit()
         return {
             "news_v2": news,
             "news_alerts_v1": alerts,
             "paper_v1": paper,
             "benchmark_v1": benchmark,
+            "benchmark_v2": benchmark_v2,
+            "system_activity_v1": system_activity,
         }
     finally:
         if close:

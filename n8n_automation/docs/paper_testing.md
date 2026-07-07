@@ -46,11 +46,33 @@ curl -X POST "http://localhost:8000/api/paper/crypto/run?symbol=BTCUSDT"
 curl -X POST "http://localhost:8000/api/paper/securities/swing?ticker=SBER"
 ```
 
+## Web Console
+
+Страница **Управление** (`/control`):
+
+1. Кнопки режима: `dry_run` · `paper` · `shadow` · `live`
+2. При смене режима автоматически включаются/выключаются нужные n8n workflow
+3. Отдельные переключатели для каждого автомата
+4. Блок **Расписание LLM** — периодичность обработки сигналов
+
+Требуется **Admin API key** (поле в шапке консоли = `ADMIN_API_KEY` в `.env`).
+
+API: `GET /api/automation/control`, `POST /api/admin/trading-mode`, `POST /api/admin/workflows/{name}/toggle`
+
 ## n8n
 
-Workflow `crypto-execute-testnet` уже вызывает `env: paper` + `/api/binance/order`.
+| Workflow | Расписание | Что делает |
+|----------|------------|------------|
+| `crypto-signal-paper` | каждые 4 ч | signal + LLM + testnet BUY по всем парам |
+| `securities-swing-paper` | будни 18:15 MSK | swing + LLM + sandbox BUY по universe |
+| `crypto-monitor-testnet` | каждые 15 мин | reconcile открытых ордеров testnet |
+| `securities-dca-sandbox` | 1-е число месяца | DCA TMOS (если `mode: paper`) |
 
-Активируйте workflow в n8n для автоматических прогонов по расписанию.
+Импорт: `workflows/crypto/crypto-signal-paper.json`, `workflows/securities/securities-swing-paper.json`.
+
+**Активация paper:** выключите `crypto-signal-dry-run` и `securities-swing-dry-run`, включите paper-workflow'ы выше.
+
+`crypto-execute-testnet` — webhook для ручного прогона одной пары (без расписания).
 
 ## Рекомендуемый цикл теста
 

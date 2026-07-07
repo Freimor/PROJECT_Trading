@@ -1,0 +1,47 @@
+version: 1
+market: securities
+description: Исторический benchmark — реальные свечи MOEX ISS на дату as_of
+prompt_version: securities_validate_v1
+cases:
+  - id: sber_2022_02_volatility
+    symbol: SBER
+    timeframe: 1d
+    as_of: "2022-02-28T18:00:00+00:00"
+    summary: "Экстремальная волатильность, геополитика — не входить в long"
+    label_source: expert
+    expected_action: reject
+    news_snapshot: |
+      - [tier1|trust=0.90|SBER] MOEX trading halts and extreme volatility
+      - [tier1|trust=0.85|SBER] Sanctions impact on Russian financial sector
+
+  - id: sber_2023_07_recovery
+    symbol: SBER
+    timeframe: 1d
+    as_of: "2023-07-15T18:00:00+00:00"
+    summary: "Стабилизация после шока, умеренный восстановительный тренд"
+    label_source: expert
+    expected_action: approve
+    news_snapshot: |
+      - [tier2|trust=0.70|SBER] Dividend season, liquidity improving on MOEX
+
+  - id: gazp_2022_03_downtrend
+    symbol: GAZP
+    timeframe: 1d
+    as_of: "2022-03-15T18:00:00+00:00"
+    summary: "GAZP в сильном даун-тренде на фоне экспортных рисков"
+    label_source: expert
+    expected_action: reject
+    news_snapshot: |
+      - [tier1|trust=0.88|GAZP] Energy export uncertainty
+      - [tier2|trust=0.72|GAZP] Gas pipeline concerns
+
+  - id: lkoh_2024_01_oil_stable
+    symbol: LKOH
+    timeframe: 1d
+    as_of: "2024-01-20T18:00:00+00:00"
+    summary: "Нефть стабильна, LKOH в боковике с бычьим уклоном — осторожный swing"
+    label_source: expert
+    expected_action: approve
+    news_snapshot: |
+      - [tier2|trust=0.75|LKOH] Brent crude range-bound
+      - [tier2|trust=0.68|LKOH] No new sanctions headlines

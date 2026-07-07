@@ -13,7 +13,7 @@ from config_loader import load_config
 from crypto_pipeline import run_crypto_signal
 from db.connection import get_connection
 from db.migrate import run_migrations
-from effective_config import get_guardrails
+from effective_config import get_config_effective, get_guardrails
 from evaluation.replay import evaluation_metrics
 from backtest.metrics import dry_run_funnel, signal_summary
 from securities_pipeline import run_securities_swing_dry_run
@@ -26,8 +26,8 @@ def _utc_now() -> str:
 
 def get_paper_config() -> dict[str, Any]:
     guardrails = get_guardrails()
-    crypto = load_config("crypto_config")
-    sec = load_config("securities_config")
+    crypto = get_config_effective("crypto_config")
+    sec = get_config_effective("securities_config")
     return {
         "global_mode": guardrails.get("trading", {}).get("mode"),
         "crypto": {"env": crypto.get("env"), "mode": crypto.get("mode")},
@@ -206,7 +206,14 @@ def capture_snapshot(*, session_id: str | None = None, trigger: str = "manual") 
                 ),
             )
             conn.commit()
-        return {"status": "ok", "session_id": session_id, "snapshot": snap}
+        result = {"status": "ok", "session_id": session_id, "snapshot": snap}
+        try:
+            from portfolio_snapshot_service import capture_exchange_position_snapshots
+
+            result["position_snapshots"] = capture_exchange_position_snapshots()
+        except Exception as exc:
+            result["position_snapshots"] = {"status": "error", "message": str(exc)}
+        return result
     finally:
         conn.close()
 
@@ -217,7 +224,7 @@ def run_crypto_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = False) -
     if guardrails.get("trading", {}).get("kill_switch"):
         return {"status": "halted", "reject_reason": "kill_switch_active"}
 
-    crypto_cfg = load_config("crypto_config")
+    crypto_cfg = get_config_effective("crypto_config")
     if crypto_cfg.get("mode") != "paper" and guardrails.get("trading", {}).get("mode") != "paper":
         return {
             "status": "blocked",
@@ -269,7 +276,7 @@ def run_securities_swing_paper(*, ticker: str = "SBER", skip_llm: bool = False) 
     if guardrails.get("trading", {}).get("kill_switch"):
         return {"status": "halted", "reject_reason": "kill_switch_active"}
 
-    sec_cfg = load_config("securities_config")
+    sec_cfg = get_config_effective("securities_config")
     swing = run_securities_swing_dry_run(
         ticker=ticker,
         env="paper",

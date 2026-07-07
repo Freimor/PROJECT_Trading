@@ -6,6 +6,7 @@ cases:
   - id: sber_uptrend_macd
     symbol: SBER
     timeframe: 1d
+    summary: "Ап-тренд SBER, бычий MACD — swing-long допустим"
     expected_action: approve
     indicators:
       close: 296.5
@@ -23,6 +24,7 @@ cases:
   - id: sber_overbought
     symbol: SBER
     timeframe: 1d
+    summary: "SBER перекуплен по RSI — не входить на хаях"
     expected_action: reject
     indicators:
       close: 320
@@ -40,6 +42,7 @@ cases:
   - id: gazp_downtrend
     symbol: GAZP
     timeframe: 1d
+    summary: "GAZP ниже EMA200, тренд вниз — long отклонить"
     expected_action: reject
     indicators:
       close: 120
@@ -57,6 +60,7 @@ cases:
   - id: lkoh_swing_setup
     symbol: LKOH
     timeframe: 1d
+    summary: "Откат LKOH в восходящем тренде — хороший swing-сетап"
     expected_action: approve
     indicators:
       close: 7200
@@ -74,6 +78,7 @@ cases:
   - id: gmkn_weak_setup
     symbol: GMKN
     timeframe: 1d
+    summary: "GMKN под EMA, волатильность никеля — слабый сетап"
     expected_action: reject
     indicators:
       close: 15000

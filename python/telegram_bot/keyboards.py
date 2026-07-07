@@ -62,13 +62,18 @@ PAPER_BUTTONS = {
 
 # --- LLM Benchmark ---
 BTN_BM_REPORT = "📊 Отчёт"
-BTN_BM_GOLDEN = "🏅 Golden set"
+BTN_BM_SYNTHETIC = "🧪 Синтетика"
+BTN_BM_HISTORICAL = "📜 История"
+BTN_BM_GOLDEN = BTN_BM_SYNTHETIC  # alias
 BTN_BM_FULL = "▶️ Полный прогон"
+BTN_BM_CALIBRATE = "🎛 Калибровка"
 
 BENCHMARK_BUTTONS = {
     BTN_BM_REPORT,
-    BTN_BM_GOLDEN,
+    BTN_BM_SYNTHETIC,
+    BTN_BM_HISTORICAL,
     BTN_BM_FULL,
+    BTN_BM_CALIBRATE,
     BTN_BACK_AUTOMAT,
 }
 
@@ -174,8 +179,9 @@ def reply_automat_menu() -> ReplyKeyboardMarkup:
 def reply_benchmark_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=BTN_BM_REPORT), KeyboardButton(text=BTN_BM_GOLDEN)],
-            [KeyboardButton(text=BTN_BM_FULL)],
+            [KeyboardButton(text=BTN_BM_REPORT)],
+            [KeyboardButton(text=BTN_BM_SYNTHETIC), KeyboardButton(text=BTN_BM_HISTORICAL)],
+            [KeyboardButton(text=BTN_BM_FULL), KeyboardButton(text=BTN_BM_CALIBRATE)],
             [KeyboardButton(text=BTN_BACK_AUTOMAT)],
         ],
         resize_keyboard=True,

@@ -1,0 +1,102 @@
+{
+  "id": "wfSecSwingPaper1",
+  "name": "securities-swing-paper",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "15 18 * * 1-5" }]
+        }
+      },
+      "id": "s7020001-0001-4000-8000-000000000001",
+      "name": "Weekdays 18:15 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/config/securities_config",
+        "options": {}
+      },
+      "id": "s7020001-0001-4000-8000-000000000002",
+      "name": "Read Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "dry_run",
+              "operator": { "type": "string", "operation": "notEquals" }
+            },
+            {
+              "leftValue": "={{ $json.active_mode }}",
+              "rightValue": "swing_signals",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "s7020001-0001-4000-8000-000000000003",
+      "name": "Paper Swing Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/securities/swing-universe",
+        "options": {}
+      },
+      "id": "s7020001-0001-4000-8000-000000000004",
+      "name": "Get Universe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tickers = $input.first().json;\nconst list = Array.isArray(tickers) ? tickers : [];\nreturn list.map(ticker => ({ json: { ticker } }));"
+      },
+      "id": "s7020001-0001-4000-8000-000000000005",
+      "name": "Split Tickers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://db-api:8000/api/paper/securities/swing?ticker={{ $json.ticker }}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "s7020001-0001-4000-8000-000000000006",
+      "name": "Run Paper Swing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 200]
+    }
+  ],
+  "connections": {
+    "Weekdays 18:15 MSK": { "main": [[{ "node": "Read Config", "type": "main", "index": 0 }]] },
+    "Read Config": { "main": [[{ "node": "Paper Swing Mode", "type": "main", "index": 0 }]] },
+    "Paper Swing Mode": {
+      "main": [
+        [{ "node": "Get Universe", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Get Universe": { "main": [[{ "node": "Split Tickers", "type": "main", "index": 0 }]] },
+    "Split Tickers": { "main": [[{ "node": "Run Paper Swing", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "securities" }, { "name": "env/testnet" }],
+  "active": false
+}

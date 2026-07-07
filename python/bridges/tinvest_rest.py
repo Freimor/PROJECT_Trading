@@ -155,7 +155,7 @@ class TinvestRestClient:
             return 0.0
         return quotation_to_float(prices[0].get("price"))
 
-    def get_portfolio(self, account_id: str) -> list[dict[str, Any]]:
+    def get_portfolio(self, account_id: str) -> dict[str, Any]:
         data = self._post(
             "/tinkoff.public.invest.api.contract.v1.OperationsService/GetPortfolio",
             {"accountId": account_id},
@@ -170,7 +170,10 @@ class TinvestRestClient:
                     "avg_price": quotation_to_float(p.get("averagePositionPrice")),
                 }
             )
-        return positions
+        return {
+            "positions": positions,
+            "total_amount": quotation_to_float(data.get("totalAmountPortfolio")),
+        }
 
     def post_market_buy(
         self,

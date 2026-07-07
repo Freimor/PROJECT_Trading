@@ -73,6 +73,16 @@ def is_kill_switch_active(yaml_default: bool = False) -> bool:
     return yaml_default
 
 
+def delete_runtime_value(key: str) -> None:
+    _ensure_table()
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM runtime_settings WHERE key = ?", (key,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def set_kill_switch(enabled: bool, *, operator: str) -> bool:
     set_runtime_value("kill_switch", enabled, updated_by=operator)
     return enabled

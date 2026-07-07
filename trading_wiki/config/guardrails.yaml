@@ -11,6 +11,7 @@ llm:
   counter_thesis_min_chars: 10
   timeout_ms: 900000
   temperature: 0.1
+  benchmark_unload_after: true  # сброс RAM/KV-кэша Ollama после benchmark
   allowed_actions: [approve, reject]
   forbidden_output_fields: [quantity, leverage, size, api_key]
 

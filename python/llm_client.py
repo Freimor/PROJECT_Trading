@@ -16,6 +16,27 @@ def ollama_host() -> str:
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
 
 
+def reset_ollama_cache(model: str | None = None) -> dict[str, Any]:
+    """Unload model from Ollama RAM after benchmark (keep_alive=0)."""
+    crypto_cfg = load_config("crypto_config")
+    model = model or crypto_cfg.get("ollama_model", "qwen3.5:9b")
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                f"{ollama_host()}/api/generate",
+                json={"model": model, "prompt": " ", "keep_alive": 0},
+            )
+        ok = resp.status_code == 200
+        return {
+            "status": "ok" if ok else "error",
+            "model": model,
+            "http_status": resp.status_code,
+            "action": "unload",
+        }
+    except Exception as exc:
+        return {"status": "error", "model": model, "message": str(exc), "action": "unload"}
+
+
 def validate_signal(
     *,
     market: str,
@@ -25,6 +46,8 @@ def validate_signal(
     model: str | None = None,
     news_summary: str = "",
     timeframe: str = "4h",
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     crypto_cfg = load_config("crypto_config") if market == "crypto" else load_config("securities_config")
     guardrails = load_config("guardrails")
@@ -49,8 +72,15 @@ def validate_signal(
         f"Summary: {candles_summary}\n"
         f"News: {news_summary or 'none'}"
     )
+    if market == "securities":
+        session = indicators.get("session_status")
+        if session:
+            user_content += f"\nSession status: {session}"
 
-    timeout = guardrails.get("llm", {}).get("timeout_ms", 900000) / 1000
+    llm_cfg = guardrails.get("llm", {})
+    timeout = llm_cfg.get("timeout_ms", 900000) / 1000
+    temp = temperature if temperature is not None else llm_cfg.get("temperature", 0.1)
+    num_predict = max_tokens if max_tokens is not None else llm_cfg.get("max_tokens", 2048)
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -60,8 +90,8 @@ def validate_signal(
         "format": "json",
         "stream": False,
         "options": {
-            "temperature": guardrails.get("llm", {}).get("temperature", 0.1),
-            "num_predict": guardrails.get("llm", {}).get("max_tokens", 2048),
+            "temperature": temp,
+            "num_predict": num_predict,
         },
     }
 

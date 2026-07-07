@@ -7,9 +7,9 @@ JSON-экспорты для импорта в n8n: **Settings → Import from F
 ```
 workflows/
 ├── shared/          # health, errors, telegram
-├── crypto/          # signal dry_run, execute testnet, monitor
+├── crypto/          # signal dry_run, signal paper, execute testnet, monitor
 ├── news/            # RSS ingest
-├── securities/      # DCA, swing dry_run
+├── securities/      # DCA, swing dry_run, swing paper
 └── analysis/        # weekly LLM report
 ```
 
@@ -20,11 +20,13 @@ workflows/
 3. `shared/shared-telegram-alert.json` (опционально)
 4. `news/news-ingest.json`
 5. `crypto/crypto-signal-dry-run.json`
-6. `crypto/crypto-execute-testnet.json`
-7. `crypto/crypto-monitor-testnet.json`
-8. `securities/securities-dca-sandbox.json`
-9. `securities/securities-swing-dry-run.json`
-10. `analysis/analysis-llm-report.json`
+6. `crypto/crypto-signal-paper.json`
+7. `crypto/crypto-execute-testnet.json`
+8. `crypto/crypto-monitor-testnet.json`
+9. `securities/securities-dca-sandbox.json`
+10. `securities/securities-swing-dry-run.json`
+11. `securities/securities-swing-paper.json`
+12. `analysis/analysis-llm-report.json`
 
 **Settings → Error workflow** → `shared-global-error-handler`
 
@@ -35,10 +37,12 @@ workflows/
 | 1 | `shared-health-check` |
 | 2 | `crypto-signal-dry-run` |
 | 3 | `news-ingest` |
-| 4 | `crypto-execute-testnet`, `crypto-monitor-testnet` |
+| 4 | `crypto-signal-paper`, `crypto-monitor-testnet` (или `crypto-execute-testnet` по webhook) |
 | 5 | `securities-dca-sandbox` |
 | 6 | `analysis-llm-report` |
-| 7 | `securities-swing-dry-run` |
+| 7 | `securities-swing-dry-run` или `securities-swing-paper` |
+
+**Paper run:** выключите `*-dry-run`, включите `crypto-signal-paper` + `securities-swing-paper` + `crypto-monitor-testnet`. Конфиги: `mode: paper`.
 
 ## Теги
 

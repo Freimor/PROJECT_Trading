@@ -183,6 +183,10 @@ def news_context_for_symbols(symbols: list[str], limit: int = 5) -> str:
     rows = _fetch_news_for_symbols(symbols, limit=limit, llm_only=True)
     if not rows:
         return "none"
+    return _format_news_lines(rows)
+
+
+def _format_news_lines(rows: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     for row in rows:
         tickers = ", ".join(_parse_json_list(row.get("matched_symbols"))) or "—"
@@ -191,7 +195,57 @@ def news_context_for_symbols(symbols: list[str], limit: int = 5) -> str:
         lines.append(
             f"- [{tier}|trust={trust:.2f}|{tickers}] {row['source_name']}: {row['title']}"
         )
-    return "\n".join(lines)
+    return "\n".join(lines) if lines else "none"
+
+
+def news_context_as_of(
+    symbols: list[str],
+    *,
+    as_of: str,
+    limit: int = 5,
+) -> str:
+    """Point-in-time news: published_at <= as_of (for historical benchmark)."""
+    conn = get_connection()
+    try:
+        sym_norm = {s.upper().replace("USDT", "") for s in symbols}
+        rows = conn.execute(
+            """
+            SELECT title, source_name, source_tier, published_at, source_url,
+                   verification_status, trust_score, matched_symbols, relevance_score
+            FROM news_items
+            WHERE (published_at IS NULL OR published_at <= ?)
+              AND (benchmark_retained = 1 OR expires_at IS NULL OR expires_at > ?)
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (as_of, as_of, limit * 30),
+        ).fetchall()
+
+        scored: list[tuple[float, dict[str, Any]]] = []
+        for row in rows:
+            item = dict(row)
+            if not passes_llm_gate(
+                item.get("verification_status", "pending"),
+                float(item.get("trust_score") or 0),
+            ):
+                continue
+            matched = _parse_json_list(item.get("matched_symbols"))
+            hit = [m for m in matched if m in sym_norm or m.replace("USDT", "") in sym_norm]
+            rel = compute_relevance(
+                matched_symbols=matched,
+                target_symbols=list(sym_norm),
+                trust_score=float(item.get("trust_score") or 0),
+                title=item.get("title", ""),
+            )
+            if not hit and rel < 0.35:
+                continue
+            item["relevance_score"] = rel
+            scored.append((rel, item))
+
+        scored.sort(key=lambda x: -x[0])
+        return _format_news_lines([item for _, item in scored[:limit]])
+    finally:
+        conn.close()
 
 
 def _fetch_news_for_symbols(
@@ -281,7 +335,7 @@ def purge_expired() -> int:
     try:
         now = datetime.now(timezone.utc).isoformat()
         cur = conn.execute(
-            "DELETE FROM news_items WHERE expires_at IS NOT NULL AND expires_at < ?",
+            "DELETE FROM news_items WHERE expires_at IS NOT NULL AND expires_at < ? AND benchmark_retained = 0",
             (now,),
         )
         conn.commit()

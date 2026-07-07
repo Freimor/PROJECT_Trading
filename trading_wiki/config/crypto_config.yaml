@@ -6,6 +6,9 @@ env: testnet  # testnet | live (live только с manual flag + tag env/live)
 
 mode: paper  # dry_run | paper | shadow | live
 
+# Активная стратегия: llm_swing | dca_btc (можно переключить в web-console)
+active_strategy: llm_swing
+
 pairs:
   - BTCUSDT
   - ETHUSDT
@@ -26,6 +29,11 @@ rule_filter:
   rsi_oversold: 35
   rsi_overbought: 65
   require_macd_cross: false
+
+dca:
+  symbol: BTCUSDT
+  amount_usdt: 100
+  schedule_cron: "0 12 * * 1"  # понедельник 12:00 UTC
 
 api:
   testnet_base_url: https://testnet.binance.vision

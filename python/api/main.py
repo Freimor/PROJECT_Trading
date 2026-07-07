@@ -18,6 +18,13 @@ from backtest.metrics import dry_run_funnel, signal_summary
 from binance_client import get_account_balances, get_open_orders, place_market_order
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot, post_dca_order
 from testing_service import get_testing_overview, get_tinvest_sandbox_dashboard
+from automation_control_service import (
+    apply_trading_mode,
+    clear_trading_mode,
+    get_automation_control_state,
+    toggle_workflow_by_name,
+)
+from strategy_service import get_strategy_state, set_active_strategy
 from admin_service import (
     apply_kill_switch,
     create_confirmation,
@@ -42,14 +49,14 @@ from bot_data_service import (
 )
 from config_loader import load_config, wiki_root
 from crypto_pipeline import run_crypto_signal
-from effective_config import get_guardrails
+from effective_config import get_config_effective, get_guardrails
 from db.connection import get_connection, get_db_path
 from db.init_db import init_database
 from evaluation.replay import champion_challenger_report, evaluation_metrics, replay_by_inputs_hash
 from event_log import log_event
 from guardrails import enforce_guardrails, position_size_dry_run
 from indicators.technical import compute_indicators, parse_binance_klines, rule_filter
-from llm_client import validate_signal
+from llm_client import reset_ollama_cache, validate_signal
 from news_service import (
     ingest_all,
     list_news_for_symbol,
@@ -92,7 +99,27 @@ from benchmark_service import (
     sample_benchmark_cases,
     save_benchmark_snapshot,
 )
+from calibration_service import (
+    finalize_calibration,
+    get_calibration_plan,
+    get_calibration_snapshot,
+    run_calibration,
+    run_calibration_temperature,
+)
+from charts_service import get_chart_candles, get_chart_markers, list_symbols_for_market
+from llm_audit_service import get_llm_decision, list_llm_decisions
+from portfolio_snapshot_service import capture_exchange_position_snapshots, get_equity_curve
+from portfolio_performance_service import get_portfolio_performance
+from historical_benchmark_service import (
+    get_historical_snapshot,
+    list_historical_cases,
+    promote_live_case_to_historical,
+    run_historical_benchmark,
+    run_one_historical_case,
+    save_historical_snapshot,
+)
 from securities_pipeline import run_securities_dca_dry_run, run_securities_swing_dry_run
+from event_summary import summarize_trade_event
 from telegram_proxy import proxy_status, select_working_proxy
 
 
@@ -104,6 +131,7 @@ def _utc_now() -> str:
 async def lifespan(_: FastAPI):
     init_database()
     seed_sources()
+    log_system_activity("Старт системы", category="system", level="success")
     yield
 
 
@@ -239,10 +267,39 @@ class BenchmarkSnapshotRequest(BaseModel):
     kind: str = "golden"
 
 
+class CalibrationRequest(BaseModel):
+    model: str | None = None
+    market: Literal["crypto", "securities"] | None = None
+    temperatures: list[float] | None = None
+    min_confidence: list[float] | None = None
+
+
+class CalibrationTemperatureRequest(BaseModel):
+    temperature: float
+    model: str | None = None
+    market: Literal["crypto", "securities"] | None = None
+
+
+class StrategySelectRequest(BaseModel):
+    strategy_id: str
+    operator: str = "web:operator"
+
+
 class KillSwitchRequest(BaseModel):
     enabled: bool
     operator: str = "api"
     source: str = "web"
+
+
+class TradingModeRequest(BaseModel):
+    mode: Literal["dry_run", "paper", "shadow", "live"]
+    operator: str = "web:operator"
+    apply_workflows: bool = True
+
+
+class WorkflowToggleRequest(BaseModel):
+    active: bool
+    operator: str = "web:operator"
 
 
 class ConfirmationRequest(BaseModel):
@@ -367,6 +424,7 @@ def list_trade_events(
     stage: str | None = None,
     env: str | None = None,
     decision: str | None = None,
+    symbol: str | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     conn = get_connection()
@@ -385,11 +443,110 @@ def list_trade_events(
         if decision:
             query += " AND decision = ?"
             params.append(decision)
+        if symbol:
+            query += " AND UPPER(COALESCE(symbol, '')) = ?"
+            params.append(symbol.upper())
         query += " ORDER BY event_at DESC LIMIT ?"
         params.append(limit)
-        return [dict(row) for row in conn.execute(query, params).fetchall()]
+        rows = [dict(row) for row in conn.execute(query, params).fetchall()]
+        for row in rows:
+            row["summary"] = summarize_trade_event(row)
+        return rows
     finally:
         conn.close()
+
+
+@app.get("/api/charts/candles")
+def charts_candles(
+    market: Literal["crypto", "securities"] = "crypto",
+    symbol: str = "BTCUSDT",
+    interval: str = "4h",
+    limit: int = 200,
+    testnet: bool = True,
+    use_cache: bool = False,
+) -> dict[str, Any]:
+    return get_chart_candles(
+        market=market,
+        symbol=symbol,
+        interval=interval,
+        limit=limit,
+        testnet=testnet,
+        use_cache=use_cache,
+    )
+
+
+@app.get("/api/charts/markers")
+def charts_markers(
+    market: Literal["crypto", "securities"] = "crypto",
+    symbol: str = "BTCUSDT",
+    env: str | None = None,
+    from_time: str | None = None,
+    to_time: str | None = None,
+    limit: int = 200,
+    include_news: bool = True,
+) -> dict[str, Any]:
+    return get_chart_markers(
+        market=market,
+        symbol=symbol,
+        env=env,
+        from_time=from_time,
+        to_time=to_time,
+        limit=limit,
+        include_news=include_news,
+    )
+
+
+@app.get("/api/charts/symbols")
+def charts_symbols(market: Literal["crypto", "securities"] = "crypto") -> dict[str, Any]:
+    return {"market": market, "symbols": list_symbols_for_market(market)}
+
+
+@app.get("/api/charts/equity")
+def charts_equity(days: int = 30) -> dict[str, Any]:
+    return get_equity_curve(days=days)
+
+
+@app.get("/api/portfolio/performance")
+def portfolio_performance(period: str = "all") -> dict[str, Any]:
+    return get_portfolio_performance(period=period)
+
+
+@app.get("/api/llm/decisions")
+def llm_decisions_list(
+    market: str | None = None,
+    action: str | None = None,
+    model: str | None = None,
+    symbol: str | None = None,
+    decision_id: str | None = None,
+    trade_event_id: str | None = None,
+    days: int = 30,
+    limit: int = 50,
+    offset: int = 0,
+) -> dict[str, Any]:
+    return list_llm_decisions(
+        market=market,
+        action=action,
+        model=model,
+        symbol=symbol,
+        decision_id=decision_id,
+        trade_event_id=trade_event_id,
+        days=days,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@app.get("/api/llm/decisions/{decision_id}")
+def llm_decision_detail(decision_id: str) -> dict[str, Any]:
+    row = get_llm_decision(decision_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="decision not found")
+    return row
+
+
+@app.post("/api/portfolio/snapshot")
+def portfolio_snapshot_capture() -> dict[str, Any]:
+    return capture_exchange_position_snapshots()
 
 
 # --- Config ---
@@ -399,7 +556,29 @@ def get_config(name: str) -> dict[str, Any]:
     allowed = {"guardrails", "crypto_config", "securities_config"}
     if name not in allowed:
         raise HTTPException(status_code=404, detail="unknown config")
-    return load_config(name)
+    return get_config_effective(name)
+
+
+@app.get("/api/strategies/{market}")
+def strategies_state(market: str) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    return get_strategy_state(market)
+
+
+@app.post("/api/strategies/{market}")
+def strategies_set_active(
+    market: str,
+    body: StrategySelectRequest,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    _check_admin_key(x_admin_key)
+    try:
+        return set_active_strategy(market, body.strategy_id, operator=body.operator)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # --- Crypto pipeline (этап 2) ---
@@ -470,8 +649,41 @@ def binance_open_orders(symbol: str | None = None, testnet: bool = True) -> list
 
 
 @app.get("/api/binance/balances")
-def binance_balances(testnet: bool = True) -> list[dict]:
-    return get_account_balances(testnet=testnet)
+def binance_balances(testnet: bool = True, top: int = 12) -> dict[str, Any]:
+    """Wallet summary — non-zero balances, numeric amounts (not raw Binance array)."""
+    raw = get_account_balances(testnet=testnet)
+    if not raw:
+        return {
+            "status": "empty",
+            "testnet": testnet,
+            "message": "Нет данных. Проверьте BINANCE_TESTNET_API_KEY/SECRET в .env и перезапустите db-api.",
+            "balances": [],
+        }
+
+    priority = {"USDT": 0, "USDC": 1, "BTC": 2, "ETH": 3, "BNB": 4}
+    parsed: list[dict[str, Any]] = []
+    for row in raw:
+        free = float(row.get("free", 0) or 0)
+        locked = float(row.get("locked", 0) or 0)
+        if free <= 0 and locked <= 0:
+            continue
+        asset = str(row.get("asset", ""))
+        parsed.append({"asset": asset, "free": free, "locked": locked, "total": free + locked})
+
+    parsed.sort(
+        key=lambda b: (
+            priority.get(b["asset"], 100),
+            -b["total"],
+            b["asset"],
+        )
+    )
+    limit = max(1, min(top, 50))
+    return {
+        "status": "ok",
+        "testnet": testnet,
+        "balances": parsed[:limit],
+        "total_assets": len(parsed),
+    }
 
 
 # --- Securities (этапы 5, 7) ---
@@ -526,7 +738,16 @@ def testing_overview(days: int = 7) -> dict[str, Any]:
 
 @app.get("/api/testing/tinvest-sandbox")
 def testing_tinvest_sandbox(days: int = 7) -> dict[str, Any]:
-    return get_tinvest_sandbox_dashboard(days=days)
+    try:
+        return get_tinvest_sandbox_dashboard(days=days)
+    except Exception as exc:
+        return {
+            "days": days,
+            "status": "error",
+            "message": str(exc),
+            "connection": {"status": "error", "message": str(exc)},
+            "portfolio": {"status": "error", "message": str(exc)},
+        }
 
 
 # --- Evaluation (этап 6) ---
@@ -582,6 +803,99 @@ def benchmark_golden_cases(market: str | None = None) -> list[dict[str, Any]]:
 @app.post("/api/benchmark/golden/one")
 def benchmark_golden_one(body: GoldenOneRequest) -> dict[str, Any]:
     return run_one_golden_case(case_id=body.case_id, market=body.market, model=body.model)
+
+
+@app.get("/api/benchmark/synthetic/cases")
+def benchmark_synthetic_cases(market: str | None = None) -> list[dict[str, Any]]:
+    """Alias: synthetic tier (known inputs)."""
+    return list_golden_cases(market=market)
+
+
+@app.post("/api/benchmark/synthetic")
+def benchmark_synthetic(model: str | None = None, market: str | None = None) -> dict[str, Any]:
+    return run_golden_benchmark(model=model, market=market)
+
+
+@app.get("/api/benchmark/historical/cases")
+def benchmark_historical_cases(market: str | None = None) -> list[dict[str, Any]]:
+    return list_historical_cases(market=market)
+
+
+@app.post("/api/benchmark/historical/one")
+def benchmark_historical_one(body: GoldenOneRequest) -> dict[str, Any]:
+    return run_one_historical_case(case_id=body.case_id, market=body.market, model=body.model)
+
+
+@app.post("/api/benchmark/historical")
+def benchmark_historical(model: str | None = None, market: str | None = None) -> dict[str, Any]:
+    return run_historical_benchmark(model=model, market=market)
+
+
+@app.get("/api/benchmark/historical/last-snapshot")
+def benchmark_historical_last_snapshot() -> dict[str, Any]:
+    snap = get_historical_snapshot()
+    return snap or {"status": "empty"}
+
+
+@app.post("/api/benchmark/historical/snapshot")
+def benchmark_historical_save_snapshot(body: dict[str, Any]) -> dict[str, Any]:
+    return save_historical_snapshot(body)
+
+
+@app.post("/api/benchmark/historical/promote/{inputs_hash}")
+def benchmark_promote_historical(
+    inputs_hash: str,
+    expected_action: Literal["approve", "reject"],
+    summary: str,
+) -> dict[str, Any]:
+    return promote_live_case_to_historical(
+        inputs_hash,
+        expected_action=expected_action,
+        summary=summary,
+    )
+
+
+@app.post("/api/benchmark/ollama/reset")
+def benchmark_ollama_reset(model: str | None = None) -> dict[str, Any]:
+    """Unload model from Ollama RAM (keep_alive=0) after benchmark."""
+    return reset_ollama_cache(model)
+
+
+@app.get("/api/benchmark/calibrate/plan")
+def benchmark_calibrate_plan(market: str | None = None) -> dict[str, Any]:
+    return get_calibration_plan(market=market)
+
+
+@app.post("/api/benchmark/calibrate")
+def benchmark_calibrate(body: CalibrationRequest | None = None) -> dict[str, Any]:
+    body = body or CalibrationRequest()
+    return run_calibration(
+        model=body.model,
+        market=body.market,
+        temperatures=body.temperatures,
+        min_confidence_values=body.min_confidence,
+    )
+
+
+@app.post("/api/benchmark/calibrate/temperature")
+def benchmark_calibrate_temperature(body: CalibrationTemperatureRequest) -> dict[str, Any]:
+    return run_calibration_temperature(
+        temperature=body.temperature,
+        model=body.model,
+        market=body.market,
+    )
+
+
+@app.post("/api/benchmark/calibrate/finalize")
+def benchmark_calibrate_finalize(body: CalibrationRequest | None = None) -> dict[str, Any]:
+    body = body or CalibrationRequest()
+    return finalize_calibration(model=body.model, market=body.market)
+
+
+@app.get("/api/benchmark/calibrate/last-snapshot")
+def benchmark_calibrate_last_snapshot() -> dict[str, Any]:
+    snap = get_calibration_snapshot()
+    return snap or {"status": "empty"}
 
 
 @app.post("/api/benchmark/snapshot")
@@ -689,6 +1003,11 @@ def system_host_status() -> dict[str, Any]:
     return get_host_status()
 
 
+@app.get("/api/system/activity-feed")
+def system_activity_feed(limit: int = 60, days: int = 3) -> dict[str, Any]:
+    return get_activity_feed(limit=limit, days=days)
+
+
 @app.get("/api/wiki/toc")
 def wiki_toc() -> dict[str, Any]:
     return wiki_table_of_contents()
@@ -781,8 +1100,17 @@ def n8n_workflows(active: bool | None = None) -> dict[str, Any]:
         return {"status": "error", "message": str(exc)}
 
 
+@app.get("/api/automation/control")
+def automation_control() -> dict[str, Any]:
+    return get_automation_control_state()
+
+
 @app.post("/api/n8n/workflows/{workflow_id}/activate")
-def n8n_activate(workflow_id: str) -> dict[str, Any]:
+def n8n_activate(
+    workflow_id: str,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
     try:
         w = activate_workflow(workflow_id)
         return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
@@ -791,7 +1119,11 @@ def n8n_activate(workflow_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/n8n/workflows/{workflow_id}/deactivate")
-def n8n_deactivate(workflow_id: str) -> dict[str, Any]:
+def n8n_deactivate(
+    workflow_id: str,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
     try:
         w = deactivate_workflow(workflow_id)
         return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
@@ -800,7 +1132,12 @@ def n8n_deactivate(workflow_id: str) -> dict[str, Any]:
 
 
 @app.post("/api/n8n/workflows/{workflow_id}/cron")
-def n8n_set_cron(workflow_id: str, body: N8nCronRequest) -> dict[str, Any]:
+def n8n_set_cron(
+    workflow_id: str,
+    body: N8nCronRequest,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
     try:
         w = set_workflow_cron(
             workflow_id,
@@ -857,6 +1194,47 @@ def admin_kill_switch(
 ) -> dict[str, Any]:
     _check_admin_key(x_admin_key)
     return apply_kill_switch(enabled=body.enabled, operator=body.operator, source=body.source)
+
+
+@app.post("/api/admin/trading-mode")
+def admin_trading_mode(
+    body: TradingModeRequest,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
+    try:
+        return apply_trading_mode(
+            body.mode,
+            operator=body.operator,
+            apply_workflows=body.apply_workflows,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/trading-mode/reset")
+def admin_trading_mode_reset(
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
+    return clear_trading_mode(operator="web:operator")
+
+
+@app.post("/api/admin/workflows/{workflow_name}/toggle")
+def admin_workflow_toggle(
+    workflow_name: str,
+    body: WorkflowToggleRequest,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_admin_key(x_admin_key)
+    try:
+        return toggle_workflow_by_name(
+            workflow_name,
+            active=body.active,
+            operator=body.operator,
+        )
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.post("/api/admin/smoke-test")

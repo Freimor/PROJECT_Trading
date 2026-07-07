@@ -1,0 +1,48 @@
+version: 1
+market: crypto
+description: Исторический benchmark — реальные котировки Binance на дату as_of
+prompt_version: crypto_validate_v1
+cases:
+  - id: btc_2024_01_etf_rally
+    symbol: BTCUSDT
+    timeframe: 4h
+    as_of: "2024-01-11T16:00:00+00:00"
+    summary: "После одобрения spot BTC ETF — сильный бычий импульс"
+    label_source: expert
+    expected_action: approve
+    news_snapshot: |
+      - [tier1|trust=0.92|BTC] Reuters: US SEC approves spot Bitcoin ETFs
+      - [tier2|trust=0.75|BTC] Bloomberg: Record inflows into BTC funds
+
+  - id: btc_2022_06_capitulation
+    symbol: BTCUSDT
+    timeframe: 4h
+    as_of: "2022-06-13T12:00:00+00:00"
+    summary: "Каскад ликвидаций, Celsius — паника, не ловить падающий нож"
+    label_source: expert
+    expected_action: reject
+    news_snapshot: |
+      - [tier1|trust=0.88|BTC] Reuters: Celsius halts withdrawals
+      - [tier2|trust=0.70|BTC] Crypto lenders face liquidity crisis
+
+  - id: btc_2023_03_banking_stress
+    symbol: BTCUSDT
+    timeframe: 4h
+    as_of: "2023-03-10T20:00:00+00:00"
+    summary: "Банковский стресс (SVB) — высокая неопределённость"
+    label_source: expert
+    expected_action: reject
+    news_snapshot: |
+      - [tier1|trust=0.90|BTC] Reuters: Silicon Valley Bank collapse sparks turmoil
+      - [tier2|trust=0.65|BTC] Fed emergency lending facilities
+
+  - id: eth_2024_03_momentum
+    symbol: ETHUSDT
+    timeframe: 4h
+    as_of: "2024-03-15T12:00:00+00:00"
+    summary: "ETH в устойчивом ап-тренде, импульс после обновлений сети"
+    label_source: expert
+    expected_action: approve
+    news_snapshot: |
+      - [tier2|trust=0.78|ETH] Dencun upgrade reduces L2 fees
+      - [tier2|trust=0.72|ETH] ETH/BTC ratio improving

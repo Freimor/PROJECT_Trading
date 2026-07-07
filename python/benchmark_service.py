@@ -15,8 +15,10 @@ from config_loader import load_config, wiki_root
 from db.connection import get_connection
 from db.migrate import run_migrations
 from evaluation.replay import champion_challenger_report, replay_by_inputs_hash
-from llm_client import validate_signal
+from llm_client import reset_ollama_cache, validate_signal
+from historical_benchmark_service import get_historical_snapshot
 from runtime_settings import get_runtime_value, set_runtime_value
+from securities_pipeline import _fetch_moex_candles
 
 
 def _utc_now() -> str:
@@ -429,13 +431,35 @@ def get_benchmark_snapshot() -> dict[str, Any] | None:
 
 
 def _golden_files(market: str | None = None) -> list[tuple[str, str]]:
+    """Synthetic tier fixture files (known inputs)."""
     cfg = _benchmark_cfg()
-    golden_cfg = cfg.get("golden", {})
+    synth = cfg.get("synthetic") or {}
+    golden_legacy = cfg.get("golden", {})
     files: list[tuple[str, str]] = []
+
+    def _add_files(mkt: str, key: str, legacy_key: str, default: str) -> None:
+        rels = synth.get(key) or golden_legacy.get(legacy_key)
+        if rels is None:
+            rels = [default]
+        if isinstance(rels, str):
+            rels = [rels]
+        for rel in rels:
+            files.append((mkt, rel))
+
     if market in (None, "crypto"):
-        files.append(("crypto", golden_cfg.get("crypto_file", "benchmark/crypto_golden_v1.yaml")))
+        _add_files(
+            "crypto",
+            "crypto_files",
+            "crypto_file",
+            "benchmark/crypto_golden_v1.yaml",
+        )
     if market in (None, "securities"):
-        files.append(("securities", golden_cfg.get("securities_file", "benchmark/moex_golden_v1.yaml")))
+        _add_files(
+            "securities",
+            "securities_files",
+            "securities_file",
+            "benchmark/moex_golden_v1.yaml",
+        )
     return files
 
 
@@ -443,6 +467,7 @@ def list_golden_cases(*, market: str | None = None) -> list[dict[str, Any]]:
     crypto_cfg = load_config("crypto_config")
     sec_cfg = load_config("securities_config")
     out: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for mkt, rel in _golden_files(market):
         data = _load_golden_file(rel)
         pv = data.get("prompt_version") or (
@@ -451,6 +476,10 @@ def list_golden_cases(*, market: str | None = None) -> list[dict[str, Any]]:
             else sec_cfg.get("swing_signals", {}).get("prompt_version", "securities_validate_v1")
         )
         for case in data.get("cases") or []:
+            cid = case.get("id")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
             out.append(
                 {
                     "id": case.get("id"),
@@ -458,7 +487,9 @@ def list_golden_cases(*, market: str | None = None) -> list[dict[str, Any]]:
                     "symbol": case.get("symbol"),
                     "timeframe": case.get("timeframe"),
                     "expected_action": case.get("expected_action"),
+                    "summary": case.get("summary") or case.get("description") or "",
                     "prompt_version": pv,
+                    "tier": "synthetic",
                 }
             )
     return out
@@ -469,6 +500,7 @@ def run_one_golden_case(
     case_id: str,
     market: str,
     model: str | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     crypto_cfg = load_config("crypto_config")
     sec_cfg = load_config("securities_config")
@@ -495,17 +527,21 @@ def run_one_golden_case(
                 model=model or default_model,
                 news_summary=case.get("news") or "",
                 timeframe=case.get("timeframe", "4h"),
+                temperature=temperature,
             )
             actual = result.get("action")
             return {
                 "status": "ok",
+                "tier": "synthetic",
                 "id": case_id,
                 "market": mkt,
                 "symbol": case.get("symbol"),
+                "summary": case.get("summary") or case.get("description") or "",
                 "expected": expected,
                 "actual": actual,
                 "pass": actual == expected,
                 "confidence": result.get("confidence"),
+                "counter_thesis": result.get("counter_thesis"),
                 "latency_ms": result.get("latency_ms"),
             }
     return {"status": "error", "message": "golden_case_not_found", "id": case_id}
@@ -568,6 +604,7 @@ def run_golden_benchmark(
                     "id": case.get("id"),
                     "market": mkt,
                     "symbol": case.get("symbol"),
+                    "summary": case.get("summary") or case.get("description") or "",
                     "expected": expected,
                     "actual": actual,
                     "confidence": result.get("confidence"),
@@ -578,6 +615,7 @@ def run_golden_benchmark(
 
     result = {
         "status": "ok",
+        "tier": "synthetic",
         "model": model or default_model,
         "total": total,
         "passed": passed,
@@ -585,7 +623,18 @@ def run_golden_benchmark(
         "details": all_results,
     }
     save_benchmark_snapshot({"golden": result, "kind": "golden"})
+    unload = _maybe_unload_ollama_after_benchmark(model or default_model)
+    if unload:
+        result["ollama_unload"] = unload
     return result
+
+
+def _maybe_unload_ollama_after_benchmark(model: str | None = None) -> dict[str, Any] | None:
+    """Unload Ollama model from RAM after benchmark (if enabled in guardrails)."""
+    guardrails = load_config("guardrails")
+    if not guardrails.get("llm", {}).get("benchmark_unload_after", True):
+        return None
+    return reset_ollama_cache(model)
 
 
 def _score_labels(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -666,6 +715,8 @@ def benchmark_report(*, days: int = 30, market: str | None = None) -> dict[str, 
             """
         ).fetchall()
 
+        from calibration_service import get_calibration_snapshot
+
         return {
             "status": "ok",
             "days": days,
@@ -676,6 +727,8 @@ def benchmark_report(*, days: int = 30, market: str | None = None) -> dict[str, 
             "recent_runs": [dict(r) for r in recent_runs],
             "config": _benchmark_cfg(),
             "last_snapshot": get_benchmark_snapshot(),
+            "last_historical_snapshot": get_historical_snapshot(),
+            "last_calibration_snapshot": get_calibration_snapshot(),
         }
     finally:
         conn.close()
@@ -733,4 +786,7 @@ def run_full_benchmark(
         },
         operator="api",
     )
+    unload = _maybe_unload_ollama_after_benchmark(model)
+    if unload:
+        payload["ollama_unload"] = unload
     return payload

@@ -12,8 +12,9 @@ from automation_docs import get_automat_doc_section, get_automat_docs_index
 from backtest.metrics import dry_run_funnel, signal_summary
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot
 from config_loader import load_config, wiki_root
+from strategy_service import get_active_strategy_id, get_strategy_state
 from db.connection import get_connection
-from effective_config import get_guardrails
+from effective_config import get_config_effective, get_guardrails
 from evaluation.replay import evaluation_metrics
 from testing_service import get_tinvest_sandbox_dashboard
 
@@ -98,8 +99,8 @@ def wiki_table_of_contents() -> dict[str, Any]:
 
 def get_system_summary() -> dict[str, Any]:
     guardrails = get_guardrails()
-    crypto = load_config("crypto_config")
-    securities = load_config("securities_config")
+    crypto = get_config_effective("crypto_config")
+    securities = get_config_effective("securities_config")
     status = get_system_status()
     trading = guardrails.get("trading", {})
     return {
@@ -123,6 +124,45 @@ def get_system_summary() -> dict[str, Any]:
         },
         "ollama": status.get("ollama"),
         "last_event": status.get("last_event"),
+    }
+
+
+def _moex_next_open(session: dict[str, Any]) -> dict[str, Any] | None:
+    """When MOEX is closed, return next open time in MSK."""
+    from datetime import date, timedelta
+
+    msk = datetime.now(ZoneInfo("Europe/Moscow"))
+    start_h = int(session.get("moex_start_hour", 10))
+    end_h = int(session.get("moex_end_hour", 19))
+
+    if msk.weekday() < 5 and start_h <= msk.hour < end_h:
+        return None
+
+    def at_open(d: date) -> datetime:
+        return datetime(d.year, d.month, d.day, start_h, 0, tzinfo=msk.tzinfo)
+
+    today = msk.date()
+    if msk.weekday() < 5 and msk.hour < start_h:
+        nxt = at_open(today)
+        kind = "today"
+    else:
+        for offset in range(1, 8):
+            cand = today + timedelta(days=offset)
+            if cand.weekday() < 5:
+                nxt = at_open(cand)
+                if offset == 1:
+                    kind = "tomorrow"
+                else:
+                    kind = "weekday"
+                break
+        else:
+            return None
+
+    return {
+        "kind": kind,
+        "time_msk": nxt.strftime("%H:%M"),
+        "weekday": nxt.weekday(),
+        "at_iso": nxt.isoformat(),
     }
 
 
@@ -172,7 +212,9 @@ def get_host_status() -> dict[str, Any]:
             session.get("moex_start_hour", 10)
             <= msk.hour
             < session.get("moex_end_hour", 19)
+            and msk.weekday() < 5
         ),
+        "moex_next_open": _moex_next_open(session),
         "ollama": ping_ollama(),
         "host": host,
         "services_health": health,
@@ -189,6 +231,9 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     tinvest = check_tinvest_connection(sandbox=True)
     funnel = digest.get("funnel", {})
 
+    crypto_strategy = get_strategy_state("crypto")
+    sec_strategy = get_strategy_state("securities")
+
     return {
         "kill_switch": bool(trading.get("kill_switch")),
         "trading_mode": trading.get("mode", "dry_run"),
@@ -197,15 +242,19 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "env": crypto_cfg.get("env"),
             "mode": crypto_cfg.get("mode"),
             "pairs": crypto_cfg.get("pairs", []),
-            "workflow": "crypto-signal-dry-run",
+            "active_strategy": crypto_strategy["active"],
+            "strategy_label": crypto_strategy["strategy"].get("label"),
+            "workflow": crypto_strategy["strategy"].get("workflow"),
             "funnel_signal": funnel.get("crypto", {}).get("signal"),
         },
         "securities": {
             "env": sec_cfg.get("env"),
             "mode": sec_cfg.get("mode"),
-            "active_mode": sec_cfg.get("active_mode"),
-            "workflows": ["securities-dca-sandbox", "securities-swing-dry-run"],
+            "active_mode": sec_strategy["active"],
+            "strategy_label": sec_strategy["strategy"].get("label"),
+            "workflows": [s.get("workflow") for s in sec_strategy["strategies"]],
             "tinvest_api": tinvest.get("status"),
+            "workflow": sec_strategy["strategy"].get("workflow"),
             "funnel_signal": funnel.get("securities", {}).get("signal"),
         },
         "ollama": ping_ollama(),

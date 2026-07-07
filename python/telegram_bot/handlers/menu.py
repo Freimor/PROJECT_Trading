@@ -10,8 +10,10 @@ from telegram_bot.actions import (
     send_automat_docs,
     send_automat_events,
     send_automat_menu,
+    send_benchmark_calibrate,
     send_benchmark_full,
     send_benchmark_golden,
+    send_benchmark_historical,
     send_benchmark_menu,
     send_benchmark_report,
     send_confirmations,
@@ -62,9 +64,12 @@ from telegram_bot.keyboards import (
     BTN_BACK_AUTOMAT,
     BTN_BACK_MAIN,
     BTN_BENCHMARK,
+    BTN_BM_CALIBRATE,
     BTN_BM_FULL,
     BTN_BM_GOLDEN,
+    BTN_BM_HISTORICAL,
     BTN_BM_REPORT,
+    BTN_BM_SYNTHETIC,
     BTN_CONFIRM,
     BTN_CR_BALANCE,
     BTN_CR_EVENTS,
@@ -176,10 +181,14 @@ async def on_benchmark(message: Message) -> None:
         await send_automat_menu(message)
     elif text == BTN_BM_REPORT:
         await send_benchmark_report(message)
-    elif text == BTN_BM_GOLDEN:
+    elif text in (BTN_BM_SYNTHETIC, BTN_BM_GOLDEN):
         await send_benchmark_golden(message)
+    elif text == BTN_BM_HISTORICAL:
+        await send_benchmark_historical(message)
     elif text == BTN_BM_FULL:
         await send_benchmark_full(message)
+    elif text == BTN_BM_CALIBRATE:
+        await send_benchmark_calibrate(message)
 
 
 @router.message(F.text.in_(PAPER_BUTTONS))

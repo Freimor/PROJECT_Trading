@@ -81,6 +81,14 @@ TELEGRAM_AWESOME_VPN_MAX_NODES=50
 | `GET /api/telegram/proxy/status` | Статус прокси |
 | `POST /api/admin/telegram/proxy/reprobe` | Переподбор прокси |
 | `GET /api/admin/confirmations/pending` | Ожидающие подтверждения |
+| `GET /api/automation/overview` | Сводка для dashboard |
+| `GET /api/crypto/testnet-dashboard` | Crypto funnel + LLM metrics |
+| `GET /api/binance/balances` | Кошелёк testnet |
+| `GET /api/testing/tinvest-sandbox` | MOEX sandbox портфель |
+| `GET /api/charts/candles` | OHLCV для графика (`market`, `symbol`, `interval`) |
+| `GET /api/charts/markers` | Маркеры LLM/ордеров на графике |
+| `GET /api/charts/symbols` | Список пар/тикеров |
+| `GET /api/events?symbol=` | Фильтр событий по символу |
 
 ## Telegram — меню
 
@@ -101,11 +109,30 @@ TELEGRAM_AWESOME_VPN_MAX_NODES=50
 
 ## Web Console — разделы
 
-- **Overview** — kill switch, mode, Ollama
-- **Events** — журнал trade_events
-- **Stats** — digest JSON
-- **Risk** — kill switch, smoke test, confirmations
-- **Checklist** — live promotion
+Постоянная **status bar**: kill switch, режим, Ollama, последнее событие.
+
+| Раздел | Содержимое |
+|--------|------------|
+| **Обзор** | Карточки crypto/MOEX, кошелёк testnet, хост, LLM metrics |
+| **₿ Crypto** | График (Lightweight Charts) + маркеры pipeline, баланс, события по паре |
+| **📈 MOEX** | Дневной график + sandbox портфель |
+| **События** | Журнал `trade_events` с фильтрами |
+| **Управление** | Kill switch, smoke, checklist, confirmations |
+| **LLM** | Аудит решений + replay |
+| **Paper** | Сессии, snapshot, прогон crypto/MOEX |
+| **Benchmark** | Outcome metrics + последняя калибровка |
+| **n8n** | Workflows on/off + cron |
+
+Маркеры на графике: LLM approve/reject, guardrails, order, fill (цвет/форма по `stage`).
+
+Chart API пример:
+
+```powershell
+curl "http://localhost:8000/api/charts/candles?market=crypto&symbol=BTCUSDT&interval=4h&limit=200"
+curl "http://localhost:8000/api/charts/markers?market=crypto&symbol=BTCUSDT&env=dry_run"
+curl "http://localhost:8000/api/charts/equity?days=30"
+curl "http://localhost:8000/api/llm/decisions?market=crypto&limit=20"
+```
 
 ## Kill switch
 

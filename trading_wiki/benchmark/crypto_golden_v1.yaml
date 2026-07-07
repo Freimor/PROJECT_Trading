@@ -6,6 +6,7 @@ cases:
   - id: btc_uptrend_oversold
     symbol: BTCUSDT
     timeframe: 4h
+    summary: "Восходящий тренд, RSI перепродан — LLM должен одобрить отскок"
     expected_action: approve
     indicators:
       close: 65000
@@ -23,6 +24,7 @@ cases:
   - id: btc_overbought_reject
     symbol: BTCUSDT
     timeframe: 4h
+    summary: "RSI перекуплен, MACD слабеет — вход нежелателен"
     expected_action: reject
     indicators:
       close: 72000
@@ -40,6 +42,7 @@ cases:
   - id: eth_downtrend_reject
     symbol: ETHUSDT
     timeframe: 4h
+    summary: "Нисходящий тренд, цена ниже EMA — long не одобрять"
     expected_action: reject
     indicators:
       close: 2800
@@ -57,6 +60,7 @@ cases:
   - id: btc_macd_bullish_cross
     symbol: BTCUSDT
     timeframe: 4h
+    summary: "Бычий крест MACD в тренде вверх + позитивные новости"
     expected_action: approve
     indicators:
       close: 67000
@@ -74,6 +78,7 @@ cases:
   - id: btc_high_volatility_news
     symbol: BTCUSDT
     timeframe: 4h
+    summary: "Слабый импульс и непроверенная негативная новость — отказ"
     expected_action: reject
     indicators:
       close: 64000
