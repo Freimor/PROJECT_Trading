@@ -202,6 +202,40 @@ def _payload(row: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
+def _env_display(env: str | None) -> str:
+    if env and env.lower() in ("live",):
+        return "Live"
+    return "Demo"
+
+
+def _marker_label(
+    *,
+    stage: str,
+    decision: str | None,
+    env: str | None,
+    payload: dict[str, Any],
+    kind: str,
+) -> str:
+    mode = _env_display(env)
+    side = (payload.get("side") or payload.get("action_side") or "").lower()
+    if kind in ("order_buy", "fill_buy") or side == "buy":
+        return f"{mode} | BUY"
+    if kind in ("order_sell", "fill_sell") or side == "sell":
+        return f"{mode} | SELL"
+    if stage == "llm":
+        if decision == "approve":
+            return f"{mode} | APPROVE"
+        if decision == "reject":
+            return f"{mode} | REJECT"
+    if stage == "guardrails":
+        return f"{mode} | BLOCK"
+    if stage == "news":
+        return "NEWS"
+    if decision:
+        return f"{stage}/{decision}"
+    return stage
+
+
 def _marker_visual(stage: str, decision: str | None, payload: dict[str, Any]) -> dict[str, str]:
     side = (payload.get("side") or payload.get("action_side") or "").lower()
     if stage == "llm":
@@ -268,11 +302,13 @@ def get_chart_markers(
     for row in rows:
         payload = _payload(row)
         vis = _marker_visual(row["stage"], row.get("decision"), payload)
-        label = row["stage"]
-        if row.get("decision"):
-            label = f"{row['stage']}/{row['decision']}"
-        if row.get("confidence") is not None:
-            label += f" {row['confidence']:.2f}"
+        label = _marker_label(
+            stage=row["stage"],
+            decision=row.get("decision"),
+            env=row.get("env"),
+            payload=payload,
+            kind=vis["kind"],
+        )
 
         markers.append(
             {

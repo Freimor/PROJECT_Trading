@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { apiGet } from "../api";
 import AutomationPanel from "../components/AutomationPanel";
+import MarketOperationMode from "../components/MarketOperationMode";
 import ChartMarkerMenu, {
   DEFAULT_MARKER_FILTERS,
   filterChartMarkers,
@@ -35,6 +36,10 @@ export default function MoexWorkspacePage() {
   }, []);
 
   useEffect(() => {
+    apiGet<StrategyState>("/api/strategies/securities").then(applyStrategy).catch(() => {});
+  }, [applyStrategy]);
+
+  const refreshStrategy = useCallback(() => {
     apiGet<StrategyState>("/api/strategies/securities").then(applyStrategy).catch(() => {});
   }, [applyStrategy]);
 
@@ -123,7 +128,9 @@ export default function MoexWorkspacePage() {
     <div className="page workspace">
       <div className="workspace-toolbar">
         <h2>{t("workspace.moexTitle")}</h2>
-        <label>
+        <div className="toolbar-controls">
+          <MarketOperationMode market="securities" title="MOEX" variant="toolbar" onModeApplied={refreshStrategy} />
+          <label>
           {t("workspace.chartTicker")}
           <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
             {symbols.map((s) => (
@@ -133,6 +140,7 @@ export default function MoexWorkspacePage() {
             ))}
           </select>
         </label>
+        </div>
       </div>
 
       <StrategySelector market="securities" onChange={applyStrategy} />

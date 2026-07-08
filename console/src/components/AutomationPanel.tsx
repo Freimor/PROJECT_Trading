@@ -46,8 +46,8 @@ export default function AutomationPanel({
       titleExtra={connectionWarning ? <span className="status-warn">⚠</span> : undefined}
     >
       {workflow && (
-        <div className="metric-row compact">
-          <span>Workflow</span>
+        <div className="metric-row compact muted">
+          <span className="small">n8n</span>
           <strong className="mono-small">{workflow}</strong>
         </div>
       )}

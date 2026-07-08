@@ -11,6 +11,41 @@ from n8n_service import activate_workflow, deactivate_workflow, list_workflows
 from runtime_settings import delete_runtime_value, get_runtime_value, set_runtime_value
 
 VALID_MODES = ("dry_run", "paper", "shadow", "live")
+OPERATION_MODES = ("demo", "live")
+
+# UI-facing modes: demo = testnet/sandbox trading; live = real money.
+# dry_run/shadow remain internal (CI, signal-only); selecting Demo always uses paper.
+OPERATION_TO_TRADING: dict[str, str] = {
+    "demo": "paper",
+    "live": "live",
+}
+
+
+def normalize_trading_mode(mode: str) -> str:
+    normalized = str(mode).strip().lower()
+    if normalized == "demo":
+        return "paper"
+    if normalized not in VALID_MODES:
+        raise ValueError(f"invalid_mode: {mode}")
+    return normalized
+
+
+def trading_mode_to_operation(mode: str) -> str:
+    if str(mode).strip().lower() == "live":
+        return "live"
+    return "demo"
+
+
+def operation_mode_detail(trading_mode: str) -> str:
+    """Human hint: paper testnet vs signal-only dry_run."""
+    tm = str(trading_mode).strip().lower()
+    if tm == "live":
+        return "live"
+    if tm == "dry_run":
+        return "signals_only"
+    if tm == "shadow":
+        return "shadow"
+    return "testnet_sandbox"
 
 TRADING_WORKFLOWS = (
     "crypto-signal-dry-run",
@@ -21,6 +56,69 @@ TRADING_WORKFLOWS = (
     "securities-dca-sandbox",
 )
 
+MARKET_CONFIG = {
+    "crypto": "crypto_config",
+    "securities": "securities_config",
+}
+
+MARKET_RUNTIME_KEY = {
+    "crypto": "crypto_mode",
+    "securities": "securities_mode",
+}
+
+MARKET_WORKFLOW_SET = {
+    "crypto": frozenset(
+        {"crypto-signal-dry-run", "crypto-signal-paper", "crypto-monitor-testnet"}
+    ),
+    "securities": frozenset(
+        {"securities-swing-dry-run", "securities-swing-paper", "securities-dca-sandbox"}
+    ),
+}
+
+MARKET_MODE_PROFILES: dict[str, dict[str, dict[str, list[str]]]] = {
+    "crypto": {
+        "paper": {
+            "enable": ["crypto-signal-paper", "crypto-monitor-testnet"],
+            "disable": ["crypto-signal-dry-run"],
+        },
+        "dry_run": {
+            "enable": ["crypto-signal-dry-run"],
+            "disable": ["crypto-signal-paper", "crypto-monitor-testnet"],
+        },
+        "shadow": {
+            "enable": ["crypto-signal-dry-run"],
+            "disable": ["crypto-signal-paper", "crypto-monitor-testnet"],
+        },
+        "live": {
+            "enable": [],
+            "disable": ["crypto-signal-dry-run", "crypto-signal-paper", "crypto-monitor-testnet"],
+        },
+    },
+    "securities": {
+        "paper": {
+            "enable": ["securities-swing-paper", "securities-dca-sandbox"],
+            "disable": ["securities-swing-dry-run"],
+        },
+        "dry_run": {
+            "enable": ["securities-swing-dry-run"],
+            "disable": ["securities-swing-paper", "securities-dca-sandbox"],
+        },
+        "shadow": {
+            "enable": ["securities-swing-dry-run"],
+            "disable": ["securities-swing-paper", "securities-dca-sandbox"],
+        },
+        "live": {
+            "enable": [],
+            "disable": [
+                "securities-swing-dry-run",
+                "securities-swing-paper",
+                "securities-dca-sandbox",
+            ],
+        },
+    },
+}
+
+# Legacy global profiles (used only by deprecated global switch).
 MODE_PROFILES: dict[str, dict[str, list[str]]] = {
     "dry_run": {
         "enable": ["crypto-signal-dry-run", "securities-swing-dry-run"],
@@ -55,10 +153,15 @@ def _yaml_market_mode(config_name: str) -> str:
 
 
 def get_effective_trading_mode() -> str:
-    runtime = get_runtime_value("trading_mode")
-    if runtime is not None:
-        return str(runtime)
-    return _yaml_trading_mode()
+    """Aggregate label for status bar; per-market modes are authoritative."""
+    crypto = get_effective_market_mode("crypto_config")
+    sec = get_effective_market_mode("securities_config")
+    modes = {crypto, sec}
+    if "live" in modes:
+        return "live"
+    if len(modes) > 1:
+        return "mixed"
+    return crypto if modes else _yaml_trading_mode()
 
 
 def get_effective_market_mode(config_name: str) -> str:
@@ -66,9 +169,6 @@ def get_effective_market_mode(config_name: str) -> str:
     runtime = get_runtime_value(key)
     if runtime is not None:
         return str(runtime)
-    global_runtime = get_runtime_value("trading_mode")
-    if global_runtime is not None:
-        return str(global_runtime)
     return _yaml_market_mode(config_name)
 
 
@@ -84,9 +184,7 @@ def get_config_effective(name: str) -> dict[str, Any]:
 
 
 def _validate_mode(mode: str) -> str:
-    normalized = str(mode).strip().lower()
-    if normalized not in VALID_MODES:
-        raise ValueError(f"invalid_mode: {mode}")
+    normalized = normalize_trading_mode(mode)
     if normalized == "live" and not _live_flag_enabled():
         raise ValueError("live_disabled: set LIVE_TRADING_ENABLED=true in .env")
     return normalized
@@ -138,6 +236,148 @@ def clear_trading_mode(*, operator: str) -> dict[str, Any]:
     }
 
 
+def _market_workflow_actions(market: str, mode: str) -> list[dict[str, Any]]:
+    profile = MARKET_MODE_PROFILES.get(market, {}).get(
+        mode, MARKET_MODE_PROFILES[market]["dry_run"]
+    )
+    workflows = list_workflows()
+    by_name = {str(w.get("name")): w for w in workflows}
+    results: list[dict[str, Any]] = []
+
+    for name in profile.get("disable", []):
+        wf = by_name.get(name)
+        if not wf or not wf.get("active"):
+            continue
+        deactivate_workflow(str(wf["id"]))
+        results.append({"name": name, "action": "deactivated", "id": wf.get("id")})
+
+    for name in profile.get("enable", []):
+        wf = by_name.get(name)
+        if not wf or wf.get("active"):
+            continue
+        activate_workflow(str(wf["id"]))
+        results.append({"name": name, "action": "activated", "id": wf.get("id")})
+
+    return results
+
+
+def set_market_mode(
+    market: str,
+    mode: str,
+    *,
+    operator: str,
+) -> dict[str, Any]:
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    normalized = _validate_mode(mode)
+    key = MARKET_RUNTIME_KEY[market]
+    set_runtime_value(key, normalized, updated_by=operator)
+    log_system_activity(
+        f"{'Crypto' if market == 'crypto' else 'MOEX'}: режим {normalized}",
+        category=market,
+        level="info",
+        payload={"market": market, "mode": normalized, "operator": operator},
+    )
+    return {
+        "status": "ok",
+        "market": market,
+        "trading_mode": normalized,
+        "operation_mode": trading_mode_to_operation(normalized),
+        "runtime_override": True,
+    }
+
+
+def apply_market_operation_mode(
+    market: str,
+    operation_mode: str,
+    *,
+    operator: str,
+    apply_workflows: bool = True,
+) -> dict[str, Any]:
+    op = str(operation_mode).strip().lower()
+    if op not in OPERATION_TO_TRADING:
+        raise ValueError(f"invalid_operation_mode: {operation_mode}")
+    mode_result = set_market_mode(
+        market, OPERATION_TO_TRADING[op], operator=operator
+    )
+    workflow_results: list[dict[str, Any]] = []
+    workflow_error: str | None = None
+    if apply_workflows:
+        try:
+            workflow_results = _market_workflow_actions(market, mode_result["trading_mode"])
+        except Exception as exc:
+            workflow_error = str(exc)
+    return {
+        **mode_result,
+        "workflows": workflow_results,
+        "workflows_error": workflow_error,
+    }
+
+
+def clear_market_mode(market: str, *, operator: str) -> dict[str, Any]:
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    delete_runtime_value(MARKET_RUNTIME_KEY[market])
+    config_name = MARKET_CONFIG[market]
+    yaml_mode = _yaml_market_mode(config_name)
+    log_system_activity(
+        f"{'Crypto' if market == 'crypto' else 'MOEX'}: режим сброшен к YAML",
+        category=market,
+        level="info",
+        payload={"market": market, "operator": operator},
+    )
+    return {
+        "status": "ok",
+        "market": market,
+        "trading_mode": yaml_mode,
+        "operation_mode": trading_mode_to_operation(yaml_mode),
+        "runtime_override": False,
+    }
+
+
+def get_market_control_state(market: str) -> dict[str, Any]:
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    config_name = MARKET_CONFIG[market]
+    cfg = get_config_effective(config_name)
+    mode = str(cfg.get("mode", "dry_run"))
+    runtime_key = MARKET_RUNTIME_KEY[market]
+
+    workflows: list[dict[str, Any]] = []
+    n8n_status = "ok"
+    n8n_message: str | None = None
+    profile = MARKET_MODE_PROFILES.get(market, {}).get(mode, {})
+    try:
+        for wf in list_workflows():
+            name = str(wf.get("name") or "")
+            if name not in MARKET_WORKFLOW_SET.get(market, frozenset()):
+                continue
+            workflows.append(
+                {
+                    "id": wf.get("id"),
+                    "name": name,
+                    "active": bool(wf.get("active")),
+                    "expected_for_mode": name in profile.get("enable", []),
+                }
+            )
+    except Exception as exc:
+        n8n_status = "error"
+        n8n_message = str(exc)
+
+    return {
+        "market": market,
+        "operation_mode": trading_mode_to_operation(mode),
+        "operation_detail": operation_mode_detail(mode),
+        "trading_mode": mode,
+        "yaml_mode": _yaml_market_mode(config_name),
+        "runtime_override": get_runtime_value(runtime_key) is not None,
+        "live_flag": _live_flag_enabled(),
+        "env": cfg.get("env"),
+        "workflows": workflows,
+        "n8n": {"status": n8n_status, "message": n8n_message},
+    }
+
+
 def _workflow_actions(mode: str) -> list[dict[str, Any]]:
     profile = MODE_PROFILES.get(mode, MODE_PROFILES["dry_run"])
     workflows = list_workflows()
@@ -177,9 +417,25 @@ def apply_trading_mode(
             workflow_error = str(exc)
     return {
         **mode_result,
+        "operation_mode": trading_mode_to_operation(mode_result["trading_mode"]),
         "workflows": workflow_results,
         "workflows_error": workflow_error,
     }
+
+
+def apply_operation_mode(
+    operation_mode: str,
+    *,
+    operator: str,
+) -> dict[str, Any]:
+    op = str(operation_mode).strip().lower()
+    if op not in OPERATION_TO_TRADING:
+        raise ValueError(f"invalid_operation_mode: {operation_mode}")
+    return apply_trading_mode(
+        OPERATION_TO_TRADING[op],
+        operator=operator,
+        apply_workflows=True,
+    )
 
 
 def toggle_workflow_by_name(
@@ -252,10 +508,11 @@ def _schedule_info() -> dict[str, Any]:
 
 
 def get_automation_control_state() -> dict[str, Any]:
-    mode = get_effective_trading_mode()
     crypto = get_config_effective("crypto_config")
     sec = get_config_effective("securities_config")
-    runtime_mode = get_runtime_value("trading_mode")
+    crypto_mode = str(crypto.get("mode", "dry_run"))
+    sec_mode = str(sec.get("mode", "dry_run"))
+    global_mode = get_effective_trading_mode()
 
     workflows: list[dict[str, Any]] = []
     n8n_status = "ok"
@@ -265,12 +522,16 @@ def get_automation_control_state() -> dict[str, Any]:
             name = str(wf.get("name") or "")
             if name not in TRADING_WORKFLOWS:
                 continue
+            market = "crypto" if name in MARKET_WORKFLOW_SET["crypto"] else "securities"
+            market_mode = crypto_mode if market == "crypto" else sec_mode
+            profile = MARKET_MODE_PROFILES.get(market, {}).get(market_mode, {})
             workflows.append(
                 {
                     "id": wf.get("id"),
                     "name": name,
+                    "market": market,
                     "active": bool(wf.get("active")),
-                    "expected_for_mode": name in MODE_PROFILES.get(mode, {}).get("enable", []),
+                    "expected_for_mode": name in profile.get("enable", []),
                 }
             )
     except Exception as exc:
@@ -278,27 +539,20 @@ def get_automation_control_state() -> dict[str, Any]:
         n8n_message = str(exc)
 
     return {
-        "trading_mode": mode,
+        "operation_mode": trading_mode_to_operation(global_mode)
+        if global_mode not in ("mixed",)
+        else "mixed",
+        "trading_mode": global_mode,
         "yaml_trading_mode": _yaml_trading_mode(),
-        "runtime_override": runtime_mode is not None,
+        "runtime_override": any(
+            get_runtime_value(k) is not None for k in MARKET_RUNTIME_KEY.values()
+        ),
         "valid_modes": list(VALID_MODES),
+        "valid_operation_modes": list(OPERATION_MODES),
         "live_flag": _live_flag_enabled(),
-        "crypto": {
-            "mode": crypto.get("mode"),
-            "env": crypto.get("env"),
-            "yaml_mode": _yaml_market_mode("crypto_config"),
-        },
-        "securities": {
-            "mode": sec.get("mode"),
-            "env": sec.get("env"),
-            "active_mode": sec.get("active_mode"),
-            "yaml_mode": _yaml_market_mode("securities_config"),
-        },
+        "crypto": get_market_control_state("crypto"),
+        "securities": get_market_control_state("securities"),
         "schedules": _schedule_info(),
         "workflows": workflows,
         "n8n": {"status": n8n_status, "message": n8n_message},
-        "mode_profiles": {
-            m: {"enable": p["enable"], "disable": p["disable"]}
-            for m, p in MODE_PROFILES.items()
-        },
     }

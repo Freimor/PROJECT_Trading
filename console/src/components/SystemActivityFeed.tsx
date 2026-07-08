@@ -11,6 +11,30 @@ type FeedResponse = {
 };
 
 const SCROLL_PREF_KEY = "activityFeedAutoScroll";
+const FEED_MAX_ITEMS = 40;
+
+function feedTimeMs(iso: string): number {
+  try {
+    const normalized = iso.endsWith("Z") || iso.includes("+") ? iso : `${iso}Z`;
+    return new Date(normalized).getTime();
+  } catch {
+    return 0;
+  }
+}
+
+function mergeFeedItems(
+  incoming: ActivityFeedItem[],
+  previous: ActivityFeedItem[],
+  maxItems: number,
+): ActivityFeedItem[] {
+  const byId = new Map<string, ActivityFeedItem>();
+  for (const item of [...incoming, ...previous]) {
+    byId.set(item.id, item);
+  }
+  return Array.from(byId.values())
+    .sort((a, b) => feedTimeMs(b.occurred_at) - feedTimeMs(a.occurred_at))
+    .slice(0, maxItems);
+}
 
 function formatFeedTime(iso: string): string {
   try {
@@ -37,12 +61,13 @@ const LEVEL_CLASS: Record<string, string> = {
 export default function SystemActivityFeed() {
   const { t } = useI18n();
   const listRef = useRef<HTMLUListElement>(null);
+  const [feedItems, setFeedItems] = useState<ActivityFeedItem[]>([]);
   const [autoScroll, setAutoScroll] = useState(
     () => localStorage.getItem(SCROLL_PREF_KEY) !== "false",
   );
 
   const fetcher = useCallback(
-    () => apiGet<FeedResponse>("/api/system/activity-feed?limit=50&days=3"),
+    () => apiGet<FeedResponse>(`/api/system/activity-feed?limit=${FEED_MAX_ITEMS}&days=3`),
     [],
   );
 
@@ -50,12 +75,15 @@ export default function SystemActivityFeed() {
     staggerKey: "activity-feed",
   });
 
-  const items = data?.items ?? [];
+  useEffect(() => {
+    if (!data?.items?.length) return;
+    setFeedItems((prev) => mergeFeedItems(data.items, prev, FEED_MAX_ITEMS));
+  }, [data]);
 
   useEffect(() => {
     if (!autoScroll || !listRef.current) return;
     listRef.current.scrollTop = 0;
-  }, [items, autoScroll]);
+  }, [feedItems, autoScroll]);
 
   const toggleScroll = () => {
     setAutoScroll((prev) => {
@@ -77,14 +105,18 @@ export default function SystemActivityFeed() {
           >
             {autoScroll ? t("activity.autoScrollOn") : t("activity.autoScrollOff")}
           </button>
-          <span className="muted small">{loading && !items.length ? "…" : items.length}</span>
+          <span className="muted small">
+            {loading && !feedItems.length
+              ? "…"
+              : `${feedItems.length}/${FEED_MAX_ITEMS}`}
+          </span>
         </div>
       </div>
       <ul
         ref={listRef}
         className={`activity-feed-list ${autoScroll ? "" : "activity-feed-list--frozen"}`}
       >
-        {items.map((item) => (
+        {feedItems.map((item) => (
           <li
             key={item.id}
             className={`activity-feed-item ${LEVEL_CLASS[item.level ?? "info"] ?? "activity-info"}`}
@@ -93,7 +125,7 @@ export default function SystemActivityFeed() {
             <span className="activity-feed-msg">{item.message}</span>
           </li>
         ))}
-        {!items.length && !loading && (
+        {!feedItems.length && !loading && (
           <li className="activity-feed-empty muted">{t("activity.empty")}</li>
         )}
       </ul>

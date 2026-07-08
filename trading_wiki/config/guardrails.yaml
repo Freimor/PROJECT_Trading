@@ -5,12 +5,13 @@
 version: "1.0.0"
 
 llm:
-  min_confidence: 0.7
+  # Общие параметры LLM (пороги по рынку — в crypto_config.llm и securities_config.swing_signals.llm)
   max_tokens: 4096
   require_counter_thesis: true
   counter_thesis_min_chars: 10
   timeout_ms: 900000
   temperature: 0.1
+  min_confidence: 0.7
   benchmark_unload_after: true  # сброс RAM/KV-кэша Ollama после benchmark
   allowed_actions: [approve, reject]
   forbidden_output_fields: [quantity, leverage, size, api_key]

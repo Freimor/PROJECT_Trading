@@ -20,7 +20,15 @@ export default function StatusBar({ overview }: Props) {
       </div>
       <div className="status-item">
         <span className="status-label">{t("status.mode")}</span>
-        <span className="pill">{overview?.trading_mode ?? "—"}</span>
+        <span className="pill">
+          {overview?.operation_mode === "mixed"
+            ? "Mixed"
+            : overview?.operation_mode === "live"
+              ? "Live"
+              : overview?.operation_detail === "signals_only"
+                ? "Demo·signals"
+                : "Demo"}
+        </span>
       </div>
       <div className="status-item">
         <span className="status-label">{t("status.live")}</span>

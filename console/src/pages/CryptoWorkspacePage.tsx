@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost } from "../api";
 import AutomationPanel from "../components/AutomationPanel";
+import MarketOperationMode from "../components/MarketOperationMode";
 import ChartMarkerMenu, {
   DEFAULT_MARKER_FILTERS,
   filterChartMarkers,
@@ -48,6 +49,10 @@ export default function CryptoWorkspacePage() {
   }, []);
 
   useEffect(() => {
+    apiGet<StrategyState>("/api/strategies/crypto").then(applyStrategy).catch(() => {});
+  }, [applyStrategy]);
+
+  const refreshStrategy = useCallback(() => {
     apiGet<StrategyState>("/api/strategies/crypto").then(applyStrategy).catch(() => {});
   }, [applyStrategy]);
 
@@ -154,6 +159,7 @@ export default function CryptoWorkspacePage() {
       <div className="workspace-toolbar">
         <h2>{t("workspace.cryptoTitle")}</h2>
         <div className="toolbar-controls">
+          <MarketOperationMode market="crypto" title="Crypto" variant="toolbar" onModeApplied={refreshStrategy} />
           <label>
             {t("workspace.chartPair")}
             <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>

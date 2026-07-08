@@ -98,6 +98,7 @@ def run_one_historical_case(
     market: str,
     model: str | None = None,
     temperature: float | None = None,
+    timeout_ms: int | None = None,
 ) -> dict[str, Any]:
     crypto_cfg = load_config("crypto_config")
     sec_cfg = load_config("securities_config")
@@ -149,6 +150,7 @@ def run_one_historical_case(
                 news_summary=news_text,
                 timeframe=timeframe,
                 temperature=temperature,
+                timeout_ms=timeout_ms,
             )
             expected = case.get("expected_action", "reject")
             actual = result.get("action")

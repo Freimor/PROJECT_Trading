@@ -107,6 +107,13 @@ def _trade_event_message(row: dict[str, Any]) -> str | None:
         suffix = f" · {wf}" if wf else ""
         return f"Сигнал {symbol} ({market}){suffix}"
 
+    if stage == "filter":
+        if decision == "approve":
+            return f"Фильтр пройден {symbol} ({market})"
+        if decision in ("skip", "reject"):
+            reason = row.get("reject_reason") or "не прошёл правила"
+            return f"Фильтр отклонил {symbol}: {reason}"
+
     if stage == "llm":
         if decision == "approve":
             conf = row.get("confidence")
@@ -309,10 +316,11 @@ def _paper_session_messages(*, since: str) -> list[dict[str, Any]]:
     ]
 
 
-def get_activity_feed(*, limit: int = 60, days: int = 3) -> dict[str, Any]:
+def get_activity_feed(*, limit: int = 40, days: int = 3) -> dict[str, Any]:
     _ensure_table()
     since_dt = datetime.now(timezone.utc) - timedelta(days=max(1, days))
     since = since_dt.replace(microsecond=0).isoformat()
+    trade_limit = max(limit * 3, 120)
 
     conn = get_connection()
     try:
@@ -326,7 +334,7 @@ def get_activity_feed(*, limit: int = 60, days: int = 3) -> dict[str, Any]:
                 ORDER BY occurred_at DESC
                 LIMIT ?
                 """,
-                (since, limit),
+                (since, min(30, limit)),
             ).fetchall()
         ]
 
@@ -338,41 +346,22 @@ def get_activity_feed(*, limit: int = 60, days: int = 3) -> dict[str, Any]:
                        reject_reason, workflow_name, confidence, notional, currency
                 FROM trade_events
                 WHERE event_at >= ?
-                  AND stage IN ('signal', 'llm', 'guardrails', 'order', 'fill', 'error')
+                  AND stage IN ('signal', 'filter', 'llm', 'guardrails', 'order', 'fill', 'error')
                 ORDER BY event_at DESC
                 LIMIT ?
                 """,
-                (since, limit * 2),
+                (since, trade_limit),
             ).fetchall()
         ]
     finally:
         conn.close()
 
-    items: list[dict[str, Any]] = []
-
-    for row in system_rows:
-        items.append(
-            {
-                "id": row["id"],
-                "occurred_at": row["occurred_at"],
-                "category": row["category"],
-                "level": row["level"],
-                "message": row["message"],
-                "ref_type": row.get("ref_type"),
-                "ref_id": row.get("ref_id"),
-            }
-        )
-
-    items.extend(_workflow_boot_messages(trade_rows))
-    items.extend(_health_messages(since=since, limit=40))
-    items.extend(_runtime_messages(since=since))
-    items.extend(_paper_session_messages(since=since))
-
+    trade_items: list[dict[str, Any]] = []
     for row in trade_rows:
         message = _trade_event_message(row)
         if not message:
             continue
-        items.append(
+        trade_items.append(
             {
                 "id": f"trade:{row['id']}",
                 "occurred_at": row["event_at"],
@@ -381,30 +370,56 @@ def get_activity_feed(*, limit: int = 60, days: int = 3) -> dict[str, Any]:
                 "message": message,
                 "ref_type": "trade_event",
                 "ref_id": row["id"],
+                "_priority": 0,
             }
         )
 
-    items.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
+    system_items: list[dict[str, Any]] = []
+    for row in system_rows:
+        system_items.append(
+            {
+                "id": row["id"],
+                "occurred_at": row["occurred_at"],
+                "category": row["category"],
+                "level": row["level"],
+                "message": row["message"],
+                "ref_type": row.get("ref_type"),
+                "ref_id": row.get("ref_id"),
+                "_priority": 2,
+            }
+        )
 
-    # Dedupe identical messages within 2 minutes
-    deduped: list[dict[str, Any]] = []
-    seen_msgs: list[tuple[str, datetime]] = []
-    for item in items:
-        msg = str(item.get("message", ""))
-        try:
-            ts = datetime.fromisoformat(str(item.get("occurred_at", "")).replace("Z", "+00:00"))
-        except ValueError:
-            ts = datetime.now(timezone.utc)
-        skip = False
-        for prev_msg, prev_ts in seen_msgs:
-            if prev_msg == msg and abs((ts - prev_ts).total_seconds()) < 120:
-                skip = True
-                break
-        if skip:
-            continue
-        seen_msgs.append((msg, ts))
-        deduped.append(item)
-        if len(deduped) >= limit:
+    for boot in _workflow_boot_messages(trade_rows):
+        boot["_priority"] = 1
+        system_items.append(boot)
+    for health in _health_messages(since=since, limit=12):
+        health["_priority"] = 2
+        system_items.append(health)
+    for runtime in _runtime_messages(since=since):
+        runtime["_priority"] = 2
+        system_items.append(runtime)
+    for paper in _paper_session_messages(since=since):
+        paper["_priority"] = 2
+        system_items.append(paper)
+
+    trade_items.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
+    system_items.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
+
+    # Trade events first — health/boot cannot crowd out signals from other symbols.
+    trade_cap = min(len(trade_items), int(limit * 0.75))
+    merged = trade_items[:trade_cap]
+    seen_ids = {str(i["id"]) for i in merged}
+    for item in system_items:
+        if len(merged) >= limit:
             break
+        if str(item["id"]) in seen_ids:
+            continue
+        merged.append(item)
+        seen_ids.add(str(item["id"]))
 
-    return {"items": deduped, "count": len(deduped), "days": days}
+    merged.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
+
+    for item in merged:
+        item.pop("_priority", None)
+
+    return {"items": merged[:limit], "count": min(len(merged), limit), "days": days}

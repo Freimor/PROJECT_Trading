@@ -501,6 +501,7 @@ def run_one_golden_case(
     market: str,
     model: str | None = None,
     temperature: float | None = None,
+    timeout_ms: int | None = None,
 ) -> dict[str, Any]:
     crypto_cfg = load_config("crypto_config")
     sec_cfg = load_config("securities_config")
@@ -528,6 +529,7 @@ def run_one_golden_case(
                 news_summary=case.get("news") or "",
                 timeframe=case.get("timeframe", "4h"),
                 temperature=temperature,
+                timeout_ms=timeout_ms,
             )
             actual = result.get("action")
             return {
@@ -728,7 +730,11 @@ def benchmark_report(*, days: int = 30, market: str | None = None) -> dict[str, 
             "config": _benchmark_cfg(),
             "last_snapshot": get_benchmark_snapshot(),
             "last_historical_snapshot": get_historical_snapshot(),
-            "last_calibration_snapshot": get_calibration_snapshot(),
+            "last_calibration_snapshot": get_calibration_snapshot("crypto"),
+            "last_calibration_snapshots": {
+                "crypto": get_calibration_snapshot("crypto"),
+                "securities": get_calibration_snapshot("securities"),
+            },
         }
     finally:
         conn.close()

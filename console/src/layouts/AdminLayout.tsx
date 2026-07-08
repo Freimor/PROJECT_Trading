@@ -5,7 +5,7 @@ import StatusBar from "../components/StatusBar";
 import SystemActivityFeed from "../components/SystemActivityFeed";
 import { POLL } from "../config/polling";
 import { usePolling } from "../hooks/usePolling";
-import { apiGet } from "../api";
+import { apiGet, setOperatorPassword, getOperatorPassword } from "../api";
 import { useI18n, type Lang } from "../i18n/LanguageContext";
 import type { AutomationOverview } from "../types";
 
@@ -16,7 +16,7 @@ export type AdminLayoutContext = {
 
 export default function AdminLayout() {
   const { t, lang, setLang } = useI18n();
-  const [adminKey, setAdminKey] = useState(localStorage.getItem("adminKey") || "");
+  const [operatorPassword, setOperatorPasswordState] = useState(getOperatorPassword());
   const fetchOverview = useCallback(() => apiGet<AutomationOverview>("/api/automation/overview?days=7"), []);
   const { data: overview, refresh } = usePolling<AutomationOverview>(
     fetchOverview,
@@ -28,8 +28,9 @@ export default function AdminLayout() {
     },
   );
 
-  const saveAdminKey = () => {
-    localStorage.setItem("adminKey", adminKey);
+  const saveOperatorPassword = () => {
+    setOperatorPassword(operatorPassword);
+    setOperatorPasswordState(operatorPassword);
     refresh();
   };
 
@@ -53,13 +54,14 @@ export default function AdminLayout() {
           </label>
           <input
             type="password"
-            placeholder={t("header.adminKey")}
-            value={adminKey}
-            onChange={(e) => setAdminKey(e.target.value)}
+            placeholder={t("header.operatorPassword")}
+            value={operatorPassword}
+            onChange={(e) => setOperatorPasswordState(e.target.value)}
             className="input"
+            autoComplete="current-password"
           />
-          <button type="button" onClick={saveAdminKey}>
-            {t("header.saveKey")}
+          <button type="button" onClick={saveOperatorPassword}>
+            {t("header.savePassword")}
           </button>
           <button type="button" onClick={refresh}>
             {t("header.refresh")}

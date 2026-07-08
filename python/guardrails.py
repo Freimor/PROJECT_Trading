@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from config_loader import load_config
 from effective_config import get_guardrails
+from market_llm_config import get_market_llm_config
 
 
 def _moex_session_ok(guardrails: dict[str, Any]) -> bool:
@@ -32,7 +33,7 @@ def enforce_guardrails(
     g = guardrails or get_guardrails()
     trading = g.get("trading", {})
     symbols = g.get("symbols", {})
-    llm_cfg = g.get("llm", {})
+    llm_cfg = get_market_llm_config(market)
 
     if trading.get("kill_switch"):
         return {"pass": False, "reject_reason": "kill_switch_active"}

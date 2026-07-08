@@ -21,6 +21,10 @@ risk_per_trade: 0.01
 daily_loss_limit: 0.03
 llm_min_confidence: 0.7
 
+llm:
+  temperature: 0.1
+  min_confidence: 0.7
+
 ollama_model: qwen3.5:9b
 prompt_version: "crypto_validate_v1"
 

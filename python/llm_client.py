@@ -10,10 +10,49 @@ from typing import Any
 import httpx
 
 from config_loader import load_config, load_prompt_body
+from market_llm_config import get_market_llm_config, get_market_ollama_model
 
 
 def ollama_host() -> str:
     return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+
+def list_ollama_models() -> dict[str, Any]:
+    """All models available in local Ollama (/api/tags)."""
+    start = time.perf_counter()
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.get(f"{ollama_host()}/api/tags")
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        if resp.status_code != 200:
+            return {
+                "status": "error",
+                "latency_ms": latency_ms,
+                "models": [],
+                "message": resp.text[:200],
+            }
+        models = []
+        for item in resp.json().get("models", []):
+            name = item.get("name")
+            if not name:
+                continue
+            models.append(
+                {
+                    "name": name,
+                    "size": item.get("size"),
+                    "modified_at": item.get("modified_at"),
+                    "digest": item.get("digest"),
+                }
+            )
+        models.sort(key=lambda m: m["name"])
+        return {"status": "ok", "latency_ms": latency_ms, "models": models}
+    except httpx.HTTPError as exc:
+        return {
+            "status": "error",
+            "latency_ms": int((time.perf_counter() - start) * 1000),
+            "models": [],
+            "message": str(exc),
+        }
 
 
 def reset_ollama_cache(model: str | None = None) -> dict[str, Any]:
@@ -48,10 +87,10 @@ def validate_signal(
     timeframe: str = "4h",
     temperature: float | None = None,
     max_tokens: int | None = None,
+    timeout_ms: int | None = None,
 ) -> dict[str, Any]:
-    crypto_cfg = load_config("crypto_config") if market == "crypto" else load_config("securities_config")
-    guardrails = load_config("guardrails")
-    model = model or crypto_cfg.get("ollama_model", "qwen3.5:9b")
+    llm_cfg = get_market_llm_config(market)
+    model = model or get_market_ollama_model(market)
     prompt_file = f"{prompt_version}.md" if not prompt_version.endswith(".md") else prompt_version
     system_raw = load_prompt_body(prompt_file)
 
@@ -77,8 +116,11 @@ def validate_signal(
         if session:
             user_content += f"\nSession status: {session}"
 
-    llm_cfg = guardrails.get("llm", {})
-    timeout = llm_cfg.get("timeout_ms", 900000) / 1000
+    llm_cfg = get_market_llm_config(market)
+    if timeout_ms is not None:
+        timeout = timeout_ms / 1000
+    else:
+        timeout = llm_cfg.get("timeout_ms", 900000) / 1000
     temp = temperature if temperature is not None else llm_cfg.get("temperature", 0.1)
     num_predict = max_tokens if max_tokens is not None else llm_cfg.get("max_tokens", 2048)
     payload: dict[str, Any] = {

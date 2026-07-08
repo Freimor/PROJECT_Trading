@@ -210,8 +210,12 @@ export default function OverviewPage() {
             <strong>{overview?.crypto?.strategy_label ?? "—"}</strong>
           </div>
           <div className="metric-row">
-            <span>{t("overview.workflow")}</span>
-            <strong className="small">{overview?.crypto?.workflow ?? "—"}</strong>
+            <span>{t("overview.operationMode")}</span>
+            <strong>
+              {overview?.crypto?.operation_mode === "live"
+                ? t("overview.modeLiveLabel")
+                : t("overview.modeDemoLabel")}
+            </strong>
           </div>
           <div className="metric-row">
             <span>{t("overview.funnel")}</span>
@@ -250,8 +254,12 @@ export default function OverviewPage() {
             <strong>{overview?.securities?.strategy_label ?? "—"}</strong>
           </div>
           <div className="metric-row">
-            <span>{t("overview.workflow")}</span>
-            <strong className="small">{overview?.securities?.workflow ?? "—"}</strong>
+            <span>{t("overview.operationMode")}</span>
+            <strong>
+              {overview?.securities?.operation_mode === "live"
+                ? t("overview.modeLiveLabel")
+                : t("overview.modeDemoLabel")}
+            </strong>
           </div>
           <div className="metric-row">
             <span>{t("overview.funnel")}</span>
@@ -291,7 +299,13 @@ export default function OverviewPage() {
           </div>
           <div className="metric-row">
             <span>{t("overview.systemMode")}</span>
-            <strong>{overview?.trading_mode ?? "—"}</strong>
+            <strong>
+              {overview?.operation_mode === "mixed"
+                ? "Mixed"
+                : overview?.operation_mode === "live"
+                  ? t("overview.modeLiveLabel")
+                  : t("overview.modeDemoLabel")}
+            </strong>
           </div>
         </PortfolioCard>
 

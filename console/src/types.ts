@@ -73,6 +73,8 @@ export type TradeEvent = {
 export type AutomationOverview = {
   kill_switch: boolean;
   trading_mode: string;
+  operation_mode?: string;
+  operation_detail?: string;
   live_flag: boolean;
   ollama?: { status?: string; latency_ms?: number; model?: string };
   last_event?: {
@@ -86,6 +88,8 @@ export type AutomationOverview = {
   crypto?: {
     env?: string;
     mode?: string;
+    operation_mode?: string;
+    operation_detail?: string;
     pairs?: string[];
     active_strategy?: string;
     strategy_label?: string;
@@ -95,6 +99,8 @@ export type AutomationOverview = {
   securities?: {
     env?: string;
     mode?: string;
+    operation_mode?: string;
+    operation_detail?: string;
     active_mode?: string;
     strategy_label?: string;
     tinvest_api?: string;

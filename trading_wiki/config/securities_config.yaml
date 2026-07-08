@@ -20,6 +20,9 @@ swing_signals:
   timeframe: 1d
   schedule_cron: "15 18 * * 1-5"  # 18:15 MSK, будни
   llm_min_confidence: 0.7
+  llm:
+    temperature: 0.1
+    min_confidence: 0.7
   ollama_model: qwen3.5:9b
   prompt_version: "securities_validate_v1"
   paper_amount_rub: 5000

@@ -14,15 +14,27 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from backtest.metrics import dry_run_funnel, signal_summary
+from operator_auth import (
+    admin_key_configured,
+    operator_auth_required,
+    operator_password_configured,
+    verify_operator_auth,
+)
 from binance_client import get_account_balances, get_open_orders, place_market_order
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot, post_dca_order
 from testing_service import get_testing_overview, get_tinvest_sandbox_dashboard
 from automation_control_service import (
+    apply_market_operation_mode,
+    apply_operation_mode,
     apply_trading_mode,
+    clear_market_mode,
     clear_trading_mode,
     get_automation_control_state,
+    get_market_control_state,
+    normalize_trading_mode,
+    operation_mode_detail,
     toggle_workflow_by_name,
+    trading_mode_to_operation,
 )
 from strategy_service import get_strategy_state, set_active_strategy
 from admin_service import (
@@ -56,7 +68,7 @@ from evaluation.replay import champion_challenger_report, evaluation_metrics, re
 from event_log import log_event
 from guardrails import enforce_guardrails, position_size_dry_run
 from indicators.technical import compute_indicators, parse_binance_klines, rule_filter
-from llm_client import reset_ollama_cache, validate_signal
+from llm_client import list_ollama_models, reset_ollama_cache, validate_signal
 from news_service import (
     ingest_all,
     list_news_for_symbol,
@@ -100,11 +112,16 @@ from benchmark_service import (
     save_benchmark_snapshot,
 )
 from calibration_service import (
+    cancel_calibration_job,
     finalize_calibration,
+    get_calibration_job_status,
     get_calibration_plan,
     get_calibration_snapshot,
+    get_llm_settings_snapshot,
+    list_calibration_jobs_status,
     run_calibration,
     run_calibration_temperature,
+    start_calibration_job,
 )
 from charts_service import get_chart_candles, get_chart_markers, list_symbols_for_market
 from llm_audit_service import get_llm_decision, list_llm_decisions
@@ -120,6 +137,7 @@ from historical_benchmark_service import (
 )
 from securities_pipeline import run_securities_dca_dry_run, run_securities_swing_dry_run
 from event_summary import summarize_trade_event
+from activity_feed_service import log_system_activity
 from telegram_proxy import proxy_status, select_working_proxy
 
 
@@ -292,9 +310,16 @@ class KillSwitchRequest(BaseModel):
 
 
 class TradingModeRequest(BaseModel):
-    mode: Literal["dry_run", "paper", "shadow", "live"]
+    mode: Literal["demo", "live", "dry_run", "paper", "shadow"]
     operator: str = "web:operator"
     apply_workflows: bool = True
+
+
+class MarketModeRequest(BaseModel):
+    mode: Literal["demo", "live"]
+    operator: str = "web:operator"
+    apply_workflows: bool = True
+    password: str | None = None
 
 
 class WorkflowToggleRequest(BaseModel):
@@ -327,10 +352,37 @@ class NewsAlertsSettingsRequest(BaseModel):
     operator: str = "api"
 
 
-def _check_admin_key(admin_key: str | None) -> None:
-    expected = os.environ.get("ADMIN_API_KEY", "").strip()
-    if expected and admin_key != expected:
-        raise HTTPException(status_code=401, detail="invalid admin key")
+def _check_admin_key(
+    admin_key: str | None = None,
+    *,
+    operator_password: str | None = None,
+) -> None:
+    _check_operator_auth(password=operator_password, admin_key=admin_key)
+
+
+def _check_operator_auth(
+    *,
+    password: str | None = None,
+    admin_key: str | None = None,
+) -> None:
+    if not verify_operator_auth(password=password, admin_key=admin_key):
+        raise HTTPException(status_code=401, detail="invalid operator password")
+
+
+@app.get("/api/auth/operator")
+def operator_auth_status(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    return {
+        "password_required": operator_auth_required(),
+        "operator_password_configured": operator_password_configured(),
+        "admin_key_configured": admin_key_configured(),
+        "authenticated": verify_operator_auth(
+            password=x_operator_password,
+            admin_key=x_admin_key,
+        ),
+    }
 
 
 # --- Health & admin ---
@@ -570,11 +622,12 @@ def strategies_state(market: str) -> dict[str, Any]:
 def strategies_set_active(
     market: str,
     body: StrategySelectRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
     if market not in ("crypto", "securities"):
         raise HTTPException(status_code=404, detail="unknown market")
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
         return set_active_strategy(market, body.strategy_id, operator=body.operator)
     except ValueError as exc:
@@ -866,6 +919,35 @@ def benchmark_calibrate_plan(market: str | None = None) -> dict[str, Any]:
     return get_calibration_plan(market=market)
 
 
+@app.get("/api/benchmark/llm-settings")
+def benchmark_llm_settings() -> dict[str, Any]:
+    return get_llm_settings_snapshot()
+
+
+@app.post("/api/benchmark/calibrate/start")
+def benchmark_calibrate_start(body: CalibrationRequest | None = None) -> dict[str, Any]:
+    body = body or CalibrationRequest()
+    return start_calibration_job(market=body.market, model=body.model)
+
+
+@app.post("/api/benchmark/calibrate/cancel")
+def benchmark_calibrate_cancel(body: CalibrationRequest | None = None) -> dict[str, Any]:
+    body = body or CalibrationRequest()
+    return cancel_calibration_job(market=body.market)
+
+
+@app.get("/api/benchmark/calibrate/status")
+def benchmark_calibrate_status(market: str | None = None) -> dict[str, Any]:
+    if market:
+        return get_calibration_job_status(market=market)
+    return list_calibration_jobs_status()
+
+
+@app.get("/api/ollama/models")
+def ollama_models() -> dict[str, Any]:
+    return list_ollama_models()
+
+
 @app.post("/api/benchmark/calibrate")
 def benchmark_calibrate(body: CalibrationRequest | None = None) -> dict[str, Any]:
     body = body or CalibrationRequest()
@@ -893,9 +975,9 @@ def benchmark_calibrate_finalize(body: CalibrationRequest | None = None) -> dict
 
 
 @app.get("/api/benchmark/calibrate/last-snapshot")
-def benchmark_calibrate_last_snapshot() -> dict[str, Any]:
-    snap = get_calibration_snapshot()
-    return snap or {"status": "empty"}
+def benchmark_calibrate_last_snapshot(market: str | None = None) -> dict[str, Any]:
+    snap = get_calibration_snapshot(market=market)
+    return snap or {"status": "empty", "market": market or "crypto"}
 
 
 @app.post("/api/benchmark/snapshot")
@@ -1004,8 +1086,10 @@ def system_host_status() -> dict[str, Any]:
 
 
 @app.get("/api/system/activity-feed")
-def system_activity_feed(limit: int = 60, days: int = 3) -> dict[str, Any]:
-    return get_activity_feed(limit=limit, days=days)
+def system_activity_feed(limit: int = 40, days: int = 3) -> dict[str, Any]:
+    """Read-only feed for UI; does not delete trade_events or system_activity rows."""
+    capped = max(1, min(int(limit), 40))
+    return get_activity_feed(limit=capped, days=days)
 
 
 @app.get("/api/wiki/toc")
@@ -1105,12 +1189,23 @@ def automation_control() -> dict[str, Any]:
     return get_automation_control_state()
 
 
+@app.get("/api/automation/control/{market}")
+def automation_control_market(market: str) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return get_market_control_state(market)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/n8n/workflows/{workflow_id}/activate")
 def n8n_activate(
     workflow_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
         w = activate_workflow(workflow_id)
         return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
@@ -1121,9 +1216,10 @@ def n8n_activate(
 @app.post("/api/n8n/workflows/{workflow_id}/deactivate")
 def n8n_deactivate(
     workflow_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
         w = deactivate_workflow(workflow_id)
         return {"status": "ok", "workflow": {"id": w.get("id"), "name": w.get("name"), "active": w.get("active")}}
@@ -1135,9 +1231,10 @@ def n8n_deactivate(
 def n8n_set_cron(
     workflow_id: str,
     body: N8nCronRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
         w = set_workflow_cron(
             workflow_id,
@@ -1168,9 +1265,10 @@ def news_sources() -> list[dict[str, Any]]:
 @app.post("/api/admin/services/restart-plan")
 def admin_restart_plan(
     body: dict[str, Any] | None = None,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     services = (body or {}).get("services")
     return services_restart_plan(services)
 
@@ -1190,21 +1288,25 @@ def stats_digest_endpoint(days: int = 7) -> dict[str, Any]:
 @app.post("/api/admin/kill-switch")
 def admin_kill_switch(
     body: KillSwitchRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     return apply_kill_switch(enabled=body.enabled, operator=body.operator, source=body.source)
 
 
 @app.post("/api/admin/trading-mode")
 def admin_trading_mode(
     body: TradingModeRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
+        if body.mode in ("demo", "live"):
+            return apply_operation_mode(body.mode, operator=body.operator)
         return apply_trading_mode(
-            body.mode,
+            normalize_trading_mode(body.mode),
             operator=body.operator,
             apply_workflows=body.apply_workflows,
         )
@@ -1214,19 +1316,60 @@ def admin_trading_mode(
 
 @app.post("/api/admin/trading-mode/reset")
 def admin_trading_mode_reset(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     return clear_trading_mode(operator="web:operator")
+
+
+@app.post("/api/admin/markets/{market}/mode")
+def admin_market_mode(
+    market: str,
+    body: MarketModeRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(
+        password=body.password or x_operator_password,
+        admin_key=x_admin_key,
+    )
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return apply_market_operation_mode(
+            market,
+            body.mode,
+            operator=body.operator,
+            apply_workflows=body.apply_workflows,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/markets/{market}/mode/reset")
+def admin_market_mode_reset(
+    market: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return clear_market_mode(market, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/admin/workflows/{workflow_name}/toggle")
 def admin_workflow_toggle(
     workflow_name: str,
     body: WorkflowToggleRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     try:
         return toggle_workflow_by_name(
             workflow_name,
@@ -1238,17 +1381,21 @@ def admin_workflow_toggle(
 
 
 @app.post("/api/admin/smoke-test")
-def admin_smoke_test(x_admin_key: str | None = Header(None, alias="X-Admin-Key")) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+def admin_smoke_test(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     return run_smoke_test()
 
 
 @app.post("/api/admin/confirmations")
 def admin_create_confirmation(
     body: ConfirmationRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     return create_confirmation(
         action_type=body.action_type,
         title=body.title,
@@ -1267,9 +1414,10 @@ def admin_pending_confirmations() -> list[dict[str, Any]]:
 def admin_resolve_confirmation(
     conf_id: str,
     body: ConfirmationResolveRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     return resolve_confirmation(conf_id, decision=body.decision, operator=body.operator)
 
 
@@ -1285,8 +1433,11 @@ def telegram_proxy_status() -> dict[str, Any]:
 
 
 @app.post("/api/admin/telegram/proxy/reprobe")
-def telegram_proxy_reprobe(x_admin_key: str | None = Header(None, alias="X-Admin-Key")) -> dict[str, Any]:
-    _check_admin_key(x_admin_key)
+def telegram_proxy_reprobe(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or None
     proxy = select_working_proxy(force=True, bot_token=token)
     return {"proxy": proxy, **proxy_status(bot_token=token)}

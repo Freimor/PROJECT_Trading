@@ -14,6 +14,7 @@ from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snaps
 from config_loader import load_config, wiki_root
 from strategy_service import get_active_strategy_id, get_strategy_state
 from db.connection import get_connection
+from automation_control_service import operation_mode_detail, trading_mode_to_operation
 from effective_config import get_config_effective, get_guardrails
 from evaluation.replay import evaluation_metrics
 from testing_service import get_tinvest_sandbox_dashboard
@@ -223,8 +224,8 @@ def get_host_status() -> dict[str, Any]:
 
 
 def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
-    crypto_cfg = load_config("crypto_config")
-    sec_cfg = load_config("securities_config")
+    crypto_cfg = get_config_effective("crypto_config")
+    sec_cfg = get_config_effective("securities_config")
     guardrails = get_guardrails()
     trading = guardrails.get("trading", {})
     digest = stats_digest(days=days)
@@ -234,13 +235,24 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     crypto_strategy = get_strategy_state("crypto")
     sec_strategy = get_strategy_state("securities")
 
+    trading_mode = trading.get("mode", "dry_run")
+    crypto_mode = str(crypto_cfg.get("mode", "dry_run"))
+    sec_mode = str(sec_cfg.get("mode", "dry_run"))
     return {
         "kill_switch": bool(trading.get("kill_switch")),
-        "trading_mode": trading.get("mode", "dry_run"),
+        "trading_mode": trading_mode,
+        "operation_mode": trading_mode_to_operation(str(trading_mode))
+        if str(trading_mode) != "mixed"
+        else "mixed",
+        "operation_detail": operation_mode_detail(str(trading_mode))
+        if str(trading_mode) != "mixed"
+        else "mixed",
         "live_flag": os.environ.get("LIVE_TRADING_ENABLED", "false").lower() == "true",
         "crypto": {
             "env": crypto_cfg.get("env"),
             "mode": crypto_cfg.get("mode"),
+            "operation_mode": trading_mode_to_operation(crypto_mode),
+            "operation_detail": operation_mode_detail(crypto_mode),
             "pairs": crypto_cfg.get("pairs", []),
             "active_strategy": crypto_strategy["active"],
             "strategy_label": crypto_strategy["strategy"].get("label"),
@@ -250,6 +262,8 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
         "securities": {
             "env": sec_cfg.get("env"),
             "mode": sec_cfg.get("mode"),
+            "operation_mode": trading_mode_to_operation(sec_mode),
+            "operation_detail": operation_mode_detail(sec_mode),
             "active_mode": sec_strategy["active"],
             "strategy_label": sec_strategy["strategy"].get("label"),
             "workflows": [s.get("workflow") for s in sec_strategy["strategies"]],

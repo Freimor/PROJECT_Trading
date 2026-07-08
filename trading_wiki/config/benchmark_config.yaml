@@ -48,6 +48,8 @@ calibration:
   outcome_days: 30
   min_outcome_cases: 5
   recall_floor: 0.0
+  llm_timeout_ms: 180000      # 3 мин на вызов при калибровке (production: 15 мин)
+  stall_after_ms: 1200000     # авто-сброс если нет прогресса 20 мин
   weights:
     historical: 0.40
     synthetic_train: 0.20
