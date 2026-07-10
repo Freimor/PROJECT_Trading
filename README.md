@@ -107,6 +107,35 @@ docker exec -it trading-ollama ollama pull llama3.2
 
 **Этапы 1–8 реализованы** — [`roadmap`](./n8n_automation/docs/roadmap.md) · [`live checklist`](./n8n_automation/docs/live_promotion.md)
 
+### Ollama и GPU
+
+Контейнер `trading-ollama` по умолчанию работает **на CPU** (`size_vram: 0` в `GET /api/ps`). Для scalp и частых вызовов LLM нужна видеокарта NVIDIA.
+
+**Windows (Docker Desktop + WSL2):**
+
+1. Установите [драйвер NVIDIA](https://www.nvidia.com/Download/index.aspx) с поддержкой WSL2.
+2. Docker Desktop → **Settings → General** → Use the WSL 2 based engine.
+3. Docker Desktop → **Settings → Resources → WSL Integration** → включите дистрибутив Linux.
+4. При наличии пункта **GPU** в Resources — включите его (Docker Desktop 4.19+).
+5. Перезапуск с GPU:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d ollama
+```
+
+**Проверка:**
+
+```powershell
+docker exec trading-ollama nvidia-smi
+curl -s http://localhost:11434/api/ps
+```
+
+После загрузки модели **`size_vram` > 0** — модель в VRAM.
+
+**Без GPU в Docker:** установите [Ollama на Windows](https://ollama.com) — часто сам использует GPU. В `.env` для сервисов: `OLLAMA_HOST=http://host.docker.internal:11434` (контейнер `ollama` можно не поднимать).
+
+**Таймаут scalp:** если LLM не уложился в `timeout_ms` (`crypto_scalp_hybrid.yaml`, сейчас 25 с) — сигнал **отклоняется** (`ollama_timeout`, fail-closed).
+
 ### Paper-тестирование (виртуальные сделки)
 
 Режим **`paper`**: полный пайплайн signal → filter → LLM → guardrails → risk → **ордер** на Binance testnet и T-Invest sandbox.

@@ -40,6 +40,17 @@ _UNIVERSE_SIBLING_WORKFLOWS: dict[str, list[str]] = {
     "securities-swing-paper": ["securities-swing-dry-run"],
 }
 
+# Event/runtime aliases → registry workflow (for guardrails + universe lookup).
+WORKFLOW_UNIVERSE_ALIASES: dict[str, str] = {
+    "crypto-scalp-auto": "crypto-scalp-hybrid-paper",
+    "crypto-paper-auto": "crypto-signal-paper",
+}
+
+
+def resolve_workflow_for_universe(workflow: str) -> str:
+    w = str(workflow or "").strip()
+    return WORKFLOW_UNIVERSE_ALIASES.get(w, w)
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -117,6 +128,28 @@ def _normalize_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def universe_change_blocked_reason(workflow: str) -> str | None:
+    """Block quote-list edits while the market's primary automation workflow is running."""
+    market = workflow_market(workflow)
+    if market == "shared":
+        return None
+    try:
+        from automation_control_service import get_active_market_workflow
+
+        active = get_active_market_workflow(market)
+    except Exception:
+        active = None
+    if active:
+        return "workflow_active"
+    return None
+
+
+def _ensure_universe_mutable(workflow: str) -> None:
+    block = universe_change_blocked_reason(workflow)
+    if block:
+        raise ValueError(f"universe_change_blocked:{block}")
+
+
 def get_workflow_universe(workflow: str) -> dict[str, Any]:
     workflow_market(workflow)
     stored = get_runtime_value(_runtime_key(workflow))
@@ -128,6 +161,15 @@ def get_workflow_universe(workflow: str) -> dict[str, Any]:
         runtime_override = False
 
     enabled = [i["symbol"] for i in items if i.get("enabled")]
+    block = universe_change_blocked_reason(workflow)
+    active_workflow: str | None = None
+    if block == "workflow_active":
+        try:
+            from automation_control_service import get_active_market_workflow
+
+            active_workflow = get_active_market_workflow(workflow_market(workflow))
+        except Exception:
+            active_workflow = None
     return {
         "workflow": workflow,
         "market": workflow_market(workflow),
@@ -135,11 +177,15 @@ def get_workflow_universe(workflow: str) -> dict[str, Any]:
         "items": items,
         "enabled_symbols": enabled,
         "updated_at": (stored or {}).get("updated_at") if isinstance(stored, dict) else None,
+        "can_change": block is None,
+        "change_blocked_reason": block,
+        "active_workflow": active_workflow,
     }
 
 
 def enabled_symbols_for_workflow(workflow: str) -> list[str]:
-    return list(get_workflow_universe(workflow).get("enabled_symbols", []))
+    canonical = resolve_workflow_for_universe(workflow)
+    return list(get_workflow_universe(canonical).get("enabled_symbols", []))
 
 
 def all_enabled_symbols() -> list[str]:
@@ -178,6 +224,7 @@ def save_workflow_universe(
     operator: str = "web",
 ) -> dict[str, Any]:
     workflow_market(workflow)
+    _ensure_universe_mutable(workflow)
     normalized = _normalize_items(items)
     payload = {
         "workflow": workflow,
@@ -292,6 +339,7 @@ def apply_llm_universe_suggestion(
 
 
 def reset_workflow_universe(workflow: str, *, operator: str = "web") -> dict[str, Any]:
+    _ensure_universe_mutable(workflow)
     from runtime_settings import delete_runtime_value
 
     delete_runtime_value(_runtime_key(workflow))

@@ -22,6 +22,9 @@ def _cfg() -> dict[str, Any]:
 
 def _sample_llm_latency(model: str, *, runs: int = 2) -> dict[str, Any]:
     """Measure validate_signal latency (real pipeline path)."""
+    cfg = _cfg()
+    bench_timeout = int(cfg.get("benchmark_llm_timeout_ms", 180_000))
+    bench_tokens = int(cfg.get("benchmark_max_tokens", 768))
     latencies: list[int] = []
     errors: list[str] = []
     dummy_indicators = {
@@ -50,6 +53,8 @@ def _sample_llm_latency(model: str, *, runs: int = 2) -> dict[str, Any]:
                 news_summary="Benchmark host capability probe.",
                 timeframe="4h",
                 model=model,
+                timeout_ms=bench_timeout,
+                max_tokens=bench_tokens,
             )
             ms = int((time.perf_counter() - start) * 1000)
             latencies.append(ms)

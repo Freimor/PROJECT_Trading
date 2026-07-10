@@ -1,0 +1,115 @@
+/* React Aria Components — tooltips, selects, buttons */
+
+.react-aria-Tooltip {
+  z-index: 1000;
+}
+
+.ui-tooltip {
+  max-width: 280px;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  background: #1e2a3d;
+  border: 1px solid #3d5270;
+  color: #e7ecf3;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  outline: none;
+}
+
+.ui-tooltip[data-entering] {
+  animation: tooltip-in 120ms ease-out;
+}
+
+.ui-tooltip[data-exiting] {
+  animation: tooltip-out 100ms ease-in;
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tooltip-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.react-aria-Button.icon-btn,
+.react-aria-Button.topbar-btn,
+.react-aria-Button.lang-picker-trigger {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #1a2332;
+  color: inherit;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  font: inherit;
+}
+
+.react-aria-Button.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.react-aria-Button.topbar-btn:hover,
+.react-aria-Button.icon-btn:hover,
+.react-aria-Button.lang-picker-trigger:hover {
+  background: #243044;
+}
+
+.react-aria-Button.topbar-btn.primary {
+  border-color: #2e5a8b;
+  background: #152a3a;
+}
+
+.react-aria-Button.topbar-btn.active {
+  border-color: #3d6fa8;
+  background: var(--accent);
+}
+
+.lang-picker {
+  position: relative;
+}
+
+.lang-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 7rem;
+}
+
+.lang-picker-popover {
+  min-width: 9rem;
+  margin-top: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 8px;
+  background: #1a2332;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.lang-picker-popover .react-aria-ListBoxItem {
+  padding: 0.45rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+}
+
+.lang-picker-popover .react-aria-ListBoxItem[data-focused] {
+  background: #243044;
+}
+
+.lang-picker-popover .react-aria-ListBoxItem[data-selected] {
+  background: var(--accent);
+}
+
+@media (min-width: 901px) {
+  .topbar-start .icon-btn {
+    display: none;
+  }
+}

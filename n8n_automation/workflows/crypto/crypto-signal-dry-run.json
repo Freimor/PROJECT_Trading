@@ -27,7 +27,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const pairs = $input.first().json;\nconst list = Array.isArray(pairs) ? pairs : [];\nreturn list.map(symbol => ({ json: { symbol, env: 'dry_run' } }));"
+        "jsCode": "const items = $input.all();\nlet symbols = [];\nif (items.length === 0) return [];\nconst first = items[0].json;\nif (Array.isArray(first)) {\n  symbols = first;\n} else if (first && Array.isArray(first.pairs)) {\n  symbols = first.pairs;\n} else {\n  symbols = items\n    .map((item) => {\n      const j = item.json;\n      if (typeof j === 'string') return j;\n      if (j && typeof j.symbol === 'string') return j.symbol;\n      return null;\n    })\n    .filter((s) => s);\n}\nreturn [...new Set(symbols)].map((symbol) => ({ json: { symbol, env: 'dry_run' } }));"
       },
       "id": "c1010001-0001-4000-8000-000000000003",
       "name": "Split Pairs",

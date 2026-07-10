@@ -43,6 +43,7 @@ retail_guard:
 
 on_chain:
   enabled: true
+  mode: moderate   # swing 4h: блок только при сильном медвежьем hash ribbon
 
 dca:
   symbol: BTCUSDT

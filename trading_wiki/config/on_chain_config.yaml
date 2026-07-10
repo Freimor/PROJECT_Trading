@@ -1,9 +1,25 @@
 # On-chain macro context (hash ribbons, activity)
 # Reference: https://doi.org/10.1016/j.chaos.2023.114305
+#
+# Per-strategy mode is set in crypto_config.yaml (swing) and crypto_scalp_hybrid.yaml (scalp):
+#   off       — не запрашивать on-chain
+#   advisory  — только контекст в логах, не блокирует (scalp 5m)
+#   moderate  — блок только при сильном медвежьем разрыве MA (swing 4h)
+#   strict    — блок при любом медвежьем hash ribbon (legacy)
 
-version: "1.0.0"
+version: "1.1.0"
 enabled: true
 timespan: "1year"
 hash_rate_ma_short: 30
 hash_rate_ma_long: 60
+
+# Разрыв MA short vs long (%): нейтральная зона снижает ложные срабатывания
+neutral_ma_gap_pct: 1.0
+strong_bearish_ma_gap_pct: 2.5
+
+# Глобальный override (устаревает в пользу mode per strategy)
 allow_long_in_bearish: false
+
+strategy_defaults:
+  swing_4h: moderate
+  scalp_5m: advisory

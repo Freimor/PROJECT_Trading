@@ -1,12 +1,15 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
+import AppSidebar from "../components/AppSidebar";
+import AppTopBar from "../components/AppTopBar";
 import ErrorBanner from "../components/ErrorBanner";
 import StatusBar from "../components/StatusBar";
 import SystemActivityFeed from "../components/SystemActivityFeed";
 import { POLL } from "../config/polling";
 import { usePolling } from "../hooks/usePolling";
 import { apiGet } from "../api";
-import { useI18n, type Lang } from "../i18n/LanguageContext";
+import { useI18n } from "../i18n/LanguageContext";
+import AriaProviders from "../ui/AriaProviders";
 import type { AutomationOverview } from "../types";
 
 export type AdminLayoutContext = {
@@ -14,8 +17,15 @@ export type AdminLayoutContext = {
   refresh: () => void;
 };
 
+const FEED_PREF_KEY = "consoleFeedOpen";
+
 export default function AdminLayout() {
-  const { t, lang, setLang } = useI18n();
+  const { t } = useI18n();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(
+    () => localStorage.getItem(FEED_PREF_KEY) !== "false",
+  );
+
   const fetchOverview = useCallback(() => apiGet<AutomationOverview>("/api/automation/overview?days=7"), []);
   const { data: overview, refresh } = usePolling<AutomationOverview>(
     fetchOverview,
@@ -27,78 +37,48 @@ export default function AdminLayout() {
     },
   );
 
-  const navClass = ({ isActive }: { isActive: boolean }) =>
-    isActive ? "nav-link active" : "nav-link";
+  const toggleFeed = () => {
+    setFeedOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(FEED_PREF_KEY, String(next));
+      return next;
+    });
+  };
+
+  const location = useLocation();
+  const isWorkspace = /^\/(crypto|moex)(\/|$)/.test(location.pathname);
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1>{t("header.title")}</h1>
-          <p className="muted">{t("header.subtitle")}</p>
+    <AriaProviders>
+      <div className="app-shell-v2">
+        <AppSidebar
+          mobileOpen={mobileNavOpen}
+          onCloseMobile={() => setMobileNavOpen(false)}
+        />
+
+        <div className="app-main-column">
+          <AppTopBar
+            onRefresh={refresh}
+            onToggleNav={() => setMobileNavOpen((v) => !v)}
+            onToggleFeed={toggleFeed}
+            feedOpen={feedOpen}
+          />
+
+          <ErrorBanner />
+          <StatusBar overview={overview} onRefresh={refresh} />
+
+          <div
+            className={`app-body-v2${feedOpen ? "" : " feed-collapsed"}${isWorkspace ? " workspace-route" : ""}`}
+          >
+            <main className={`app-content${isWorkspace ? " content-workspace" : ""}`}>
+              <Outlet context={{ overview, refresh } satisfies AdminLayoutContext} />
+            </main>
+            {feedOpen ? <SystemActivityFeed /> : null}
+          </div>
+
+          <footer className="app-footer muted">{t("footer.disclaimer")}</footer>
         </div>
-        <div className="header-actions">
-          <label className="lang-select">
-            <span className="muted small">{t("header.language")}</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
-              <option value="ru">{t("lang.ru")}</option>
-              <option value="en">{t("lang.en")}</option>
-            </select>
-          </label>
-          <button type="button" onClick={refresh}>
-            {t("header.refresh")}
-          </button>
-        </div>
-      </header>
-
-      <ErrorBanner />
-
-      <StatusBar overview={overview} onRefresh={refresh} />
-
-      <nav className="main-nav">
-        <NavLink to="/" end className={navClass}>
-          {t("nav.overview")}
-        </NavLink>
-        <NavLink to="/crypto" className={navClass}>
-          {t("nav.crypto")}
-        </NavLink>
-        <NavLink to="/moex" className={navClass}>
-          {t("nav.moex")}
-        </NavLink>
-        <NavLink to="/news" className={navClass}>
-          {t("nav.news")}
-        </NavLink>
-        <NavLink to="/events" className={navClass}>
-          {t("nav.events")}
-        </NavLink>
-        <NavLink to="/llm" className={navClass}>
-          {t("nav.llm")}
-        </NavLink>
-        <NavLink to="/paper" className={navClass}>
-          {t("nav.paper")}
-        </NavLink>
-        <NavLink to="/benchmark" className={navClass}>
-          {t("nav.benchmark")}
-        </NavLink>
-        <NavLink to="/research" className={navClass}>
-          {t("nav.research")}
-        </NavLink>
-        <NavLink to="/workflows" className={navClass}>
-          {t("nav.workflows")}
-        </NavLink>
-        <NavLink to="/control" className={navClass}>
-          {t("nav.control")}
-        </NavLink>
-      </nav>
-
-      <main className="app-body">
-        <div className="app-main">
-          <Outlet context={{ overview, refresh } satisfies AdminLayoutContext} />
-        </div>
-        <SystemActivityFeed />
-      </main>
-
-      <footer className="app-footer muted">{t("footer.disclaimer")}</footer>
-    </div>
+      </div>
+    </AriaProviders>
   );
 }

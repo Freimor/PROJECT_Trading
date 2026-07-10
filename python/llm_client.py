@@ -84,6 +84,29 @@ def reset_ollama_cache(model: str | None = None) -> dict[str, Any]:
         return {"status": "error", "model": model, "message": str(exc), "action": "unload"}
 
 
+def unload_all_ollama_models() -> dict[str, Any]:
+    """Free Ollama RAM — unload every currently loaded model."""
+    unloaded: list[str] = []
+    errors: list[str] = []
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.get(f"{ollama_host()}/api/ps")
+        if resp.status_code != 200:
+            return {"status": "error", "message": resp.text[:200], "unloaded": unloaded}
+        for item in resp.json().get("models") or []:
+            name = str(item.get("name") or item.get("model") or "").strip()
+            if not name:
+                continue
+            result = reset_ollama_cache(name)
+            if result.get("status") == "ok":
+                unloaded.append(name)
+            else:
+                errors.append(f"{name}: {result.get('message') or result.get('http_status')}")
+    except Exception as exc:
+        return {"status": "error", "message": str(exc), "unloaded": unloaded, "errors": errors}
+    return {"status": "ok", "unloaded": unloaded, "errors": errors}
+
+
 def _qwen35_disable_thinking(model: str) -> bool:
     """Qwen 3.5 thinking mode adds latency and can break JSON format."""
     name = model.lower().replace("_", ".")
@@ -102,6 +125,7 @@ def validate_signal(
     temperature: float | None = None,
     max_tokens: int | None = None,
     timeout_ms: int | None = None,
+    keep_alive: int | str | None = None,
 ) -> dict[str, Any]:
     llm_cfg = get_market_llm_config(market)
     model = _resolved_model(market, model)
@@ -152,6 +176,8 @@ def validate_signal(
     }
     if _qwen35_disable_thinking(model):
         payload["think"] = False
+    if keep_alive is not None:
+        payload["keep_alive"] = keep_alive
 
     start = time.perf_counter()
     try:

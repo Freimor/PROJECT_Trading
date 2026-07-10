@@ -59,7 +59,22 @@ export { OperatorPasswordError, formatOperatorFacingError, isOperatorPasswordErr
 async function parseResponse<T>(res: Response, path: string): Promise<T> {
   const text = await res.text();
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) {
+    let detail = "";
+    try {
+      const parsed = JSON.parse(text) as { detail?: unknown };
+      if (typeof parsed.detail === "string") {
+        detail = parsed.detail;
+      }
+    } catch {
+      /* non-JSON error body */
+    }
+    const detailLower = detail.toLowerCase();
+    if (
+      res.status === 401 ||
+      res.status === 403 ||
+      detailLower.includes("invalid operator password") ||
+      detailLower.includes("operator_password_invalid")
+    ) {
       throw new OperatorPasswordError();
     }
     throw new Error(`HTTP ${res.status} (${path}): ${text.slice(0, 200)}`);

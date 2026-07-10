@@ -28,7 +28,8 @@ prompt_version: crypto_scalp_validate_v1
 llm:
   temperature: 0.05
   min_confidence: 0.65
-  timeout_ms: 120000
+  max_tokens: 256          # короткий JSON; без этого берётся guardrails.max_tokens=4096
+  timeout_ms: 25000        # 5m scalp: превышение → reject (ollama_timeout), fail-closed
 
 # Микро-правила 5m (до ambiguity)
 scalp_rules:
@@ -50,10 +51,11 @@ retail_guard:
 
 on_chain:
   enabled: true
+  mode: advisory   # scalp 5m: макро-контекст в логах, без блокировки сделок
 
 paper:
   workflow_name: crypto-scalp-hybrid-paper
-  auto_workflow_name: crypto-scalp-auto
+  auto_workflow_name: crypto-scalp-auto   # legacy alias в событиях; guardrails → workflow_name
 
 dry_run:
   workflow_name: crypto-scalp-hybrid-dry-run

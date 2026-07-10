@@ -63,7 +63,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const tickers = $input.first().json;\nconst list = Array.isArray(tickers) ? tickers : [];\nreturn list.map(ticker => ({ json: { ticker } }));"
+        "jsCode": "const items = $input.all();\nlet tickers = [];\nif (items.length === 0) return [];\nconst first = items[0].json;\nif (Array.isArray(first)) {\n  tickers = first;\n} else if (first && Array.isArray(first.tickers)) {\n  tickers = first.tickers;\n} else {\n  tickers = items\n    .map((item) => {\n      const j = item.json;\n      if (typeof j === 'string') return j;\n      if (j && typeof j.ticker === 'string') return j.ticker;\n      return null;\n    })\n    .filter((s) => s);\n}\nreturn [...new Set(tickers)].map((ticker) => ({ json: { ticker } }));"
       },
       "id": "s7020001-0001-4000-8000-000000000005",
       "name": "Split Tickers",

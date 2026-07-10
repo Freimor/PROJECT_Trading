@@ -37,6 +37,15 @@ entities:
   CRYPTO:
     market: crypto
     aliases: [криптовалют, crypto, bitcoin, ethereum, блокчейн]
+  DOGE:
+    market: crypto
+    aliases: [Dogecoin, DOGE, догикоин, DOGEUSDT]
+  SOL:
+    market: crypto
+    aliases: [Solana, SOL, солана, SOLUSDT]
+  BNB:
+    market: crypto
+    aliases: [BNB, Binance Coin, BNBUSDT]
 
   # Smart-Lab частые упоминания
   DIVIDEND:

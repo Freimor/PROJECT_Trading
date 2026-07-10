@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/LanguageContext";
-
+import ModalPortal from "../ui/ModalPortal";
 type Mode = "demo" | "live";
 
 type Props = {
@@ -51,51 +51,53 @@ export default function ModeChangeConfirmModal({
     targetMode === "live" ? "workspace.modeRiskLive" : "workspace.modeRiskDemo";
 
   return (
-    <div className="modal-overlay" role="presentation" onClick={onCancel}>
-      <div
-        className="modal-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="mode-change-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 id="mode-change-title">{t("workspace.modeModalTitle")}</h3>
-        <p className="modal-lead">
-          {t("workspace.modeModalQuestion", { market: marketTitle, mode: modeLabel })}
-        </p>
-        <p className={`modal-risk ${targetMode === "live" ? "danger-text" : "warn-text"}`}>
-          {t(riskKey)}
-        </p>
-        <label className="modal-field">
-          <span>{t("workspace.modeModalPassword")}</span>
-          <input
-            ref={inputRef}
-            type="password"
-            className="input"
-            value={password}
-            autoComplete="current-password"
-            disabled={busy}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && password.trim()) onConfirm(password);
-            }}
-          />
-        </label>
-        {error ? <p className="modal-error">{error}</p> : null}
-        <div className="modal-actions">
-          <button type="button" disabled={busy} onClick={onCancel}>
-            {t("workspace.modeModalCancel")}
-          </button>
-          <button
-            type="button"
-            className={targetMode === "live" ? "primary danger" : "primary"}
-            disabled={busy || !password.trim()}
-            onClick={() => onConfirm(password)}
-          >
-            {busy ? t("common.loading") : t("workspace.modeModalConfirm")}
-          </button>
+    <ModalPortal>
+      <div className="modal-overlay" role="presentation" onClick={onCancel}>
+        <div
+          className="modal-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mode-change-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h3 id="mode-change-title">{t("workspace.modeModalTitle")}</h3>
+          <p className="modal-lead">
+            {t("workspace.modeModalQuestion", { market: marketTitle, mode: modeLabel })}
+          </p>
+          <p className={`modal-risk ${targetMode === "live" ? "danger-text" : "warn-text"}`}>
+            {t(riskKey)}
+          </p>
+          <label className="modal-field">
+            <span>{t("workspace.modeModalPassword")}</span>
+            <input
+              ref={inputRef}
+              type="password"
+              className="input"
+              value={password}
+              autoComplete="current-password"
+              disabled={busy}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && password.trim()) onConfirm(password);
+              }}
+            />
+          </label>
+          {error ? <p className="modal-error">{error}</p> : null}
+          <div className="modal-actions">
+            <button type="button" disabled={busy} onClick={onCancel}>
+              {t("workspace.modeModalCancel")}
+            </button>
+            <button
+              type="button"
+              className={targetMode === "live" ? "primary danger" : "primary"}
+              disabled={busy || !password.trim()}
+              onClick={() => onConfirm(password)}
+            >
+              {busy ? t("common.loading") : t("workspace.modeModalConfirm")}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalPortal>
   );
 }

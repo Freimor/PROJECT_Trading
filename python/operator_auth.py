@@ -44,6 +44,11 @@ def decode_operator_credential(value: str | None) -> str | None:
     return text
 
 
+def _safe_compare(a: str, b: str) -> bool:
+    """Constant-time compare for Unicode credentials (str compare_digest is ASCII-only)."""
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
 def verify_operator_auth(
     *,
     password: str | None = None,
@@ -57,10 +62,10 @@ def verify_operator_auth(
 
     password = decode_operator_credential(password)
 
-    if expected_admin and admin_key and hmac.compare_digest(admin_key.strip(), expected_admin):
+    if expected_admin and admin_key and _safe_compare(admin_key.strip(), expected_admin):
         return True
 
-    if expected_pwd and password and hmac.compare_digest(password, expected_pwd):
+    if expected_pwd and password and _safe_compare(password, expected_pwd):
         return True
 
     return False

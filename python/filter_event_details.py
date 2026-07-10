@@ -13,9 +13,9 @@ _RULE_LABELS = {
 }
 
 
-def filter_log_payload(filtered: dict[str, Any]) -> dict[str, Any]:
+def filter_log_payload(filtered: dict[str, Any], *, context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Structured payload to store on filter stage events."""
-    return {
+    payload: dict[str, Any] = {
         "filter_thresholds": filtered.get("filter_thresholds"),
         "filter_checks": filtered.get("filter_checks"),
         "rule_name": filtered.get("rule_name"),
@@ -29,6 +29,16 @@ def filter_log_payload(filtered: dict[str, Any]) -> dict[str, Any]:
             "ema200": filtered.get("ema200"),
         },
     }
+    if context:
+        for key in (
+            "active_swing_profile_id",
+            "active_risk_profile_id",
+            "llm_min_confidence",
+            "workflow_name",
+        ):
+            if context.get(key) is not None:
+                payload[key] = context[key]
+    return payload
 
 
 def _parse_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -147,6 +157,15 @@ def summarize_filter_detail(row: dict[str, Any]) -> str:
             lines.append(f"{label}: {check.get('detail') or 'не выполнено'}")
 
     lines.append(f"Пороги фильтра: RSI перепродан < {oversold}, перекуплен > {overbought}")
+    swing_profile = payload.get("active_swing_profile_id")
+    risk_profile = payload.get("active_risk_profile_id")
+    if swing_profile or risk_profile:
+        parts = []
+        if swing_profile:
+            parts.append(f"swing={swing_profile}")
+        if risk_profile:
+            parts.append(f"risk={risk_profile}")
+        lines.append(f"Пресеты: {', '.join(parts)}")
     return "\n".join(lines)
 
 

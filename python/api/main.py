@@ -540,7 +540,7 @@ def _check_operator_auth(
     admin_key: str | None = None,
 ) -> None:
     if not verify_operator_auth(password=password, admin_key=admin_key):
-        raise HTTPException(status_code=401, detail="invalid operator password")
+        raise HTTPException(status_code=401, detail="OPERATOR_PASSWORD_INVALID")
 
 
 @app.get("/api/auth/operator")
@@ -648,9 +648,11 @@ def log_trade_event(body: TradeEventRequest) -> dict[str, str]:
 def list_trade_events(
     market: str | None = None,
     stage: str | None = None,
+    stages: str | None = None,
     env: str | None = None,
     decision: str | None = None,
     symbol: str | None = None,
+    days: int | None = None,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     conn = get_connection()
@@ -660,7 +662,13 @@ def list_trade_events(
         if market:
             query += " AND market = ?"
             params.append(market)
-        if stage:
+        if stages:
+            stage_list = [s.strip() for s in stages.split(",") if s.strip()]
+            if stage_list:
+                placeholders = ",".join("?" * len(stage_list))
+                query += f" AND stage IN ({placeholders})"
+                params.extend(stage_list)
+        elif stage:
             query += " AND stage = ?"
             params.append(stage)
         if env:
@@ -672,6 +680,12 @@ def list_trade_events(
         if symbol:
             query += " AND UPPER(COALESCE(symbol, '')) = ?"
             params.append(symbol.upper())
+        if days is not None and days > 0:
+            query += (
+                " AND datetime(REPLACE(SUBSTR(event_at, 1, 19), 'T', ' ')) "
+                ">= datetime('now', ?)"
+            )
+            params.append(f"-{int(days)} days")
         query += " ORDER BY event_at DESC LIMIT ?"
         params.append(limit)
         rows = [dict(row) for row in conn.execute(query, params).fetchall()]
@@ -1094,7 +1108,9 @@ def workflow_universe_get(workflow_name: str) -> dict[str, Any]:
     try:
         return {"status": "ok", **get_workflow_universe(workflow_name)}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        code = 400 if msg.startswith("universe_change_blocked:") else 404
+        raise HTTPException(status_code=code, detail=msg) from exc
 
 
 @app.put("/api/workflows/{workflow_name}/universe")
@@ -1103,7 +1119,9 @@ def workflow_universe_put(workflow_name: str, body: WorkflowUniverseSaveRequest)
         saved = save_workflow_universe(workflow_name, body.items, operator=body.operator)
         return {"status": "ok", **saved}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        code = 400 if msg.startswith("universe_change_blocked:") else 404
+        raise HTTPException(status_code=code, detail=msg) from exc
 
 
 @app.post("/api/workflows/{workflow_name}/universe/add")
@@ -1117,7 +1135,9 @@ def workflow_universe_add(workflow_name: str, body: WorkflowUniverseAddRequest) 
         )
         return {"status": "ok", **saved}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        code = 400 if msg.startswith("universe_change_blocked:") else 404
+        raise HTTPException(status_code=code, detail=msg) from exc
 
 
 @app.post("/api/workflows/{workflow_name}/universe/toggle")
@@ -1155,7 +1175,9 @@ def workflow_universe_reset(workflow_name: str) -> dict[str, Any]:
         saved = reset_workflow_universe(workflow_name)
         return {"status": "ok", **saved}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        code = 400 if msg.startswith("universe_change_blocked:") else 404
+        raise HTTPException(status_code=code, detail=msg) from exc
 
 
 @app.post("/api/workflows/{workflow_name}/universe/llm-suggest")
@@ -1186,7 +1208,9 @@ def workflow_universe_llm(
             }
         return {"status": "ok", "suggestion": suggestion}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        msg = str(exc)
+        code = 400 if msg.startswith("universe_change_blocked:") else 404
+        raise HTTPException(status_code=code, detail=msg) from exc
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
 
@@ -2178,8 +2202,14 @@ def n8n_set_cron(
 
 
 @app.get("/api/news/for-symbol/{symbol}")
-def news_for_symbol(symbol: str, limit: int = 8) -> list[dict[str, Any]]:
-    return list_news_for_symbol(symbol, limit=limit)
+def news_for_symbol(
+    symbol: str,
+    limit: int = 8,
+    market: str | None = None,
+) -> list[dict[str, Any]]:
+    if market is not None and market not in ("crypto", "securities"):
+        raise HTTPException(status_code=400, detail="market must be crypto or securities")
+    return list_news_for_symbol(symbol, limit=limit, market=market)
 
 
 @app.get("/api/news/verification-stats")

@@ -298,7 +298,8 @@ def run_crypto_scalp_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = Fa
     balances = get_account_balances(testnet=True)
     usdt = next((float(b["free"]) for b in balances if b.get("asset") == "USDT"), 10000.0)
     scalp_cfg = load_config("crypto_scalp_hybrid")
-    wf = str(scalp_cfg.get("paper", {}).get("auto_workflow_name", "crypto-scalp-auto"))
+    paper_cfg = scalp_cfg.get("paper") or {}
+    wf = str(paper_cfg.get("workflow_name") or paper_cfg.get("auto_workflow_name") or "crypto-scalp-hybrid-paper")
 
     signal = run_crypto_scalp_signal(
         symbol=symbol,

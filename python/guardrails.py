@@ -10,8 +10,8 @@ from config_loader import load_config
 from effective_config import get_guardrails
 from market_llm_config import get_market_llm_config
 from risk_profile_service import apply_risk_profile_to_guardrails, get_max_open_positions
-from risk_trading_state import check_daily_loss_limit, count_open_positions
-from workflow_universe_service import enabled_symbols_for_workflow
+from risk_trading_state import check_daily_loss_limit, count_open_positions, held_trading_symbols
+from workflow_universe_service import enabled_symbols_for_workflow, resolve_workflow_for_universe
 
 
 def _moex_session_ok(guardrails: dict[str, Any]) -> bool:
@@ -32,7 +32,7 @@ def _effective_allowlist(
 ) -> list[str]:
     if workflow_name:
         try:
-            enabled = enabled_symbols_for_workflow(workflow_name)
+            enabled = enabled_symbols_for_workflow(resolve_workflow_for_universe(workflow_name))
             if enabled:
                 return [str(s).upper() for s in enabled]
         except ValueError:
@@ -43,35 +43,7 @@ def _effective_allowlist(
 
 
 def _held_position_symbols(market: str) -> set[str]:
-    if market == "crypto":
-        from binance_client import get_account_balances
-        from risk_trading_state import _STABLE_CRYPTO
-
-        testnet = load_config("crypto_config").get("env") == "testnet"
-        held: set[str] = set()
-        for bal in get_account_balances(testnet=testnet):
-            asset = str(bal.get("asset") or "").upper()
-            if asset in _STABLE_CRYPTO:
-                continue
-            qty = float(bal.get("free", 0) or 0) + float(bal.get("locked", 0) or 0)
-            if qty > 1e-8:
-                held.add(f"{asset}USDT")
-        return held
-
-    try:
-        from bridges.tinvest_bridge import get_portfolio_snapshot
-
-        sandbox = load_config("securities_config").get("env") == "sandbox"
-        moex = get_portfolio_snapshot(sandbox=sandbox)
-        if moex.get("status") != "ok":
-            return set()
-        return {
-            str(p.get("ticker") or "").upper()
-            for p in moex.get("positions") or []
-            if float(p.get("quantity", 0) or 0) > 0
-        }
-    except Exception:
-        return set()
+    return held_trading_symbols(market)
 
 
 def enforce_guardrails(

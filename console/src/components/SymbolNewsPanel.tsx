@@ -16,14 +16,16 @@ type NewsItem = {
 
 type Props = {
   symbol: string;
+  market?: "crypto" | "securities";
 };
 
-export default function SymbolNewsPanel({ symbol }: Props) {
+export default function SymbolNewsPanel({ symbol, market }: Props) {
   const { t } = useI18n();
-  const fetcher = useCallback(
-    () => apiGet<NewsItem[]>(`/api/news/for-symbol/${encodeURIComponent(symbol)}?limit=8`),
-    [symbol],
-  );
+  const fetcher = useCallback(() => {
+    const params = new URLSearchParams({ limit: "8" });
+    if (market) params.set("market", market);
+    return apiGet<NewsItem[]>(`/api/news/for-symbol/${encodeURIComponent(symbol)}?${params}`);
+  }, [symbol, market]);
   const { data, loading, error } = usePolling(fetcher, POLL.EVENTS, true, {
     staggerKey: `news-symbol-${symbol}`,
   });

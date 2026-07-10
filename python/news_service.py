@@ -14,6 +14,7 @@ from db.connection import get_connection
 from db.migrate import run_migrations
 from news_verification import (
     compute_relevance,
+    entity_market_map,
     extract_matched_symbols,
     load_sources_from_config,
     passes_llm_gate,
@@ -299,11 +300,37 @@ def news_context_as_of(
         conn.close()
 
 
+def _symbol_hits(matched: list[str], sym_norm: set[str]) -> list[str]:
+    return [
+        m
+        for m in matched
+        if m.upper().replace("USDT", "") in sym_norm or m.upper() in sym_norm
+    ]
+
+
+def _matches_workspace_market(matched: list[str], market: str | None, hit: list[str]) -> bool:
+    """Keep crypto desk news free of MOEX-only items (and vice versa)."""
+    if not market or not matched:
+        return True
+    markets = {entity_market_map().get(m.upper().replace("USDT", ""), "macro") for m in matched}
+    if market == "crypto":
+        if hit:
+            return True
+        return "crypto" in markets
+    if market == "securities":
+        if hit:
+            return True
+        return bool(markets & {"securities", "macro"})
+    return True
+
+
 def _fetch_news_for_symbols(
     symbols: list[str],
     *,
     limit: int = 8,
     llm_only: bool = False,
+    require_symbol_hit: bool = False,
+    market: str | None = None,
 ) -> list[dict[str, Any]]:
     conn = get_connection()
     try:
@@ -332,13 +359,17 @@ def _fetch_news_for_symbols(
             ):
                 continue
             matched = _parse_json_list(item.get("matched_symbols"))
-            hit = [m for m in matched if m in sym_norm or m.replace("USDT", "") in sym_norm]
+            hit = _symbol_hits(matched, sym_norm)
             rel = compute_relevance(
                 matched_symbols=matched,
                 target_symbols=list(sym_norm),
                 trust_score=float(item.get("trust_score") or 0),
                 title=item.get("title", ""),
             )
+            if require_symbol_hit and not hit:
+                continue
+            if not _matches_workspace_market(matched, market, hit):
+                continue
             if llm_only and not hit and rel < 0.4:
                 continue
             item["relevance_score"] = rel
@@ -351,9 +382,20 @@ def _fetch_news_for_symbols(
         conn.close()
 
 
-def list_news_for_symbol(symbol: str, limit: int = 8) -> list[dict[str, Any]]:
+def list_news_for_symbol(
+    symbol: str,
+    limit: int = 8,
+    *,
+    market: str | None = None,
+) -> list[dict[str, Any]]:
     sym = symbol.upper().replace("USDT", "")
-    return _fetch_news_for_symbols([sym], limit=limit, llm_only=False)
+    return _fetch_news_for_symbols(
+        [sym],
+        limit=limit,
+        llm_only=False,
+        require_symbol_hit=True,
+        market=market,
+    )
 
 
 def news_verification_stats() -> dict[str, Any]:

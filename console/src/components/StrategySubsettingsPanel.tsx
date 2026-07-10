@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost, formatOperatorFacingError, getOperatorPassword } from "../api";
+import { apiGet, apiPost, formatOperatorFacingError } from "../api";
 import OperatorConfirmModal from "./OperatorConfirmModal";
 import WorkflowUniversePanel from "./WorkflowUniversePanel";
 import { useI18n } from "../i18n/LanguageContext";
@@ -172,8 +172,8 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
         <p className="muted small">{t("strategySubsettings.riskHint")}</p>
 
         {risk?.effective_swing_signals ? (
-          <div className="risk-effective-panel" style={{ marginBottom: "0.75rem" }}>
-            <div className="risk-effective-title">{t("strategySubsettings.swingSignalsTitle")}</div>
+          <div className="swing-thresholds-info">
+            <div className="info-panel-label">{t("strategySubsettings.swingSignalsTitle")}</div>
             <dl className="risk-effective-grid">
               <div className="risk-effective-item">
                 <dt>{t("strategySubsettings.rsiBand")}</dt>
@@ -314,7 +314,7 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
             setOpError(null);
           }
         }}
-        onConfirm={() => applyRiskProfile(getOperatorPassword())}
+        onConfirm={applyRiskProfile}
       />
     </div>
   );

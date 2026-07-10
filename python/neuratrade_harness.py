@@ -10,7 +10,7 @@ from typing import Any
 from config_loader import load_config, wiki_root
 from crypto_pipeline import run_crypto_signal
 from db.connection import get_connection
-from llm_client import list_ollama_models, validate_signal
+from llm_client import list_ollama_models, reset_ollama_cache, unload_all_ollama_models, validate_signal
 
 
 def _cfg() -> dict[str, Any]:
@@ -26,12 +26,27 @@ def _artifact_dir() -> Path:
     return base / rel
 
 
-def _resolve_models(cfg: dict[str, Any]) -> list[str]:
+def _resolve_models(cfg: dict[str, Any], *, bootstrap: bool = False) -> list[str]:
+    if bootstrap:
+        boot = cfg.get("bootstrap") or {}
+        models = [str(m) for m in (boot.get("models") or []) if m]
+        if models:
+            return models[: int(boot.get("max_models", 1))]
     models = [str(m) for m in (cfg.get("models") or []) if m]
     if models:
         return models
     tag_result = list_ollama_models()
     return [m.get("name") for m in (tag_result.get("models") or [])[:3] if m.get("name")]
+
+
+def _resolve_ablations(cfg: dict[str, Any], *, bootstrap: bool = False) -> list[dict[str, Any]]:
+    if bootstrap:
+        boot = cfg.get("bootstrap") or {}
+        ablations = boot.get("ablations")
+        if ablations:
+            return list(ablations)
+        return [{"id": "baseline"}]
+    return list(cfg.get("ablations") or [{"id": "baseline"}])
 
 
 def _score_fixture(pass_expected: bool, result: dict[str, Any]) -> float:
@@ -83,18 +98,86 @@ def _persist_result(entry: dict[str, Any], full: dict[str, Any]) -> None:
         conn.close()
 
 
+def _bootstrap_model(cfg: dict[str, Any]) -> str:
+    boot = cfg.get("bootstrap") or {}
+    models = [str(m) for m in (boot.get("models") or ["qwen3.5:4b"]) if m]
+    return models[0]
+
+
+def bootstrap_smoke() -> dict[str, Any]:
+    """One golden case + unload — safe for bootstrap_audit (no multi-model loop)."""
+    cfg = _cfg()
+    model = _bootstrap_model(cfg)
+    unload_all_ollama_models()
+
+    from benchmark_service import _golden_files, _load_golden_file
+
+    market = str((cfg.get("fixtures") or {}).get("market", "crypto"))
+    crypto_cfg = load_config("crypto_config")
+    case = None
+    for mkt, rel in _golden_files(market):
+        if mkt != market:
+            continue
+        data = _load_golden_file(rel)
+        cases = data.get("cases") or []
+        if cases:
+            case = cases[0]
+            pv = data.get("prompt_version") or crypto_cfg.get("prompt_version", "crypto_validate_v1")
+            break
+    if not case:
+        return {"status": "error", "reason": "no_golden_cases"}
+
+    from runtime_settings import set_runtime_value
+
+    set_runtime_value("ollama_model_override", model)
+    try:
+        result = validate_signal(
+            market=market,
+            symbol=case.get("symbol", "BTCUSDT"),
+            indicators=case.get("indicators") or {},
+            prompt_version=pv,
+            model=model,
+            news_summary=case.get("news") or "",
+            timeframe=case.get("timeframe", "4h"),
+            keep_alive=0,
+            max_tokens=512,
+            timeout_ms=180000,
+        )
+    finally:
+        set_runtime_value("ollama_model_override", None)
+        reset_ollama_cache(model)
+        unload_all_ollama_models()
+
+    expected = str(case.get("expected_action", "reject"))
+    actual = str(result.get("action", "reject"))
+    return {
+        "status": "ok",
+        "model": model,
+        "case_id": case.get("id"),
+        "expected_action": expected,
+        "actual_action": actual,
+        "pass": actual == expected,
+        "latency_ms": result.get("latency_ms"),
+    }
+
+
 def _run_fixtures_for_model(
     model: str,
     *,
     run_id: str,
     cfg: dict[str, Any],
+    bootstrap: bool = False,
 ) -> list[dict[str, Any]]:
     from benchmark_service import _golden_files, _load_golden_file
 
     market = str((cfg.get("fixtures") or {}).get("market", "crypto"))
-    ablations = cfg.get("ablations") or [{"id": "baseline"}]
+    ablations = _resolve_ablations(cfg, bootstrap=bootstrap)
+    max_cases = None
+    if bootstrap:
+        max_cases = int((cfg.get("bootstrap") or {}).get("max_cases", 1))
     crypto_cfg = load_config("crypto_config")
     results: list[dict[str, Any]] = []
+    cases_run = 0
 
     for ablation in ablations:
         ab_id = str(ablation.get("id", "baseline"))
@@ -106,6 +189,8 @@ def _run_fixtures_for_model(
             data = _load_golden_file(rel)
             pv = data.get("prompt_version") or crypto_cfg.get("prompt_version", "crypto_validate_v1")
             for case in data.get("cases") or []:
+                if max_cases is not None and cases_run >= max_cases:
+                    break
                 expected = str(case.get("expected_action", "reject"))
                 news = "" if clear_news else (case.get("news") or "")
                 from runtime_settings import set_runtime_value
@@ -120,6 +205,7 @@ def _run_fixtures_for_model(
                         model=model,
                         news_summary=news,
                         timeframe=case.get("timeframe", "4h"),
+                        keep_alive=0,
                     )
                 finally:
                     set_runtime_value("ollama_model_override", None)
@@ -144,6 +230,11 @@ def _run_fixtures_for_model(
                 }
                 results.append(entry)
                 _persist_result(entry, {**result, "case": case, "ablation": ablation})
+                cases_run += 1
+            if max_cases is not None and cases_run >= max_cases:
+                break
+        if max_cases is not None and cases_run >= max_cases:
+            break
     return results
 
 
@@ -274,22 +365,34 @@ def recommend_model(*, limit: int = 10) -> dict[str, Any] | None:
     return None
 
 
-def run_harness_cycle(*, equity: float = 10000.0, mode: str | None = None) -> dict[str, Any]:
+def run_harness_cycle(
+    *,
+    equity: float = 10000.0,
+    mode: str | None = None,
+    bootstrap: bool = False,
+) -> dict[str, Any]:
     """Run NeuraTradeBench-style cycle: golden fixtures ± live pipeline."""
     cfg = _cfg()
     mode = (mode or cfg.get("default_mode", "fixtures")).lower()
-    models = _resolve_models(cfg)
+    if bootstrap:
+        mode = "fixtures"
+    unload_all_ollama_models()
+    models = _resolve_models(cfg, bootstrap=bootstrap)
     symbols = list(cfg.get("symbols", ["BTCUSDT", "ETHUSDT"]))
     run_id = str(uuid.uuid4())
     all_results: list[dict[str, Any]] = []
 
     for model in models:
         if mode in ("fixtures", "both"):
-            all_results.extend(_run_fixtures_for_model(model, run_id=run_id, cfg=cfg))
+            all_results.extend(
+                _run_fixtures_for_model(model, run_id=run_id, cfg=cfg, bootstrap=bootstrap)
+            )
         if mode in ("pipeline", "both"):
             all_results.extend(
                 _run_pipeline_for_model(model, run_id=run_id, symbols=symbols, equity=equity)
             )
+        reset_ollama_cache(model)
+    unload_all_ollama_models()
 
     aggregate = _aggregate_run(all_results)
     leaderboard = get_leaderboard()
@@ -297,6 +400,7 @@ def run_harness_cycle(*, equity: float = 10000.0, mode: str | None = None) -> di
         "status": "ok",
         "run_id": run_id,
         "mode": mode,
+        "bootstrap": bootstrap,
         "models": models,
         "results_count": len(all_results),
         "aggregate": aggregate,

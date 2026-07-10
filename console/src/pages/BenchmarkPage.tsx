@@ -410,7 +410,7 @@ export default function BenchmarkPage() {
     try {
       const model = selectedModel || yamlModel || undefined;
       const qs = model ? `?models=${encodeURIComponent(model)}&llm_samples=2` : "?llm_samples=2";
-      await apiPost(`/api/benchmark/host-capability/run${qs}`, {});
+      await apiPost(`/api/benchmark/host-capability/run${qs}`, {}, { timeoutMs: 900_000, retries: 0 });
       refreshHostAudit();
       setLog(t("benchmark.hostAuditDone"));
     } catch (err) {

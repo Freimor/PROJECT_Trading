@@ -220,6 +220,20 @@ function bindChartSync(leader: IChartApi, followers: IChartApi[]) {
   return () => leader.timeScale().unsubscribeVisibleLogicalRangeChange(handler);
 }
 
+/** fitContent uses candle count; indicator panels may have fewer points (e.g. MACD warmup). */
+function syncPanelsToMain(mainChart: IChartApi, panels: IChartApi[]) {
+  const range = mainChart.timeScale().getVisibleLogicalRange();
+  if (!range) return;
+  for (const chart of panels) {
+    chart.timeScale().setVisibleLogicalRange(range);
+  }
+}
+
+function fitMainAndSyncPanels(mainChart: IChartApi, panels: IChartApi[]) {
+  mainChart.timeScale().fitContent();
+  syncPanelsToMain(mainChart, panels);
+}
+
 export default function PriceChartWithMarkers({
   candles,
   markers,
@@ -414,9 +428,7 @@ export default function PriceChartWithMarkers({
     if (subCharts.length > 0) {
       unsubs.push(bindChartSync(mainChart, subCharts));
       unsubs.push(bindChartSync(subCharts[subCharts.length - 1], [mainChart, ...subCharts.slice(0, -1)]));
-      for (const chart of subCharts) {
-        chart.timeScale().fitContent();
-      }
+      fitMainAndSyncPanels(mainChart, subCharts);
     }
 
     const onResize = () => {
@@ -444,11 +456,8 @@ export default function PriceChartWithMarkers({
         timeFormatter: crosshairTimeFormatter(interval),
       },
     });
-    if (candles.length > 0) {
-      chartRef.current?.timeScale().fitContent();
-      for (const chart of panelChartsRef.current) {
-        chart.timeScale().fitContent();
-      }
+    if (candles.length > 0 && chartRef.current) {
+      fitMainAndSyncPanels(chartRef.current, panelChartsRef.current);
     }
   }, [interval, candles.length]);
 
@@ -469,9 +478,9 @@ export default function PriceChartWithMarkers({
     const fitKey = `${symbol ?? ""}:${interval ?? ""}`;
     if (fitKey !== fitKeyRef.current && candles.length > 0) {
       fitKeyRef.current = fitKey;
-      chartRef.current?.timeScale().fitContent();
-      for (const chart of panelChartsRef.current) {
-        chart.timeScale().fitContent();
+      const mainChart = chartRef.current;
+      if (mainChart) {
+        fitMainAndSyncPanels(mainChart, panelChartsRef.current);
       }
     }
 

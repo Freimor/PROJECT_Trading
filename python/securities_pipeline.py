@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from effective_config import get_config_effective, get_guardrails
+from risk_profile_service import apply_risk_profile_to_guardrails
 from swing_conservatism_service import apply_swing_conservatism_securities
 from market_data import fetch_moex_candles_as_of
 from event_log import log_event, log_llm_decision
@@ -42,7 +43,13 @@ def run_securities_swing_dry_run(
     swing = sec_cfg.get("swing_signals", {})
     prompt_version = swing.get("prompt_version", "securities_validate_v1")
 
-    guardrails = get_guardrails()
+    guardrails = apply_risk_profile_to_guardrails(get_guardrails(), "securities")
+    filt_ctx = {
+        "active_swing_profile_id": sec_cfg.get("active_swing_profile_id"),
+        "active_risk_profile_id": guardrails.get("active_risk_profile_id"),
+        "llm_min_confidence": (swing.get("llm") or {}).get("min_confidence"),
+        "workflow_name": workflow_name,
+    }
 
     candles = _fetch_moex_candles(ticker)
     if len(candles) < 30:
@@ -67,14 +74,14 @@ def run_securities_swing_dry_run(
             market="securities", env=env, stage="filter", symbol=ticker,
             decision="skip", reject_reason=filtered.get("reject_reason"),
             workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
-            payload=filter_log_payload(filtered),
+            payload=filter_log_payload(filtered, context=filt_ctx),
         )
         return {"status": "skipped", "stage": "filter", "ticker": ticker}
 
     log_event(
         market="securities", env=env, stage="filter", symbol=ticker,
         decision="approve", workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
-        payload=filter_log_payload(filtered),
+        payload=filter_log_payload(filtered, context=filt_ctx),
     )
 
     llm_result: dict[str, Any] = {"action": "reject"}

@@ -98,6 +98,7 @@ export type TradeEvent = {
   summary?: string;
   workflow_name?: string;
   model?: string;
+  latency_ms?: number;
   context?: {
     explanation?: string | null;
     reject_hint?: string | null;
@@ -130,6 +131,48 @@ export type WorkflowPnl = {
   currency?: string;
 };
 
+export type WorkflowSessionStats = {
+  status?: string;
+  signals?: number;
+  orders_ok?: number;
+  orders_failed?: number;
+  open_positions?: number;
+  max_open_positions?: number;
+  pnl_delta?: number | null;
+  pnl_pct?: number | null;
+  pnl_direction?: "up" | "down" | "flat";
+  currency?: string;
+  invested_notional?: number | null;
+  pnl_source?: string;
+  last_event_at?: string | null;
+  last_event_ago_sec?: number | null;
+  last_event_symbol?: string | null;
+  last_event_stage?: string | null;
+  last_event_decision?: string | null;
+  last_event_reject_reason?: string | null;
+};
+
+export type OllamaStatus = {
+  status?: string;
+  latency_ms?: number | null;
+  ping_ms?: number | null;
+  avg_latency_ms?: number | null;
+  max_latency_ms?: number | null;
+  llm_calls?: number;
+  llm_errors?: number;
+  llm_rejects?: number;
+  models_count?: number;
+  loaded_count?: number;
+  loaded_models?: string[];
+  primary_models?: string[];
+  model?: string;
+  models?: string[];
+  window_hours?: number;
+  last_latency_ms?: number | null;
+  last_model?: string | null;
+  error?: string | null;
+};
+
 export type AutomationOverview = {
   kill_switch: boolean;
   kill_switch_updated_at?: string;
@@ -137,7 +180,7 @@ export type AutomationOverview = {
   operation_mode?: string;
   operation_detail?: string;
   live_flag: boolean;
-  ollama?: { status?: string; latency_ms?: number; model?: string };
+  ollama?: OllamaStatus;
   last_event?: {
     event_at?: string;
     workflow_name?: string;
@@ -154,6 +197,7 @@ export type AutomationOverview = {
     mode_updated_at?: string;
     workflow_started_at?: string | null;
     workflow_pnl?: WorkflowPnl | null;
+    workflow_session?: WorkflowSessionStats | null;
     workflows_active?: boolean;
     active_workflows?: string[];
     pairs?: string[];
@@ -170,6 +214,7 @@ export type AutomationOverview = {
     mode_updated_at?: string;
     workflow_started_at?: string | null;
     workflow_pnl?: WorkflowPnl | null;
+    workflow_session?: WorkflowSessionStats | null;
     workflows_active?: boolean;
     active_workflows?: string[];
     active_mode?: string;

@@ -73,6 +73,29 @@ def deactivate_workflow(workflow_id: str) -> dict[str, Any]:
         return dict(resp.json())
 
 
+def _workflow_put_body(
+    wf: dict[str, Any],
+    *,
+    nodes: list[dict[str, Any]] | None = None,
+    connections: dict[str, Any] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """n8n API v1 accepts only name, nodes, connections, settings on PUT."""
+    return {
+        "name": str(wf.get("name") or ""),
+        "nodes": nodes if nodes is not None else (wf.get("nodes") or []),
+        "connections": connections if connections is not None else (wf.get("connections") or {}),
+        "settings": settings if settings is not None else (wf.get("settings") or {}),
+    }
+
+
+def _put_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    with _client() as c:
+        resp = c.put(f"/workflows/{workflow_id}", json=body)
+        resp.raise_for_status()
+        return dict(resp.json())
+
+
 def _schedule_nodes(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     nodes = workflow.get("nodes") or []
     return [n for n in nodes if n.get("type") == "n8n-nodes-base.scheduleTrigger"]
@@ -120,10 +143,7 @@ def set_workflow_cron(
             wf["nodes"][i] = target
             break
 
-    with _client() as c:
-        resp = c.put(f"/workflows/{workflow_id}", json=wf)
-        resp.raise_for_status()
-        return dict(resp.json())
+    return _put_workflow(workflow_id, _workflow_put_body(wf, nodes=wf.get("nodes") or []))
 
 
 def set_workflow_hours_interval(
@@ -160,10 +180,7 @@ def set_workflow_hours_interval(
             wf["nodes"][i] = target
             break
 
-    with _client() as c:
-        resp = c.put(f"/workflows/{workflow_id}", json=wf)
-        resp.raise_for_status()
-        return dict(resp.json())
+    return _put_workflow(workflow_id, _workflow_put_body(wf, nodes=wf.get("nodes") or []))
 
 
 def set_workflow_minutes_interval(
@@ -200,10 +217,7 @@ def set_workflow_minutes_interval(
             wf["nodes"][i] = target
             break
 
-    with _client() as c:
-        resp = c.put(f"/workflows/{workflow_id}", json=wf)
-        resp.raise_for_status()
-        return dict(resp.json())
+    return _put_workflow(workflow_id, _workflow_put_body(wf, nodes=wf.get("nodes") or []))
 
 
 WORKFLOW_EXPORT_FILES: dict[str, str] = {
@@ -235,6 +249,8 @@ MARKET_IMPORT_ORDER: dict[str, list[str]] = {
     "crypto": [
         "crypto-signal-dry-run",
         "crypto-signal-paper",
+        "crypto-scalp-hybrid-dry-run",
+        "crypto-scalp-hybrid-paper",
         "crypto-execute-testnet",
         "crypto-monitor-testnet",
     ],
@@ -305,22 +321,25 @@ def import_workflow_by_name(name: str, *, update_if_exists: bool = True) -> dict
         payload["name"] = name
 
     existing = _find_workflow_by_name(payload["name"])
-    with _client() as c:
-        if existing and update_if_exists:
-            wf_id = str(existing["id"])
-            current = get_workflow(wf_id)
-            current["nodes"] = payload["nodes"]
-            current["connections"] = payload["connections"]
-            current["settings"] = payload.get("settings") or current.get("settings") or {}
-            resp = c.put(f"/workflows/{wf_id}", json=current)
-            resp.raise_for_status()
-            body = dict(resp.json())
-            return {
-                "name": payload["name"],
-                "action": "updated",
-                "id": body.get("id") or wf_id,
-            }
+    if existing and update_if_exists:
+        wf_id = str(existing["id"])
+        current = get_workflow(wf_id)
+        body = _put_workflow(
+            wf_id,
+            _workflow_put_body(
+                current,
+                nodes=payload["nodes"],
+                connections=payload["connections"],
+                settings=payload.get("settings") or current.get("settings") or {},
+            ),
+        )
+        return {
+            "name": payload["name"],
+            "action": "updated",
+            "id": body.get("id") or wf_id,
+        }
 
+    with _client() as c:
         if existing:
             return {
                 "name": payload["name"],

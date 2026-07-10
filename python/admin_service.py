@@ -49,17 +49,128 @@ def _ensure_confirmations_table() -> None:
 
 
 def ping_ollama() -> dict[str, Any]:
+    """Backward-compatible alias — use get_ollama_status() for rich overview."""
+    return get_ollama_status()
+
+
+def _primary_ollama_models() -> list[str]:
+    crypto = load_config("crypto_config")
+    scalp = load_config("crypto_scalp_hybrid")
+    sec = load_config("securities_config")
+    swing = sec.get("swing_signals") or {}
+    seen: list[str] = []
+    for raw in (
+        crypto.get("ollama_model"),
+        scalp.get("ollama_model_fast"),
+        scalp.get("ollama_model_fallback"),
+        swing.get("ollama_model"),
+    ):
+        name = str(raw or "").strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
+def _llm_runtime_stats(*, hours: int = 24) -> dict[str, Any]:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS calls,
+                AVG(latency_ms) AS avg_ms,
+                MAX(latency_ms) AS max_ms,
+                SUM(CASE WHEN decision = 'reject' THEN 1 ELSE 0 END) AS rejects
+            FROM trade_events
+            WHERE stage = 'llm'
+              AND latency_ms IS NOT NULL
+              AND latency_ms > 0
+              AND event_at >= datetime('now', ?)
+            """,
+            (f"-{hours} hours",),
+        ).fetchone()
+        err_row = conn.execute(
+            """
+            SELECT COUNT(*) AS c FROM trade_events
+            WHERE event_at >= datetime('now', ?)
+              AND (
+                reject_reason LIKE 'ollama%'
+                OR reject_reason IN ('ollama_timeout', 'ollama_http_error', 'invalid_json')
+              )
+            """,
+            (f"-{hours} hours",),
+        ).fetchone()
+        last = conn.execute(
+            """
+            SELECT latency_ms, model, event_at FROM trade_events
+            WHERE stage = 'llm' AND latency_ms IS NOT NULL AND latency_ms > 0
+            ORDER BY event_at DESC LIMIT 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    avg_ms = row["avg_ms"] if row else None
+    return {
+        "window_hours": hours,
+        "llm_calls": int(row["calls"] or 0) if row else 0,
+        "avg_latency_ms": int(round(float(avg_ms))) if avg_ms is not None else None,
+        "max_latency_ms": int(row["max_ms"]) if row and row["max_ms"] is not None else None,
+        "llm_rejects": int(row["rejects"] or 0) if row else 0,
+        "llm_errors": int(err_row["c"] or 0) if err_row else 0,
+        "last_latency_ms": int(last["latency_ms"]) if last and last["latency_ms"] is not None else None,
+        "last_model": last["model"] if last else None,
+        "last_call_at": last["event_at"] if last else None,
+    }
+
+
+def get_ollama_status(*, llm_hours: int = 24) -> dict[str, Any]:
+    """Health ping + trading LLM runtime stats for status bar."""
     start = datetime.now(timezone.utc)
+    loaded: list[str] = []
+    models: list[str] = []
+    error: str | None = None
+    status = "critical"
+    ping_ms: int | None = None
+
     try:
         with httpx.Client(timeout=5.0) as client:
             resp = client.get(f"{ollama_host()}/api/tags")
-        latency = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
-        if resp.status_code != 200:
-            return {"status": "critical", "latency_ms": latency, "error": resp.text[:200]}
-        models = [m.get("name") for m in resp.json().get("models", [])]
-        return {"status": "ok", "latency_ms": latency, "models": models[:5]}
+            ping_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+            if resp.status_code != 200:
+                error = resp.text[:200]
+            else:
+                status = "ok"
+                models = [str(m.get("name")) for m in resp.json().get("models", []) if m.get("name")]
+                try:
+                    ps = client.get(f"{ollama_host()}/api/ps", timeout=3.0)
+                    if ps.status_code == 200:
+                        loaded = [
+                            str(m.get("name"))
+                            for m in ps.json().get("models", [])
+                            if m.get("name")
+                        ]
+                except httpx.HTTPError:
+                    loaded = []
     except httpx.HTTPError as exc:
-        return {"status": "critical", "latency_ms": None, "error": str(exc)}
+        error = str(exc)
+
+    runtime = _llm_runtime_stats(hours=llm_hours)
+    primary = _primary_ollama_models()
+
+    return {
+        "status": status,
+        "latency_ms": ping_ms,
+        "ping_ms": ping_ms,
+        "error": error,
+        "models": models[:8],
+        "models_count": len(models),
+        "loaded_models": loaded,
+        "loaded_count": len(loaded),
+        "primary_models": primary,
+        "model": primary[0] if primary else (models[0] if models else None),
+        **runtime,
+    }
 
 
 def get_system_status() -> dict[str, Any]:

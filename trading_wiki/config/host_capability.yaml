@@ -5,6 +5,9 @@ version: "1.0.0"
 max_models: 5
 max_parallel_llm: 1
 llm_samples: 2
+# Shorter LLM probe for benchmark (full pipeline timeout can be 15+ min per call)
+benchmark_llm_timeout_ms: 180000
+benchmark_max_tokens: 768
 
 # safety_margin: required_sec must be <= budget_sec * margin (0.85 = 15% headroom)
 

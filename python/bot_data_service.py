@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from admin_service import get_live_checklist, get_system_status, ping_ollama, services_restart_plan, stats_digest
+from admin_service import get_live_checklist, get_ollama_status, get_system_status, services_restart_plan, stats_digest
 from automation_docs import get_automat_doc_section, get_automat_docs_index
 from backtest.metrics import dry_run_funnel, signal_summary
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot
@@ -210,7 +210,7 @@ def get_host_status() -> dict[str, Any]:
             and msk.weekday() < 5
         ),
         "moex_next_open": _moex_next_open(session),
-        "ollama": ping_ollama(),
+        "ollama": get_ollama_status(),
         "host": host,
         "services_health": health,
         "proxy": os.environ.get("TELEGRAM_AWESOME_VPN_ENABLED", "false"),
@@ -365,6 +365,7 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "mode_updated_at": crypto_meta.get("updated_at"),
             "workflow_started_at": crypto_ctrl.get("workflow_started_at"),
             "workflow_pnl": crypto_ctrl.get("workflow_pnl"),
+            "workflow_session": crypto_ctrl.get("workflow_session"),
             "workflows_active": _wf_active(crypto_ctrl),
             "active_workflows": [w.get("name") for w in crypto_ctrl.get("workflows", []) if w.get("active")],
             "pairs": crypto_cfg.get("pairs", []),
@@ -381,6 +382,7 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "mode_updated_at": sec_meta.get("updated_at"),
             "workflow_started_at": sec_ctrl.get("workflow_started_at"),
             "workflow_pnl": sec_ctrl.get("workflow_pnl"),
+            "workflow_session": sec_ctrl.get("workflow_session"),
             "workflows_active": _wf_active(sec_ctrl),
             "active_workflows": [w.get("name") for w in sec_ctrl.get("workflows", []) if w.get("active")],
             "active_mode": sec_strategy["active"],
@@ -390,7 +392,7 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "workflow": sec_strategy["strategy"].get("workflow"),
             "funnel_signal": funnel.get("securities", {}).get("signal"),
         },
-        "ollama": ping_ollama(),
+        "ollama": get_ollama_status(),
         "dry_run_signals_7d": digest.get("dry_run_signals", 0),
         "last_event": get_system_status().get("last_event"),
     }
@@ -411,7 +413,7 @@ def get_crypto_testnet_dashboard(*, days: int = 7) -> dict[str, Any]:
         "funnel": dry_run_funnel(market="crypto", days=days),
         "summary": signal_summary(market="crypto", days=days),
         "llm_eval": evaluation_metrics(market="crypto", days=days),
-        "ollama": ping_ollama(),
+        "ollama": get_ollama_status(),
     }
 
 

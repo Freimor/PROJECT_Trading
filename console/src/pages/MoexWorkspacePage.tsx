@@ -209,11 +209,12 @@ export default function MoexWorkspacePage() {
             ) : (
               !candlesLoading && <p className="muted">{t("workspace.noQuotes")}</p>
             )}
-            <SymbolNewsPanel symbol={symbol} />
+            <SymbolNewsPanel symbol={symbol} market="securities" />
           </PortfolioCard>
         </div>
 
         <aside className="workspace-side">
+          <div className="workspace-side-inner">
           <MarketWorkflowPanel
             market="securities"
             killSwitch={Boolean(overview?.kill_switch)}
@@ -278,6 +279,7 @@ export default function MoexWorkspacePage() {
               </div>
             </PortfolioCard>
           )}
+          </div>
         </aside>
       </div>
     </div>

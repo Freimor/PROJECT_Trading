@@ -20,6 +20,8 @@ _WORKFLOW_LABELS = {
     "crypto-signal-paper": "Крипто: автоторговля (демо)",
     "crypto-monitor-testnet": "Крипто: мониторинг демо-счёта",
     "crypto-paper-auto": "Крипто: автоторговля (демо)",
+    "crypto-scalp-auto": "Крипто: scalp hybrid (paper)",
+    "crypto-scalp-hybrid-paper": "Крипто: scalp hybrid (paper)",
     "securities-swing-dry-run": "MOEX: сигналы swing (без сделок)",
     "securities-swing-paper": "MOEX: swing (paper)",
     "securities-dca-sandbox": "MOEX: DCA (sandbox)",

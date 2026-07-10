@@ -36,10 +36,10 @@ function mergeFeedItems(
     .slice(0, maxItems);
 }
 
-function formatFeedTime(iso: string): string {
+function formatFeedTime(iso: string, locale: string): string {
   try {
     const d = new Date(iso.endsWith("Z") || iso.includes("+") ? iso : `${iso}Z`);
-    return d.toLocaleString("ru-RU", {
+    return d.toLocaleString(locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -59,7 +59,7 @@ const LEVEL_CLASS: Record<string, string> = {
 };
 
 export default function SystemActivityFeed() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const listRef = useRef<HTMLUListElement>(null);
   const [feedItems, setFeedItems] = useState<ActivityFeedItem[]>([]);
   const [feedError, setFeedError] = useState<string | null>(null);
@@ -165,7 +165,9 @@ export default function SystemActivityFeed() {
                 disabled={!expandable}
                 onClick={() => expandable && void toggleItem(item)}
               >
-                <time className="activity-feed-time">{formatFeedTime(item.occurred_at)}</time>
+                <time className="activity-feed-time">
+                  {formatFeedTime(item.occurred_at, lang === "en" ? "en-US" : "ru-RU")}
+                </time>
                 <span className="activity-feed-msg">{item.message}</span>
                 {expandable ? <span className="activity-feed-chevron">{isOpen ? "▾" : "▸"}</span> : null}
               </button>

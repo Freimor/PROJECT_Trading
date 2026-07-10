@@ -740,6 +740,20 @@ def get_market_control_state(market: str) -> dict[str, Any]:
                 "direction": "flat",
             }
 
+    workflow_session: dict[str, Any] | None = None
+    if active_wf and started_at:
+        try:
+            from workflow_session_service import get_workflow_session_stats
+
+            workflow_session = get_workflow_session_stats(
+                market,
+                started_at=started_at,
+                active_workflow=active_wf,
+                workflow_pnl=workflow_pnl,
+            )
+        except Exception:
+            workflow_session = None
+
     return {
         "market": market,
         "operation_mode": trading_mode_to_operation(mode),
@@ -752,6 +766,7 @@ def get_market_control_state(market: str) -> dict[str, Any]:
         "active_workflow": active_wf,
         "workflow_started_at": started_at,
         "workflow_pnl": workflow_pnl,
+        "workflow_session": workflow_session,
         "workflows": workflows,
         "n8n": {"status": n8n_status, "message": n8n_message},
     }

@@ -145,7 +145,7 @@ export default function OverviewPage() {
           onPeriodChange={setPeriod}
           emptyMessage={t("overview.emptyTestnet")}
           linkTo="/crypto"
-          linkLabel={`${t("nav.crypto")} ${t("common.workspace")} →`}
+          linkLabel={t("overview.openCrypto")}
         />
         <AccountSummaryCard
           tileId="demo-tinvest"
@@ -161,7 +161,7 @@ export default function OverviewPage() {
           positions={moexPortfolio?.positions}
           emptyMessage={t("overview.emptySandbox")}
           linkTo="/moex"
-          linkLabel={`${t("nav.moex")} ${t("common.workspace")} →`}
+          linkLabel={t("overview.openMoex")}
         />
       </OverviewSection>
 

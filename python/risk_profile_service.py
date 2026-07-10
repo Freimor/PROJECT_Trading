@@ -7,7 +7,7 @@ from typing import Any
 
 from config_loader import load_config
 from runtime_settings import get_runtime_meta, get_runtime_value, set_runtime_value
-from risk_trading_state import risk_change_blocked_reason
+from risk_trading_state import list_open_positions, risk_change_blocked_reason
 from swing_conservatism_service import get_swing_signal_summary, swing_options_for_market
 
 RUNTIME_KEY_PREFIX = "risk_profile:"
@@ -148,6 +148,7 @@ def get_risk_profile_state(market: str) -> dict[str, Any]:
     meta = get_runtime_meta(_runtime_key(market))
     block = risk_change_blocked_reason(market)
     active_preset = RISK_PROFILES[profile_id]
+    positions = list_open_positions(market)
 
     return {
         "market": market,
@@ -161,6 +162,8 @@ def get_risk_profile_state(market: str) -> dict[str, Any]:
         "effective_limits": _limits_from_trading(limits, market),
         "effective_swing_signals": get_swing_signal_summary(market, profile_id),
         "swing_signal_options": swing_options_for_market(market),
+        "open_positions": positions,
+        "open_positions_count": len(positions),
         "can_change": block is None,
         "change_blocked_reason": block,
     }

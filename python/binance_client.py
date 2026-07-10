@@ -6,6 +6,8 @@ import hashlib
 import hmac
 import os
 import time
+from decimal import Decimal, ROUND_DOWN
+from functools import lru_cache
 from typing import Any
 from urllib.parse import urlencode
 
@@ -71,6 +73,76 @@ def _sign(params: dict[str, Any], secret: str) -> str:
     return hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
 
 
+@lru_cache(maxsize=128)
+def _exchange_info(symbol: str, testnet: bool) -> dict[str, Any]:
+    _, _, base = _credentials(testnet)
+    with httpx.Client(timeout=30) as client:
+        resp = client.get(f"{base}/api/v3/exchangeInfo", params={"symbol": symbol})
+        resp.raise_for_status()
+        data = resp.json()
+    symbols = data.get("symbols") or []
+    if not symbols:
+        raise ValueError(f"unknown_symbol: {symbol}")
+    return dict(symbols[0])
+
+
+def _filter_map(symbol_info: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(f.get("filterType")): dict(f) for f in symbol_info.get("filters") or []}
+
+
+def _lot_filter(filters: dict[str, dict[str, Any]], *, market_order: bool) -> dict[str, Any]:
+    if market_order:
+        market = filters.get("MARKET_LOT_SIZE") or {}
+        step = Decimal(str(market.get("stepSize", "0")))
+        if step > 0:
+            return market
+    return filters.get("LOT_SIZE") or {}
+
+
+def normalize_order_quantity(
+    symbol: str,
+    quantity: float,
+    *,
+    testnet: bool = True,
+    market_order: bool = True,
+) -> dict[str, Any]:
+    """Round quantity down to Binance LOT_SIZE / MARKET_LOT_SIZE step."""
+    info = _exchange_info(symbol.upper(), testnet)
+    filters = _filter_map(info)
+    lot = _lot_filter(filters, market_order=market_order)
+    step = Decimal(str(lot.get("stepSize") or "0"))
+    min_qty = Decimal(str(lot.get("minQty") or "0"))
+    if step <= 0:
+        step = Decimal("0.00000001")
+
+    raw = Decimal(str(quantity))
+    steps = (raw / step).to_integral_value(rounding=ROUND_DOWN)
+    normalized = steps * step
+
+    result: dict[str, Any] = {
+        "symbol": symbol.upper(),
+        "requested_quantity": quantity,
+        "normalized_quantity": float(normalized),
+        "step_size": str(step),
+        "min_qty": str(min_qty),
+        "valid": normalized >= min_qty and normalized > 0,
+    }
+
+    notional_filter = filters.get("NOTIONAL") or filters.get("MIN_NOTIONAL") or {}
+    min_notional = notional_filter.get("minNotional")
+    if min_notional is not None:
+        result["min_notional"] = str(min_notional)
+
+    if not result["valid"]:
+        result["reject_reason"] = "quantity_below_min_lot"
+    return result
+
+
+def _quantity_param(quantity: Decimal, step: Decimal) -> str:
+    precision = max(0, -step.as_tuple().exponent)
+    return f"{quantity:.{precision}f}"
+
+
 def place_market_order(
     *,
     symbol: str,
@@ -87,11 +159,23 @@ def place_market_order(
             "message": "Set BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_API_SECRET",
         }
 
+    qty_norm = normalize_order_quantity(symbol, quantity, testnet=testnet, market_order=True)
+    if not qty_norm.get("valid"):
+        return {
+            "status": "error",
+            "reject_reason": qty_norm.get("reject_reason", "invalid_quantity"),
+            "msg": "Quantity below exchange min lot after normalization",
+            "http_status": 400,
+            "quantity_normalization": qty_norm,
+        }
+
+    normalized_qty = float(qty_norm["normalized_quantity"])
+    qty_step = Decimal(str(qty_norm["step_size"]))
     params: dict[str, Any] = {
         "symbol": symbol,
         "side": side.upper(),
         "type": "MARKET",
-        "quantity": quantity,
+        "quantity": _quantity_param(Decimal(str(normalized_qty)), qty_step),
         "timestamp": int(time.time() * 1000),
     }
     if request_id:
@@ -109,6 +193,8 @@ def place_market_order(
     except Exception:
         data = {"raw": resp.text}
     data["http_status"] = resp.status_code
+    if qty_norm.get("requested_quantity") != normalized_qty:
+        data["quantity_normalization"] = qty_norm
     return data
 
 

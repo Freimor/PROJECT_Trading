@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, formatOperatorFacingError } from "../api";
+import { POLL } from "../config/polling";
+import { usePolling } from "../hooks/usePolling";
 import { useI18n } from "../i18n/LanguageContext";
 
 type UniverseItem = {
@@ -14,6 +16,9 @@ type UniverseState = {
   enabled_symbols?: string[];
   runtime_override?: boolean;
   market?: string;
+  can_change?: boolean;
+  change_blocked_reason?: string | null;
+  active_workflow?: string | null;
 };
 
 type SearchHit = { symbol: string; label?: string };
@@ -41,18 +46,30 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
   } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const fetcher = useCallback(async () => {
     const data = await apiGet<{ status: string } & UniverseState>(
       `/api/workflows/${encodeURIComponent(workflow)}/universe`,
     );
     if (data.status === "ok") {
-      setState({ items: data.items ?? [], enabled_symbols: data.enabled_symbols, runtime_override: data.runtime_override });
+      setState({
+        items: data.items ?? [],
+        enabled_symbols: data.enabled_symbols,
+        runtime_override: data.runtime_override,
+        can_change: data.can_change,
+        change_blocked_reason: data.change_blocked_reason,
+        active_workflow: data.active_workflow,
+      });
     }
+    return data;
   }, [workflow]);
 
-  useEffect(() => {
-    load().catch(() => {});
-  }, [load]);
+  const { refresh: reloadUniverse } = usePolling(fetcher, POLL.OPS, Boolean(workflow), {
+    staggerKey: `universe-${workflow}`,
+  });
+
+  const load = useCallback(async () => {
+    await reloadUniverse();
+  }, [reloadUniverse]);
 
   useEffect(() => {
     const q = query.trim();
@@ -75,6 +92,21 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
     [state?.items],
   );
 
+  const locked = state?.can_change === false;
+
+  const blockHint =
+    locked && state?.change_blocked_reason === "workflow_active"
+      ? t("universe.blockedWorkflow", { workflow: state?.active_workflow ?? "n8n" })
+      : null;
+
+  const formatError = (err: unknown) => {
+    const raw = err instanceof Error ? err.message : String(err);
+    if (raw.includes("universe_change_blocked")) {
+      return t("universe.blockedWorkflow", { workflow: state?.active_workflow ?? "n8n" });
+    }
+    return formatOperatorFacingError(err, t);
+  };
+
   const addSymbol = async (symbol: string) => {
     setBusy(true);
     setMessage(null);
@@ -88,7 +120,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
       await load();
       onChange?.();
     } catch (err) {
-      setMessage(String(err));
+      setMessage(formatError(err));
     } finally {
       setBusy(false);
     }
@@ -105,7 +137,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
       await load();
       onChange?.();
     } catch (err) {
-      setMessage(String(err));
+      setMessage(formatError(err));
     } finally {
       setBusy(false);
     }
@@ -122,7 +154,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
       await load();
       onChange?.();
     } catch (err) {
-      setMessage(String(err));
+      setMessage(formatError(err));
     } finally {
       setBusy(false);
     }
@@ -137,7 +169,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
       await load();
       onChange?.();
     } catch (err) {
-      setMessage(String(err));
+      setMessage(formatError(err));
     } finally {
       setBusy(false);
     }
@@ -183,14 +215,15 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
         });
       }
     } catch (err) {
-      setMessage(formatOperatorFacingError(err, t));
+      setMessage(formatError(err));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className={`workflow-universe${compact ? " compact" : ""}`}>
+    <div className={`workflow-universe${compact ? " compact" : ""}${locked ? " locked" : ""}`}>
+      {blockHint ? <p className="warn-text small">{blockHint}</p> : null}
       <div className="workflow-universe-head">
         <span className="muted small">
           {t("universe.enabledCount", { count: enabledCount, total: state?.items?.length ?? 0 })}
@@ -204,14 +237,14 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
           className="input"
           placeholder={t("universe.searchPlaceholder")}
           value={query}
-          disabled={busy}
+          disabled={busy || locked}
           onChange={(e) => setQuery(e.target.value)}
         />
         {hits.length ? (
           <ul className="universe-search-hits">
             {hits.map((h) => (
               <li key={h.symbol}>
-                <button type="button" className="tiny" disabled={busy} onClick={() => addSymbol(h.symbol)}>
+                <button type="button" className="tiny" disabled={busy || locked} onClick={() => addSymbol(h.symbol)}>
                   + {h.label ?? h.symbol}
                 </button>
               </li>
@@ -227,13 +260,13 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
               <input
                 type="checkbox"
                 checked={item.enabled}
-                disabled={busy}
+                disabled={busy || locked}
                 onChange={(e) => toggleSymbol(item.symbol, e.target.checked)}
               />
               <span className="mono-small">{item.symbol}</span>
               {item.source ? <span className="pill tiny neutral">{item.source}</span> : null}
             </label>
-            <button type="button" className="tiny danger" disabled={busy} onClick={() => removeSymbol(item.symbol)}>
+            <button type="button" className="tiny danger" disabled={busy || locked} onClick={() => removeSymbol(item.symbol)}>
               ×
             </button>
           </li>
@@ -248,7 +281,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
           rows={2}
           placeholder={t("universe.llmHintPlaceholder")}
           value={llmHint}
-          disabled={busy}
+          disabled={busy || locked}
           onChange={(e) => setLlmHint(e.target.value)}
         />
         <div className="btn-row">
@@ -258,6 +291,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
               name={`llm-mode-${workflow}`}
               checked={llmMode === "replace"}
               onChange={() => setLlmMode("replace")}
+              disabled={locked}
             />
             {t("universe.llmReplace")}
           </label>
@@ -267,6 +301,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
               name={`llm-mode-${workflow}`}
               checked={llmMode === "merge"}
               onChange={() => setLlmMode("merge")}
+              disabled={locked}
             />
             {t("universe.llmMerge")}
           </label>
@@ -274,20 +309,20 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
             <input
               type="checkbox"
               checked={disableOthers}
-              disabled={llmMode === "replace"}
+              disabled={llmMode === "replace" || locked}
               onChange={(e) => setDisableOthers(e.target.checked)}
             />
             {t("universe.disableOthers")}
           </label>
         </div>
         <div className="btn-row">
-          <button type="button" className="tiny" disabled={busy} onClick={() => runLlm(false)}>
+          <button type="button" className="tiny" disabled={busy || locked} onClick={() => runLlm(false)}>
             {t("universe.llmPreview")}
           </button>
-          <button type="button" className="tiny primary" disabled={busy} onClick={() => runLlm(true)}>
+          <button type="button" className="tiny primary" disabled={busy || locked} onClick={() => runLlm(true)}>
             {t("universe.llmApply")}
           </button>
-          <button type="button" className="tiny" disabled={busy} onClick={resetUniverse}>
+          <button type="button" className="tiny" disabled={busy || locked} onClick={resetUniverse}>
             {t("universe.resetYaml")}
           </button>
         </div>

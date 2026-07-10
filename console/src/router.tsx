@@ -8,7 +8,6 @@ import LlmAuditPage from "./pages/LlmAuditPage";
 import MoexWorkspacePage from "./pages/MoexWorkspacePage";
 import NewsPage from "./pages/NewsPage";
 import OverviewPage from "./pages/OverviewPage";
-import PaperPage from "./pages/PaperPage";
 import ResearchPage from "./pages/ResearchPage";
 import WorkflowsPage from "./pages/WorkflowsPage";
 
@@ -23,7 +22,7 @@ export const router = createBrowserRouter([
       { path: "news", element: <NewsPage /> },
       { path: "events", element: <EventsPage /> },
       { path: "llm", element: <LlmAuditPage /> },
-      { path: "paper", element: <PaperPage /> },
+      { path: "paper", element: <Navigate to="/crypto" replace /> },
       { path: "benchmark", element: <BenchmarkPage /> },
       { path: "research", element: <ResearchPage /> },
       { path: "workflows", element: <WorkflowsPage /> },

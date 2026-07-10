@@ -15,7 +15,7 @@ from guardrails import enforce_guardrails, position_size_dry_run
 from indicators.technical import compute_indicators, parse_binance_klines
 from llm_client import validate_signal
 from news_service import news_context_with_signals
-from on_chain.metrics import on_chain_filter_for_signal
+from on_chain.metrics import apply_on_chain_gate
 from retail_guard import check_retail_guard
 from signals_engine_service import consume_signals
 from utils import inputs_hash
@@ -308,21 +308,28 @@ def run_crypto_scalp_signal(
             )
             return {"status": "rejected", "stage": "retail_guard", "symbol": symbol}
 
-    if cfg.get("on_chain", {}).get("enabled", True):
-        on_chain = on_chain_filter_for_signal(side="BUY")
-        if not on_chain.get("pass"):
-            log_event(
-                market="crypto",
-                env=env,
-                stage="filter",
-                symbol=symbol,
-                decision="reject",
-                reject_reason=on_chain.get("reject_reason"),
-                workflow_name=workflow_name,
-                inputs_hash=ih,
-                payload={"on_chain": on_chain.get("context"), "hybrid_path": path},
-            )
-            return {"status": "rejected", "stage": "on_chain", "symbol": symbol}
+    on_chain = apply_on_chain_gate(
+        cfg.get("on_chain"),
+        side="BUY",
+        default_mode="advisory",
+    )
+    if not on_chain.get("skipped") and not on_chain.get("pass"):
+        log_event(
+            market="crypto",
+            env=env,
+            stage="filter",
+            symbol=symbol,
+            decision="reject",
+            reject_reason=on_chain.get("reject_reason"),
+            workflow_name=workflow_name,
+            inputs_hash=ih,
+            payload={
+                "on_chain": on_chain.get("context"),
+                "on_chain_mode": on_chain.get("mode"),
+                "hybrid_path": path,
+            },
+        )
+        return {"status": "rejected", "stage": "on_chain", "symbol": symbol}
 
     fast_model = str(cfg.get("ollama_model_fast", "qwen2.5:3b"))
     llm_result: dict[str, Any]
@@ -353,6 +360,7 @@ def run_crypto_scalp_signal(
     else:
         news, pending_signal_ids = news_context_with_signals([symbol, symbol.replace("USDT", "")])
         user_ambiguity = str(filtered.get("ambiguity_score"))
+        llm_cfg = cfg.get("llm") or {}
         llm_result = validate_signal(
             market="crypto",
             symbol=symbol,
@@ -361,8 +369,9 @@ def run_crypto_scalp_signal(
             news_summary=f"{news}\nAmbiguity: {user_ambiguity}",
             timeframe=timeframe,
             model=fast_model,
-            temperature=cfg.get("llm", {}).get("temperature"),
-            timeout_ms=cfg.get("llm", {}).get("timeout_ms"),
+            temperature=llm_cfg.get("temperature"),
+            timeout_ms=llm_cfg.get("timeout_ms"),
+            max_tokens=llm_cfg.get("max_tokens"),
         )
         event_id = log_event(
             market="crypto",

@@ -12,10 +12,25 @@ from guardrails import enforce_guardrails, position_size_dry_run
 from indicators.technical import compute_indicators, parse_binance_klines, rule_filter
 from llm_client import validate_signal
 from news_service import news_context_with_signals
-from on_chain.metrics import on_chain_filter_for_signal
+from on_chain.metrics import apply_on_chain_gate
 from retail_guard import check_retail_guard
 from signals_engine_service import consume_signals
+from risk_profile_service import apply_risk_profile_to_guardrails
 from swing_conservatism_service import apply_swing_conservatism_crypto
+from utils import inputs_hash
+
+
+def _filter_context(
+    crypto_cfg: dict[str, Any],
+    guardrails: dict[str, Any],
+    workflow_name: str,
+) -> dict[str, Any]:
+    return {
+        "active_swing_profile_id": crypto_cfg.get("active_swing_profile_id"),
+        "active_risk_profile_id": guardrails.get("active_risk_profile_id"),
+        "llm_min_confidence": (crypto_cfg.get("llm") or {}).get("min_confidence"),
+        "workflow_name": workflow_name,
+    }
 
 
 def _llm_mode() -> str:
@@ -48,7 +63,8 @@ def run_crypto_signal(
     use_trading_agents: bool = False,
 ) -> dict[str, Any]:
     crypto_cfg = apply_swing_conservatism_crypto(get_config_effective("crypto_config"))
-    guardrails = get_guardrails()
+    guardrails = apply_risk_profile_to_guardrails(get_guardrails(), "crypto")
+    filt_ctx = _filter_context(crypto_cfg, guardrails, workflow_name)
     llm_mode = _llm_mode()
     testnet = crypto_cfg.get("env") == "testnet" or env == "paper"
     timeframe = crypto_cfg.get("timeframe", "4h")
@@ -76,14 +92,14 @@ def run_crypto_signal(
             market="crypto", env=env, stage="filter", symbol=symbol,
             decision="skip", reject_reason=filtered.get("reject_reason"),
             workflow_name=workflow_name, inputs_hash=ih,
-            payload=filter_log_payload(filtered),
+            payload=filter_log_payload(filtered, context=filt_ctx),
         )
         return {"status": "skipped", "stage": "filter", "symbol": symbol, "inputs_hash": ih}
 
     log_event(
         market="crypto", env=env, stage="filter", symbol=symbol,
         decision="approve", workflow_name=workflow_name, inputs_hash=ih,
-        payload=filter_log_payload(filtered),
+        payload=filter_log_payload(filtered, context=filt_ctx),
     )
 
     retail = check_retail_guard(indicators=filtered, candles=candles)
@@ -92,20 +108,23 @@ def run_crypto_signal(
             market="crypto", env=env, stage="filter", symbol=symbol,
             decision="reject", reject_reason=retail.get("reject_reason"),
             workflow_name=workflow_name, inputs_hash=ih,
-            payload={"retail_guard": retail},
+            payload={**filt_ctx, "retail_guard": retail},
         )
         return {"status": "rejected", "stage": "retail_guard", "symbol": symbol, "retail": retail}
 
-    if crypto_cfg.get("on_chain", {}).get("enabled", True):
-        on_chain = on_chain_filter_for_signal(side="BUY")
-        if not on_chain.get("pass"):
-            log_event(
-                market="crypto", env=env, stage="filter", symbol=symbol,
-                decision="reject", reject_reason=on_chain.get("reject_reason"),
-                workflow_name=workflow_name, inputs_hash=ih,
-                payload={"on_chain": on_chain.get("context")},
-            )
-            return {"status": "rejected", "stage": "on_chain", "symbol": symbol, "on_chain": on_chain}
+    on_chain = apply_on_chain_gate(
+        crypto_cfg.get("on_chain"),
+        side="BUY",
+        default_mode="moderate",
+    )
+    if not on_chain.get("skipped") and not on_chain.get("pass"):
+        log_event(
+            market="crypto", env=env, stage="filter", symbol=symbol,
+            decision="reject", reject_reason=on_chain.get("reject_reason"),
+            workflow_name=workflow_name, inputs_hash=ih,
+            payload={**filt_ctx, "on_chain": on_chain.get("context"), "on_chain_mode": on_chain.get("mode")},
+        )
+        return {"status": "rejected", "stage": "on_chain", "symbol": symbol, "on_chain": on_chain}
 
     llm_result: dict[str, Any] = _synthetic_approve(filtered.get("rule_name"))
     pending_signal_ids: list[str] = []

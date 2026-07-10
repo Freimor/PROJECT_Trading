@@ -276,11 +276,12 @@ export default function CryptoWorkspacePage() {
                 <p className="muted">{candlesError ? String(candlesError) : t("workspace.noQuotes")}</p>
               )
             )}
-            <SymbolNewsPanel symbol={symbol} />
+            <SymbolNewsPanel symbol={symbol} market="crypto" />
           </PortfolioCard>
         </div>
 
         <aside className="workspace-side">
+          <div className="workspace-side-inner">
           <MarketWorkflowPanel
             market="crypto"
             killSwitch={Boolean(overview?.kill_switch)}
@@ -375,6 +376,7 @@ export default function CryptoWorkspacePage() {
               {!events?.length && <li className="muted">{symbol}</li>}
             </ul>
           </PortfolioCard>
+          </div>
         </aside>
       </div>
     </div>

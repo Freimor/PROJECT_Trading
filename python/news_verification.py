@@ -106,6 +106,14 @@ def verify_article(
     }
 
 
+def entity_market_map() -> dict[str, str]:
+    entities = _entities_config().get("entities", {})
+    return {
+        str(ticker).upper(): str(meta.get("market", "macro"))
+        for ticker, meta in entities.items()
+    }
+
+
 def extract_matched_symbols(title: str, summary: str, default_symbols: list[str] | None = None) -> list[str]:
     entities = _entities_config().get("entities", {})
     haystack = f"{title} {summary}".upper()

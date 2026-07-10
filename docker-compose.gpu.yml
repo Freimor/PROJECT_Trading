@@ -1,0 +1,12 @@
+# GPU override for Ollama (NVIDIA only).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d ollama
+# Requires: NVIDIA driver + Docker Desktop GPU support (WSL2 on Windows).
+# Verify:  docker exec trading-ollama nvidia-smi
+#          curl -s http://localhost:11434/api/ps  → size_vram > 0 when model loaded
+
+services:
+  ollama:
+    gpus: all
+    environment:
+      - OLLAMA_MAX_TRANSFER_STREAMS=2
+      - NVIDIA_VISIBLE_DEVICES=all
