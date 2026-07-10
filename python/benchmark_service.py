@@ -725,6 +725,7 @@ def benchmark_report(*, days: int = 30, market: str | None = None) -> dict[str, 
             "total_cases": len(rows),
             "labeled_cases": len(labeled),
             "by_market": by_market,
+            "by_market_by_model": benchmark_report_by_model(days=days, market=market),
             "operational_all": evaluation_metrics(market=market, days=days),
             "recent_runs": [dict(r) for r in recent_runs],
             "config": _benchmark_cfg(),
@@ -738,6 +739,45 @@ def benchmark_report(*, days: int = 30, market: str | None = None) -> dict[str, 
         }
     finally:
         conn.close()
+
+
+def benchmark_report_by_model(*, days: int = 30, market: str | None = None) -> dict[str, Any]:
+    """Outcome metrics by market × original_model (per-workflow model view)."""
+    run_migrations()
+    conn = get_connection()
+    try:
+        q = """
+            SELECT c.market, c.original_model, c.original_action, l.label, l.forward_return_pct
+            FROM benchmark_cases c
+            LEFT JOIN benchmark_labels l ON l.inputs_hash = c.inputs_hash
+            WHERE c.decision_at >= datetime('now', ?)
+              AND l.label IS NOT NULL
+              AND l.label != 'pending'
+        """
+        params: list[Any] = [f"-{days} days"]
+        if market:
+            q += " AND c.market = ?"
+            params.append(market)
+        rows = [dict(r) for r in conn.execute(q, params).fetchall()]
+    finally:
+        conn.close()
+
+    by_market: dict[str, Any] = {}
+    for mkt in ("crypto", "securities"):
+        if market and market != mkt:
+            continue
+        subset = [r for r in rows if r.get("market") == mkt]
+        if not subset:
+            continue
+
+        models = sorted({(r.get("original_model") or "unknown") for r in subset})
+        by_model: dict[str, Any] = {}
+        for mdl in models:
+            mrows = [r for r in subset if (r.get("original_model") or "unknown") == mdl]
+            by_model[mdl] = _score_labels(mrows)
+        by_market[mkt] = {"models": models, "by_model": by_model}
+
+    return {"status": "ok", "days": days, "by_market": by_market}
 
 
 def run_full_benchmark(

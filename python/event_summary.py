@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from filter_event_details import summarize_filter_event
+
 
 def summarize_trade_event(row: dict[str, Any]) -> str:
     stage = str(row.get("stage") or "")
@@ -16,6 +18,8 @@ def summarize_trade_event(row: dict[str, Any]) -> str:
 
     if stage == "signal":
         return f"Технический сигнал по {symbol} ({market}, {env}): {decision or 'ожидание'}"
+    if stage == "filter":
+        return summarize_filter_event(row, compact=False)
     if stage == "llm":
         if decision == "approve":
             conf = f", уверенность {confidence:.0%}" if confidence is not None else ""

@@ -11,6 +11,7 @@ from binance_client import get_account_balances, place_market_order
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot, post_dca_order
 from config_loader import load_config
 from crypto_pipeline import run_crypto_signal
+from crypto_scalp_pipeline import run_crypto_scalp_signal
 from db.connection import get_connection
 from db.migrate import run_migrations
 from effective_config import get_config_effective, get_guardrails
@@ -251,6 +252,14 @@ def run_crypto_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = False) -
 
     order = place_market_order(symbol=symbol, side="BUY", quantity=qty, testnet=True)
     submitted = order.get("orderId") is not None and order.get("http_status") == 200
+    reject_reason = None
+    if not submitted:
+        reject_reason = (
+            order.get("reject_reason")
+            or order.get("msg")
+            or order.get("message")
+            or (f"http_{order.get('http_status')}" if order.get("http_status") is not None else None)
+        )
     log_event(
         market="crypto",
         env="paper",
@@ -260,6 +269,7 @@ def run_crypto_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = False) -
         workflow_name="crypto-paper-auto",
         inputs_hash=signal.get("inputs_hash"),
         notional=sizing.get("notional"),
+        reject_reason=reject_reason,
         payload=order,
     )
     capture_snapshot(trigger="crypto_order")
@@ -267,6 +277,72 @@ def run_crypto_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = False) -
         "status": "executed" if submitted else "order_error",
         "signal": signal,
         "order": order,
+        "reject_reason": reject_reason,
+    }
+
+
+def run_crypto_scalp_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = False) -> dict[str, Any]:
+    """Hybrid scalp 5m: script path or fast LLM → testnet order if approved."""
+    guardrails = get_guardrails()
+    if guardrails.get("trading", {}).get("kill_switch"):
+        return {"status": "halted", "reject_reason": "kill_switch_active"}
+
+    crypto_cfg = get_config_effective("crypto_config")
+    if crypto_cfg.get("mode") != "paper" and guardrails.get("trading", {}).get("mode") != "paper":
+        return {
+            "status": "blocked",
+            "reject_reason": "not_paper_mode",
+            "hint": "Hybrid scalp runs in paper mode only at this stage",
+        }
+
+    balances = get_account_balances(testnet=True)
+    usdt = next((float(b["free"]) for b in balances if b.get("asset") == "USDT"), 10000.0)
+    scalp_cfg = load_config("crypto_scalp_hybrid")
+    wf = str(scalp_cfg.get("paper", {}).get("auto_workflow_name", "crypto-scalp-auto"))
+
+    signal = run_crypto_scalp_signal(
+        symbol=symbol,
+        env="paper",
+        workflow_name=wf,
+        skip_llm=skip_llm,
+        equity=usdt or 10000.0,
+    )
+    if signal.get("status") != "ready_for_order":
+        return {"status": signal.get("status", "skipped"), "signal": signal}
+
+    sizing = signal.get("sizing") or {}
+    qty = float(sizing.get("quantity") or 0)
+    if qty <= 0:
+        return {"status": "error", "reject_reason": "zero_quantity", "signal": signal}
+
+    order = place_market_order(symbol=symbol, side="BUY", quantity=qty, testnet=True)
+    submitted = order.get("orderId") is not None and order.get("http_status") == 200
+    reject_reason = None
+    if not submitted:
+        reject_reason = (
+            order.get("reject_reason")
+            or order.get("msg")
+            or order.get("message")
+            or (f"http_{order.get('http_status')}" if order.get("http_status") is not None else None)
+        )
+    log_event(
+        market="crypto",
+        env="paper",
+        stage="order",
+        symbol=symbol,
+        decision="submitted" if submitted else "error",
+        workflow_name=wf,
+        inputs_hash=signal.get("inputs_hash"),
+        notional=sizing.get("notional"),
+        reject_reason=reject_reason,
+        payload={**order, "hybrid_path": signal.get("hybrid_path")},
+    )
+    capture_snapshot(trigger="crypto_scalp_order")
+    return {
+        "status": "executed" if submitted else "order_error",
+        "signal": signal,
+        "order": order,
+        "reject_reason": reject_reason,
     }
 
 
@@ -295,6 +371,9 @@ def run_securities_swing_paper(*, ticker: str = "SBER", skip_llm: bool = False) 
         dry_run=False,
     )
     submitted = order.get("status") == "submitted"
+    reject_reason = None
+    if not submitted:
+        reject_reason = order.get("reject_reason") or order.get("message") or order.get("status")
     log_event(
         market="securities",
         env="paper",
@@ -305,6 +384,7 @@ def run_securities_swing_paper(*, ticker: str = "SBER", skip_llm: bool = False) 
         inputs_hash=swing.get("inputs_hash"),
         notional=amount,
         currency="RUB",
+        reject_reason=reject_reason,
         payload=order,
     )
     capture_snapshot(trigger="securities_order")
@@ -312,6 +392,7 @@ def run_securities_swing_paper(*, ticker: str = "SBER", skip_llm: bool = False) 
         "status": "executed" if submitted else "order_error",
         "swing": swing,
         "order": order,
+        "reject_reason": reject_reason,
     }
 
 

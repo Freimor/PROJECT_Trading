@@ -1,0 +1,40 @@
+# NeuraTradeBench-style Ollama benchmark harness
+# Reference: https://github.com/sakshyambanjade/neuratrade
+#
+# modes:
+#   fixtures  — deterministic golden cases (wiki/benchmark/crypto_golden_v1.yaml)
+#   pipeline  — full crypto_pipeline on live pairs (slow, integration test)
+#   both      — fixtures then pipeline
+
+version: "1.0.0"
+
+default_mode: fixtures
+
+models:
+  - qwen3.5:9b
+  - qwen3.5:4b
+
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+
+fixtures:
+  market: crypto
+  golden_file: benchmark/crypto_golden_v1.yaml
+
+# NeuraTradeBench-style ablations on golden fixtures
+ablations:
+  - id: baseline
+    label: "Baseline (news as in fixture)"
+  - id: no_news
+    label: "Ablate news context"
+    clear_news: true
+
+schedule_cron: "0 7 * * *"
+
+export_artifacts: true
+artifact_dir: data/neuratrade/reports
+
+# Minimum golden pass_rate to recommend model for production configs
+recommend_min_pass_rate: 0.75
+recommend_min_runs: 5

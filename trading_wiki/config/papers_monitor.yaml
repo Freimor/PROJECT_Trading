@@ -1,0 +1,57 @@
+# Automated research paper discovery
+# Sources: arXiv, CrossRef, OpenAlex, Semantic Scholar, BIS/IMF RSS
+# Human review → papers/inbox/ drafts → papers/ library
+
+version: "1.0.0"
+min_year: 2021
+schedule_cron: "0 6 * * 1"
+
+# Obsidian draft output (relative to repo root)
+obsidian_inbox_path: papers/inbox
+auto_draft_on_ingest: false
+
+arxiv_query: "(all:trading OR all:portfolio OR all:cryptocurrency OR all:algorithmic) AND (cat:q-fin.* OR cat:cs.AI OR cat:cs.LG)"
+arxiv_max: 15
+
+crossref_enabled: true
+crossref_query: "algorithmic trading machine learning cryptocurrency"
+crossref_max: 10
+
+openalex_enabled: true
+openalex_query: "algorithmic trading cryptocurrency portfolio machine learning"
+openalex_max: 15
+
+semantic_scholar_enabled: true
+semantic_scholar_query: "algorithmic trading machine learning finance"
+semantic_scholar_max: 15
+# Optional: SEMANTIC_SCHOLAR_API_KEY in .env (higher rate limits)
+
+rss_enabled: true
+rss_feeds:
+  - id: bis_wp
+    name: BIS Working Papers
+    url: https://www.bis.org/doclist/wppubs.rss
+    max_items: 10
+  - id: bis_bulletin
+    name: BIS Bulletin
+    url: https://www.bis.org/doclist/bisbulletins.rss
+    max_items: 8
+  - id: imf_publications
+    name: IMF Publications
+    url: https://www.imf.org/en/Publications/RSS
+    max_items: 10
+
+relevance_keywords:
+  - trading
+  - portfolio
+  - cryptocurrency
+  - bitcoin
+  - llm
+  - reinforcement learning
+  - factor
+  - backtest
+  - market microstructure
+  - moex
+  - risk management
+  - stablecoin
+  - macroprudential

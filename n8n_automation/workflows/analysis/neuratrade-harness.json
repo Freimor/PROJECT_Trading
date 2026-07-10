@@ -1,0 +1,53 @@
+{
+  "id": "wfNeura01",
+  "name": "neuratrade-harness",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * *" }] }
+      },
+      "id": "nt010001-0001-4000-8000-000000000001",
+      "name": "Daily 07:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/neuratrade/cycle",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { equity: 10000 } }}",
+        "options": { "timeout": 900000 }
+      },
+      "id": "nt010001-0001-4000-8000-000000000002",
+      "name": "Run Harness",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '🏆 NeuraTrade harness\\nRun: ' + ($json.run_id ?? '?') } }}",
+        "options": {}
+      },
+      "id": "nt010001-0001-4000-8000-000000000003",
+      "name": "Telegram Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Daily 07:00 MSK": { "main": [[{ "node": "Run Harness", "type": "main", "index": 0 }]] },
+    "Run Harness": { "main": [[{ "node": "Telegram Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "analysis" }, { "name": "neuratrade" }],
+  "active": false
+}

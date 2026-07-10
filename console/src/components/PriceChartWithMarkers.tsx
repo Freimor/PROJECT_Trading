@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ColorType,
   createChart,
+  TickMarkType,
   type IChartApi,
   type ISeriesApi,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { Candle, ChartMarker } from "../types";
+import type { Candle, ChartIndicators, ChartMarker, ChartOverlays } from "../types";
 import {
   buildSignalHighlights,
   markersForSeries,
@@ -21,6 +22,8 @@ type Props = {
   height?: number;
   interval?: string;
   symbol?: string;
+  overlays?: ChartOverlays;
+  indicators?: ChartIndicators;
   onMarkerClick?: (marker: ChartMarker) => void;
 };
 
@@ -33,6 +36,24 @@ type OverlayBox = {
   label: string;
   side: "buy" | "sell";
   marker: ChartMarker;
+};
+
+const PANEL_HEIGHT = 96;
+
+const OVERLAY_COLORS: Record<string, string> = {
+  ema50: "#f0a030",
+  ema200: "#5b9cf5",
+  rsi_14: "#9b7ede",
+  macd: "#3dd68c",
+  macd_signal: "#ff6b6b",
+};
+
+const OVERLAY_LABELS: Record<string, string> = {
+  ema50: "EMA50",
+  ema200: "EMA200",
+  rsi_14: "RSI(14)",
+  macd: "MACD",
+  macd_signal: "Signal",
 };
 
 function toSeriesMarker(m: ChartMarker): SeriesMarker<Time> {
@@ -51,7 +72,107 @@ function showSeconds(interval?: string): boolean {
 }
 
 function isHourlyOrFiner(interval?: string): boolean {
-  return ["1m", "5m", "15m", "30m", "1h", "2h"].includes(interval ?? "");
+  return ["1m", "5m", "15m", "30m", "1h", "2h", "4h"].includes(interval ?? "");
+}
+
+function barSpacingForInterval(interval?: string): number {
+  switch (interval) {
+    case "1m":
+      return 4;
+    case "5m":
+      return 6;
+    case "15m":
+      return 8;
+    case "30m":
+      return 9;
+    case "1h":
+      return 10;
+    case "2h":
+      return 11;
+    case "4h":
+      return 12;
+    case "1d":
+      return 14;
+    default:
+      return 10;
+  }
+}
+
+function formatChartTime(time: number, interval?: string, tickMarkType?: TickMarkType): string {
+  const d = new Date(time * 1000);
+  const mark = tickMarkType ?? TickMarkType.Time;
+
+  if (showSeconds(interval)) {
+    if (mark === TickMarkType.Year || mark === TickMarkType.Month) {
+      return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+    }
+    return d.toLocaleString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: showSeconds(interval) ? "2-digit" : undefined,
+    });
+  }
+
+  if (isHourlyOrFiner(interval)) {
+    if (mark === TickMarkType.Year) return String(d.getFullYear());
+    if (mark === TickMarkType.Month) return d.toLocaleDateString(undefined, { month: "short" });
+    if (mark === TickMarkType.DayOfMonth) return String(d.getDate());
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  if (mark === TickMarkType.Year) return String(d.getFullYear());
+  if (mark === TickMarkType.Month) return d.toLocaleDateString(undefined, { month: "short" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function crosshairTimeFormatter(interval?: string) {
+  return (time: number) => formatChartTime(time, interval);
+}
+
+function timeScaleOptions(interval?: string) {
+  const spacing = barSpacingForInterval(interval);
+  return {
+    timeVisible: true,
+    secondsVisible: showSeconds(interval),
+    barSpacing: spacing,
+    minBarSpacing: Math.max(2, spacing - 4),
+    tickMarkFormatter: (time: UTCTimestamp, tickMarkType: TickMarkType) =>
+      formatChartTime(time as number, interval, tickMarkType),
+  };
+}
+
+function chartBaseOptions(height: number, interval?: string) {
+  return {
+    height,
+    layout: {
+      background: { type: ColorType.Solid, color: "#0b1017" },
+      textColor: "#9fb0c7",
+    },
+    grid: {
+      vertLines: { color: "#1e2a3a" },
+      horzLines: { color: "#1e2a3a" },
+    },
+    rightPriceScale: { borderColor: "#243044" },
+    timeScale: timeScaleOptions(interval),
+    localization: {
+      timeFormatter: crosshairTimeFormatter(interval),
+    },
+    handleScale: {
+      axisPressedMouseMove: { time: true, price: true },
+      mouseWheel: true,
+      pinch: true,
+    },
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+    },
+  };
 }
 
 function layoutHighlights(
@@ -71,14 +192,14 @@ function layoutHighlights(
     if (x === null || yTop === null || yBottom === null) continue;
 
     const top = Math.min(yTop, yBottom);
-    const height = Math.max(Math.abs(yBottom - yTop), 12);
+    const boxHeight = Math.max(Math.abs(yBottom - yTop), 12);
 
     boxes.push({
       id: h.id,
       left: x - boxWidth / 2,
       top: top - 18,
       width: boxWidth,
-      height: height + 18,
+      height: boxHeight + 18,
       label: h.label,
       side: h.side,
       marker: h.marker,
@@ -88,24 +209,71 @@ function layoutHighlights(
   return boxes;
 }
 
+function bindChartSync(leader: IChartApi, followers: IChartApi[]) {
+  const handler = (range: Parameters<Parameters<IChartApi["timeScale"]["subscribeVisibleLogicalRangeChange"]>[0]>[0]) => {
+    if (!range) return;
+    for (const chart of followers) {
+      chart.timeScale().setVisibleLogicalRange(range);
+    }
+  };
+  leader.timeScale().subscribeVisibleLogicalRangeChange(handler);
+  return () => leader.timeScale().unsubscribeVisibleLogicalRangeChange(handler);
+}
+
 export default function PriceChartWithMarkers({
   candles,
   markers,
   height = 420,
   interval,
   symbol,
+  overlays,
+  indicators,
   onMarkerClick,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const mainContainerRef = useRef<HTMLDivElement>(null);
+  const panelContainerRefs = useRef<(HTMLDivElement | null)[]>([]);
   const chartRef = useRef<IChartApi | null>(null);
+  const panelChartsRef = useRef<IChartApi[]>([]);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const priceOverlaySeriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const markersRef = useRef(markers);
   const highlightsRef = useRef<SignalHighlight[]>([]);
   const fitKeyRef = useRef("");
   const [overlayBoxes, setOverlayBoxes] = useState<OverlayBox[]>([]);
 
+  const panels = overlays?.panels ?? [];
+  const priceOverlays = overlays?.price ?? [];
+
   const highlights = useMemo(() => buildSignalHighlights(markers, candles), [markers, candles]);
   const seriesMarkers = useMemo(() => markersForSeries(markers), [markers]);
+
+  const legendItems = useMemo(() => {
+    const items: Array<{ key: string; label: string; color: string }> = [];
+    for (const key of priceOverlays) {
+      items.push({
+        key,
+        label: OVERLAY_LABELS[key] ?? key,
+        color: OVERLAY_COLORS[key] ?? "#9fb0c7",
+      });
+    }
+    for (const panel of panels) {
+      for (const key of panel.series) {
+        items.push({
+          key: `${panel.id}:${key}`,
+          label: OVERLAY_LABELS[key] ?? key,
+          color: OVERLAY_COLORS[key] ?? "#9fb0c7",
+        });
+      }
+      if (panel.histogram) {
+        items.push({
+          key: `${panel.id}:${panel.histogram}`,
+          label: "Hist",
+          color: "#6e7681",
+        });
+      }
+    }
+    return items;
+  }, [panels, priceOverlays]);
 
   markersRef.current = markers;
   highlightsRef.current = highlights;
@@ -121,60 +289,10 @@ export default function PriceChartWithMarkers({
   }, []);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!mainContainerRef.current) return;
 
-    const chart = createChart(containerRef.current, {
-      height,
-      layout: {
-        background: { type: ColorType.Solid, color: "#0b1017" },
-        textColor: "#9fb0c7",
-      },
-      grid: {
-        vertLines: { color: "#1e2a3a" },
-        horzLines: { color: "#1e2a3a" },
-      },
-      rightPriceScale: { borderColor: "#243044" },
-      timeScale: {
-        borderColor: "#243044",
-        timeVisible: true,
-        secondsVisible: showSeconds(interval),
-      },
-      localization: {
-        timeFormatter: (time: number) => {
-          const d = new Date(time * 1000);
-          if (showSeconds(interval)) {
-            return d.toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            });
-          }
-          if (isHourlyOrFiner(interval)) {
-            return d.toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-          }
-          return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-        },
-      },
-      handleScale: {
-        axisPressedMouseMove: { time: true, price: true },
-        mouseWheel: true,
-        pinch: true,
-      },
-      handleScroll: {
-        mouseWheel: true,
-        pressedMouseMove: true,
-        horzTouchDrag: true,
-      },
-    });
-
-    const series = chart.addCandlestickSeries({
+    const mainChart = createChart(mainContainerRef.current, chartBaseOptions(height, interval));
+    const candleSeries = mainChart.addCandlestickSeries({
       upColor: "#3dd68c",
       downColor: "#ff6b6b",
       borderVisible: false,
@@ -182,22 +300,23 @@ export default function PriceChartWithMarkers({
       wickDownColor: "#ff6b6b",
     });
 
-    chartRef.current = chart;
-    seriesRef.current = series;
+    chartRef.current = mainChart;
+    seriesRef.current = candleSeries;
+    priceOverlaySeriesRef.current = [];
 
     const onResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
-        refreshOverlays();
+      if (mainContainerRef.current) {
+        mainChart.applyOptions({ width: mainContainerRef.current.clientWidth });
       }
+      refreshOverlays();
     };
     onResize();
     window.addEventListener("resize", onResize);
 
     const onRange = () => refreshOverlays();
-    chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
+    mainChart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
 
-    chart.subscribeClick((param) => {
+    mainChart.subscribeClick((param) => {
       if (!onMarkerClick || !param.time) return;
       const t = param.time as number;
       const hit =
@@ -208,47 +327,134 @@ export default function PriceChartWithMarkers({
 
     return () => {
       window.removeEventListener("resize", onResize);
-      chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
-      chart.remove();
+      mainChart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
+      mainChart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      priceOverlaySeriesRef.current = [];
     };
-  }, [height, onMarkerClick, interval, refreshOverlays]);
+  }, [height, onMarkerClick, refreshOverlays, interval]);
 
   useEffect(() => {
-    chartRef.current?.applyOptions({
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: showSeconds(interval),
-      },
-      localization: {
-        timeFormatter: (time: number) => {
-          const d = new Date(time * 1000);
-          if (showSeconds(interval)) {
-            return d.toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            });
-          }
-          if (isHourlyOrFiner(interval)) {
-            return d.toLocaleString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-          }
-          return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const mainChart = chartRef.current;
+    if (!mainChart || panels.length === 0) {
+      for (const chart of panelChartsRef.current) chart.remove();
+      panelChartsRef.current = [];
+      return;
+    }
+
+    const subCharts: IChartApi[] = [];
+    const unsubs: Array<() => void> = [];
+
+    for (let i = 0; i < panels.length; i++) {
+      const el = panelContainerRefs.current[i];
+      if (!el) continue;
+      const panelChart = createChart(el, {
+        ...chartBaseOptions(PANEL_HEIGHT, interval),
+        timeScale: {
+          ...timeScaleOptions(interval),
+          visible: i === panels.length - 1,
         },
+      });
+      const panel = panels[i];
+
+      if (indicators) {
+        for (const key of panel.series) {
+          const points = indicators.series[key];
+          if (!points?.length) continue;
+          const line = panelChart.addLineSeries({
+            color: OVERLAY_COLORS[key] ?? "#9fb0c7",
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: key === panel.series[0],
+            title: OVERLAY_LABELS[key] ?? key,
+          });
+          line.setData(
+            points.map((p) => ({
+              time: p.time as UTCTimestamp,
+              value: p.value,
+            })),
+          );
+          for (const levelKey of panel.levels ?? []) {
+            const level = indicators.levels[levelKey];
+            if (level == null) continue;
+            line.createPriceLine({
+              price: level,
+              color: "#6e7681",
+              lineWidth: 1,
+              lineStyle: 2,
+              axisLabelVisible: true,
+              title: levelKey.includes("oversold") ? "OS" : "OB",
+            });
+          }
+        }
+
+        if (panel.histogram) {
+          const hist = indicators.series[panel.histogram];
+          if (hist?.length) {
+            const histSeries = panelChart.addHistogramSeries({
+              priceFormat: { type: "price", precision: 4, minMove: 0.0001 },
+            });
+            histSeries.setData(
+              hist.map((p) => ({
+                time: p.time as UTCTimestamp,
+                value: p.value,
+                color: p.value >= 0 ? "rgba(61, 214, 140, 0.55)" : "rgba(255, 107, 107, 0.55)",
+              })),
+            );
+          }
+        }
+      }
+
+      subCharts.push(panelChart);
+    }
+
+    panelChartsRef.current = subCharts;
+
+    if (subCharts.length > 0) {
+      unsubs.push(bindChartSync(mainChart, subCharts));
+      unsubs.push(bindChartSync(subCharts[subCharts.length - 1], [mainChart, ...subCharts.slice(0, -1)]));
+      for (const chart of subCharts) {
+        chart.timeScale().fitContent();
+      }
+    }
+
+    const onResize = () => {
+      for (let i = 0; i < subCharts.length; i++) {
+        const el = panelContainerRefs.current[i];
+        if (el) subCharts[i].applyOptions({ width: el.clientWidth });
+      }
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      for (const unsub of unsubs) unsub();
+      for (const chart of subCharts) chart.remove();
+      panelChartsRef.current = [];
+    };
+  }, [panels, indicators, interval]);
+
+  useEffect(() => {
+    fitKeyRef.current = "";
+    chartRef.current?.applyOptions({
+      timeScale: timeScaleOptions(interval),
+      localization: {
+        timeFormatter: crosshairTimeFormatter(interval),
       },
     });
-  }, [interval]);
+    if (candles.length > 0) {
+      chartRef.current?.timeScale().fitContent();
+      for (const chart of panelChartsRef.current) {
+        chart.timeScale().fitContent();
+      }
+    }
+  }, [interval, candles.length]);
 
   useEffect(() => {
     if (!seriesRef.current) return;
+
     seriesRef.current.setData(
       candles.map((c) => ({
         time: c.time as UTCTimestamp,
@@ -264,10 +470,42 @@ export default function PriceChartWithMarkers({
     if (fitKey !== fitKeyRef.current && candles.length > 0) {
       fitKeyRef.current = fitKey;
       chartRef.current?.timeScale().fitContent();
+      for (const chart of panelChartsRef.current) {
+        chart.timeScale().fitContent();
+      }
     }
 
     refreshOverlays();
   }, [candles, seriesMarkers, symbol, interval, refreshOverlays]);
+
+  useEffect(() => {
+    const mainChart = chartRef.current;
+    if (!mainChart || !indicators) return;
+
+    for (const line of priceOverlaySeriesRef.current) {
+      mainChart.removeSeries(line);
+    }
+    priceOverlaySeriesRef.current = [];
+
+    for (const key of priceOverlays) {
+      const points = indicators.series[key];
+      if (!points?.length) continue;
+      const line = mainChart.addLineSeries({
+        color: OVERLAY_COLORS[key] ?? "#9fb0c7",
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: true,
+        title: OVERLAY_LABELS[key] ?? key,
+      });
+      line.setData(
+        points.map((p) => ({
+          time: p.time as UTCTimestamp,
+          value: p.value,
+        })),
+      );
+      priceOverlaySeriesRef.current.push(line);
+    }
+  }, [indicators, priceOverlays]);
 
   useEffect(() => {
     refreshOverlays();
@@ -275,7 +513,28 @@ export default function PriceChartWithMarkers({
 
   return (
     <div className="price-chart-wrap">
-      <div ref={containerRef} className="price-chart" />
+      {legendItems.length > 0 ? (
+        <div className="chart-indicator-legend" aria-hidden="true">
+          {legendItems.map((item) => (
+            <span key={item.key} className="chart-legend-item">
+              <span className="chart-legend-swatch" style={{ background: item.color }} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div ref={mainContainerRef} className="price-chart" />
+      {panels.map((panel, index) => (
+        <div key={panel.id} className="chart-indicator-panel">
+          <span className="chart-panel-label">{panel.id.toUpperCase()}</span>
+          <div
+            ref={(el) => {
+              panelContainerRefs.current[index] = el;
+            }}
+            className="price-chart price-chart-panel"
+          />
+        </div>
+      ))}
       {overlayBoxes.length > 0 ? (
         <div className="chart-signal-overlays" aria-hidden="true">
           {overlayBoxes.map((box) => (

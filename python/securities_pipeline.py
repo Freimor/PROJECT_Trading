@@ -4,14 +4,24 @@ from __future__ import annotations
 
 from typing import Any
 
-from config_loader import load_config
+from effective_config import get_config_effective, get_guardrails
+from swing_conservatism_service import apply_swing_conservatism_securities
 from market_data import fetch_moex_candles_as_of
 from event_log import log_event, log_llm_decision
+from filter_event_details import filter_log_payload
 from guardrails import enforce_guardrails
 from indicators.technical import compute_indicators, rule_filter
 from llm_client import validate_signal
-from news_service import news_context_for_symbols
+from news_service import news_context_with_signals
+from signals_engine_service import consume_signals
 from utils import inputs_hash
+from geopolitical_risk import geo_adjust_notional
+
+
+def _llm_reject_reason(llm_result: dict[str, Any]) -> str | None:
+    if llm_result.get("action") == "approve":
+        return None
+    return llm_result.get("reject_reason") or llm_result.get("reasoning") or None
 
 
 def _fetch_moex_candles(secid: str, interval: int = 24) -> list[dict[str, float]]:
@@ -28,10 +38,11 @@ def run_securities_swing_dry_run(
     workflow_name: str = "securities-swing-dry-run",
     skip_llm: bool = False,
 ) -> dict[str, Any]:
-    sec_cfg = load_config("securities_config")
-    guardrails = load_config("guardrails")
+    sec_cfg = apply_swing_conservatism_securities(get_config_effective("securities_config"))
     swing = sec_cfg.get("swing_signals", {})
     prompt_version = swing.get("prompt_version", "securities_validate_v1")
+
+    guardrails = get_guardrails()
 
     candles = _fetch_moex_candles(ticker)
     if len(candles) < 30:
@@ -49,30 +60,43 @@ def run_securities_swing_dry_run(
         payload={"indicators": indicators},
     )
 
-    filtered = rule_filter(indicators, {"rule_filter": {"rsi_oversold": 40, "rsi_overbought": 60}})
+    swing_rf = sec_cfg.get("swing_signals", {}).get("rule_filter", {"rsi_oversold": 40, "rsi_overbought": 60})
+    filtered = rule_filter(indicators, {"rule_filter": swing_rf})
     if not filtered.get("proceed"):
         log_event(
             market="securities", env=env, stage="filter", symbol=ticker,
-            decision="skip", reject_reason="no_rule_match",
+            decision="skip", reject_reason=filtered.get("reject_reason"),
             workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
+            payload=filter_log_payload(filtered),
         )
         return {"status": "skipped", "stage": "filter", "ticker": ticker}
 
+    log_event(
+        market="securities", env=env, stage="filter", symbol=ticker,
+        decision="approve", workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
+        payload=filter_log_payload(filtered),
+    )
+
     llm_result: dict[str, Any] = {"action": "reject"}
     if not skip_llm:
-        news = news_context_for_symbols([ticker, "MOEX"])
+        news, pending_signal_ids = news_context_with_signals([ticker, "MOEX"])
         llm_result = validate_signal(
             market="securities", symbol=ticker, indicators=filtered,
             prompt_version=prompt_version, news_summary=news, timeframe="1d",
         )
-        log_event(
+        event_id = log_event(
             market="securities", env=env, stage="llm", symbol=ticker,
             decision=llm_result.get("action"),
+            reject_reason=_llm_reject_reason(llm_result),
             workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
-            model=llm_result.get("model"), confidence=llm_result.get("confidence"),
+            prompt_version=prompt_version, model=llm_result.get("model"),
+            confidence=llm_result.get("confidence"),
+            latency_ms=llm_result.get("latency_ms"),
+            payload={"raw": str(llm_result.get("raw", ""))[:2000]},
         )
+        consume_signals(pending_signal_ids, event_id=event_id)
         log_llm_decision(
-            trade_event_id=None,
+            trade_event_id=event_id,
             market="securities",
             model=llm_result.get("model", "unknown"),
             prompt_version=prompt_version,
@@ -81,9 +105,16 @@ def run_securities_swing_dry_run(
             parsed=llm_result,
             latency_ms=int(llm_result.get("latency_ms") or 0),
         )
+        if llm_result.get("action") != "approve":
+            return {"status": "rejected", "stage": "llm", "ticker": ticker, "llm": llm_result}
 
     guard = enforce_guardrails(
-        market="securities", symbol=ticker, llm_decision=llm_result, env=env, guardrails=guardrails,
+        market="securities",
+        symbol=ticker,
+        llm_decision=llm_result,
+        env=env,
+        guardrails=guardrails,
+        workflow_name=workflow_name,
     )
     log_event(
         market="securities", env=env, stage="guardrails", symbol=ticker,
@@ -92,13 +123,27 @@ def run_securities_swing_dry_run(
         workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
     )
 
+    if not guard["pass"]:
+        return {
+            "status": "rejected",
+            "stage": "guardrails",
+            "ticker": ticker,
+            "inputs_hash": ih,
+            "indicators": filtered,
+            "llm": llm_result,
+            "guard": guard,
+        }
+
+    geo = geo_adjust_notional(10000.0, ticker) if ticker else None
+
     return {
-        "status": "dry_run_complete" if guard["pass"] else "rejected",
+        "status": "dry_run_complete",
         "ticker": ticker,
         "inputs_hash": ih,
         "indicators": filtered,
         "llm": llm_result,
         "guard": guard,
+        "geopolitical": geo,
     }
 
 

@@ -6,6 +6,8 @@ https://russianinvestments.github.io/investAPI/swagger-ui/
 
 from __future__ import annotations
 
+import os
+import time
 import uuid
 from typing import Any
 
@@ -17,6 +19,45 @@ REST_BASE_SANDBOX = "https://sandbox-invest-public-api.tbank.ru/rest"
 # Fallback для старых токенов/документации.
 REST_BASE_LIVE_LEGACY = "https://invest-public-api.tinkoff.ru/rest"
 REST_BASE_SANDBOX_LEGACY = "https://sandbox-invest-public-api.tinkoff.ru/rest"
+
+_RETRYABLE_MARKERS = ("70001", "70002", "70003", "internal error", "Internal error")
+
+
+def _ssl_verify() -> bool:
+    return os.environ.get("TINVEST_SSL_VERIFY", "true").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
+def _http_proxy() -> str | None:
+    for key in ("TINVEST_HTTP_PROXY", "HTTPS_PROXY", "HTTP_PROXY"):
+        value = (os.environ.get(key) or "").strip()
+        if value:
+            return value
+    if os.environ.get("TINVEST_USE_PROXY_GATEWAY", "false").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        gateway = (os.environ.get("TELEGRAM_PROXY_GATEWAY") or "").strip()
+        if gateway:
+            return gateway
+    return None
+
+
+def _proxy_fallback_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "proxy",
+            "connection refused",
+            "handshake operation timed out",
+            "socks",
+        )
+    )
 
 
 def quotation_to_float(value: dict[str, Any] | None) -> float:
@@ -38,6 +79,13 @@ class TinvestRestClient:
             else [REST_BASE_LIVE, REST_BASE_LIVE_LEGACY]
         )
 
+    def _client(self) -> httpx.Client:
+        return httpx.Client(
+            timeout=self.timeout,
+            proxy=_http_proxy(),
+            verify=_ssl_verify(),
+        )
+
     def _post(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = body or {}
         headers = {
@@ -45,29 +93,89 @@ class TinvestRestClient:
             "Content-Type": "application/json",
         }
         last_error: Exception | None = None
-        with httpx.Client(timeout=self.timeout) as client:
-            for base in self._bases:
-                url = f"{base}{path}"
-                try:
-                    resp = client.post(url, headers=headers, json=payload)
-                    if resp.status_code == 404 and base != self._bases[-1]:
+        verify_modes = [_ssl_verify()]
+        if _ssl_verify():
+            verify_modes.append(False)
+        configured_proxy = _http_proxy()
+        proxy_modes: list[str | None] = [configured_proxy] if configured_proxy else [None]
+        if configured_proxy:
+            proxy_modes.append(None)
+        for verify in verify_modes:
+            for proxy in proxy_modes:
+                for attempt in range(3):
+                    try:
+                        with httpx.Client(
+                            timeout=self.timeout, proxy=proxy, verify=verify
+                        ) as client:
+                            for index, base in enumerate(self._bases):
+                                url = f"{base}{path}"
+                                try:
+                                    resp = client.post(url, headers=headers, json=payload)
+                                    if resp.status_code in (404, 500, 502, 503, 504) and index < len(
+                                        self._bases
+                                    ) - 1:
+                                        last_error = RuntimeError(
+                                            f"HTTP {resp.status_code} from {base}"
+                                        )
+                                        continue
+                                    if resp.status_code >= 400:
+                                        message = resp.text[:300]
+                                        try:
+                                            err = resp.json()
+                                            if isinstance(err, dict):
+                                                if err.get("message"):
+                                                    message = str(err["message"])
+                                                if err.get("description"):
+                                                    message = f"{message} ({err.get('description')})"
+                                                elif err.get("code"):
+                                                    message = f"{err.get('code')}: {message}"
+                                        except Exception:
+                                            pass
+                                        raise RuntimeError(
+                                            f"T-Invest API HTTP {resp.status_code}: {message}"
+                                        )
+                                    data = resp.json()
+                                    if isinstance(data, dict) and {"code", "message"} <= set(
+                                        data.keys()
+                                    ):
+                                        raise RuntimeError(
+                                            f"T-Invest API error {data.get('code')}: {data.get('message')}"
+                                        )
+                                    return data
+                                except RuntimeError as exc:
+                                    last_error = exc
+                                except Exception as exc:
+                                    last_error = exc
+                    except Exception as exc:
+                        last_error = exc
+                    err_text = str(last_error or "")
+                    if proxy and _proxy_fallback_error(last_error or RuntimeError("")):
+                        break
+                    if attempt < 2 and any(
+                        marker.lower() in err_text.lower() for marker in _RETRYABLE_MARKERS
+                    ):
+                        time.sleep(1.5 * (attempt + 1))
                         continue
-                    resp.raise_for_status()
-                    data = resp.json()
-                    if isinstance(data, dict) and {"code", "message"} <= set(data.keys()):
-                        raise RuntimeError(
-                            f"T-Invest API error {data.get('code')}: {data.get('message')}"
-                        )
-                    return data
-                except Exception as exc:
-                    last_error = exc
+                    break
+                if proxy and _proxy_fallback_error(last_error or RuntimeError("")):
+                    continue
+                break
+            if (
+                verify is True
+                and last_error
+                and "certificate verify failed" in str(last_error).lower()
+            ):
+                continue
+            break
         raise RuntimeError(str(last_error or "T-Invest REST request failed"))
 
     def get_accounts(self) -> list[dict[str, Any]]:
-        data = self._post(
-            "/tinkoff.public.invest.api.contract.v1.UsersService/GetAccounts",
-            {},
+        path = (
+            "/tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxAccounts"
+            if self.sandbox
+            else "/tinkoff.public.invest.api.contract.v1.UsersService/GetAccounts"
         )
+        data = self._post(path, {})
         return list(data.get("accounts") or [])
 
     def ensure_sandbox_account(self) -> str:
@@ -156,10 +264,12 @@ class TinvestRestClient:
         return quotation_to_float(prices[0].get("price"))
 
     def get_portfolio(self, account_id: str) -> dict[str, Any]:
-        data = self._post(
-            "/tinkoff.public.invest.api.contract.v1.OperationsService/GetPortfolio",
-            {"accountId": account_id},
+        path = (
+            "/tinkoff.public.invest.api.contract.v1.SandboxService/GetSandboxPortfolio"
+            if self.sandbox
+            else "/tinkoff.public.invest.api.contract.v1.OperationsService/GetPortfolio"
         )
+        data = self._post(path, {"accountId": account_id})
         positions = []
         for p in data.get("positions") or []:
             positions.append(

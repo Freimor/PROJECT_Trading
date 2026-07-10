@@ -1,38 +1,46 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { apiGet } from "../api";
 import AutomationPanel from "../components/AutomationPanel";
-import MarketOperationMode from "../components/MarketOperationMode";
+import MarketWorkflowPanel from "../components/MarketWorkflowPanel";
 import ChartMarkerMenu, {
   DEFAULT_MARKER_FILTERS,
   filterChartMarkers,
 } from "../components/ChartMarkerMenu";
 import EquityMiniChart from "../components/EquityMiniChart";
+import SymbolNewsPanel from "../components/SymbolNewsPanel";
 import PortfolioCard from "../components/PortfolioCard";
 import PriceChartWithMarkers from "../components/PriceChartWithMarkers";
-import StrategySelector from "../components/StrategySelector";
 import { POLL } from "../config/polling";
 import { useI18n } from "../i18n/LanguageContext";
 import type { AdminLayoutContext } from "../layouts/AdminLayout";
 import { usePolling } from "../hooks/usePolling";
 import { formatMoexPosition } from "../utils/moex";
-import type { Candle, ChartMarker, StrategyState } from "../types";
+import type { Candle, ChartIndicators, ChartMarker, StrategyState } from "../types";
 
 type CandlesResp = { candles: Candle[] };
 type MarkersResp = { markers: ChartMarker[] };
+type IndicatorsResp = ChartIndicators & { status?: string };
+
+const INTERVALS = ["1h", "4h", "1d"];
 
 export default function MoexWorkspacePage() {
   const { t } = useI18n();
   const { overview } = useOutletContext<AdminLayoutContext>();
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [symbol, setSymbol] = useState("SBER");
+  const [interval, setInterval] = useState("1d");
   const [selected, setSelected] = useState<ChartMarker | null>(null);
   const [markerFilters, setMarkerFilters] = useState(DEFAULT_MARKER_FILTERS);
+  const userPickedInterval = useRef(false);
 
   const applyStrategy = useCallback((state: StrategyState) => {
     setStrategy(state);
+    const syms = state.strategy?.symbols ?? [];
     const def = state.strategy?.chart_default;
-    if (def) setSymbol(def);
+    setSymbol((prev) => (syms.includes(prev) ? prev : def ?? syms[0] ?? prev));
+    const tf = state.strategy?.chart_interval;
+    if (tf && !userPickedInterval.current) setInterval(tf);
   }, []);
 
   useEffect(() => {
@@ -47,7 +55,7 @@ export default function MoexWorkspacePage() {
     ? strategy.strategy.symbols
     : ["SBER", "GAZP", "LKOH"];
 
-  const chartInterval = strategy?.strategy?.chart_interval ?? "1d";
+  const chartInterval = interval;
 
   const { data: funnelData } = usePolling<{ funnel?: Record<string, { passed?: number; total?: number }> }>(
     () => apiGet("/api/backtest/funnel?market=securities&days=7"),
@@ -81,17 +89,17 @@ export default function MoexWorkspacePage() {
         ? "T-Invest: check connection"
         : undefined;
 
-  const { data: candleData } = usePolling<CandlesResp>(
+  const { data: candleData, loading: candlesLoading } = usePolling<CandlesResp>(
     useCallback(
       () =>
         apiGet(
-          `/api/charts/candles?market=securities&symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}&limit=120&testnet=true&use_cache=false`,
+          `/api/charts/candles?market=securities&symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}&limit=500&testnet=false&use_cache=false`,
         ),
       [symbol, chartInterval],
     ),
     POLL.CHART,
     true,
-    { errorSource: "GET /api/charts/candles?securities", staggerKey: `moex-candles-${symbol}` },
+    { errorSource: "GET /api/charts/candles?securities", staggerKey: `moex-candles-${symbol}-${chartInterval}` },
   );
 
   const { data: markerData } = usePolling<MarkersResp>(
@@ -105,6 +113,19 @@ export default function MoexWorkspacePage() {
     POLL.MARKERS,
     true,
     { staggerKey: `moex-markers-${symbol}` },
+  );
+
+  const { data: indicatorData } = usePolling<IndicatorsResp>(
+    useCallback(
+      () =>
+        apiGet(
+          `/api/charts/indicators?market=securities&symbol=${encodeURIComponent(symbol)}&interval=${chartInterval}&limit=500&testnet=false&use_cache=false`,
+        ),
+      [symbol, chartInterval],
+    ),
+    POLL.CHART,
+    Boolean(strategy?.strategy?.chart_overlays),
+    { staggerKey: `moex-indicators-${symbol}-${chartInterval}` },
   );
 
   const { data: equity } = usePolling<{ moex_rub?: Array<{ time: number; value: number }> }>(
@@ -129,27 +150,43 @@ export default function MoexWorkspacePage() {
       <div className="workspace-toolbar">
         <h2>{t("workspace.moexTitle")}</h2>
         <div className="toolbar-controls">
-          <MarketOperationMode market="securities" title="MOEX" variant="toolbar" onModeApplied={refreshStrategy} />
           <label>
-          {t("workspace.chartTicker")}
-          <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-            {symbols.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+            {t("workspace.chartTicker")}
+            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+              {symbols.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            {t("workspace.tf")}
+            <select
+              value={interval}
+              onChange={(e) => {
+                userPickedInterval.current = true;
+                setInterval(e.target.value);
+              }}
+            >
+              {INTERVALS.map((tf) => (
+                <option key={tf} value={tf}>
+                  {tf}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </div>
-
-      <StrategySelector market="securities" onChange={applyStrategy} />
 
       <div className="workspace-grid">
         <div className="workspace-main">
           <PortfolioCard
-            title={`${t("workspace.dailyChart")} · ${symbol}`}
-            status={{ label: strategyLabel || "—", tone: "neutral" }}
+            title={`${t("workspace.chart")} · ${chartInterval} · ${symbol}`}
+            status={{
+              label: candlesLoading ? t("common.loading") : `${candleData?.candles?.length ?? 0} candles`,
+              tone: "neutral",
+            }}
           >
             <div className="chart-controls">
               <span className="muted small">{t("workspace.markerMenu")}</span>
@@ -161,15 +198,28 @@ export default function MoexWorkspacePage() {
                 markers={filteredMarkers}
                 symbol={symbol}
                 interval={chartInterval}
+                overlays={strategy?.strategy?.chart_overlays}
+                indicators={
+                  indicatorData?.series
+                    ? { series: indicatorData.series, levels: indicatorData.levels ?? {} }
+                    : undefined
+                }
                 onMarkerClick={setSelected}
               />
             ) : (
-              <p className="muted">{t("workspace.loadingMoex")}</p>
+              !candlesLoading && <p className="muted">{t("workspace.noQuotes")}</p>
             )}
+            <SymbolNewsPanel symbol={symbol} />
           </PortfolioCard>
         </div>
 
         <aside className="workspace-side">
+          <MarketWorkflowPanel
+            market="securities"
+            killSwitch={Boolean(overview?.kill_switch)}
+            onStrategyChange={applyStrategy}
+          />
+
           <AutomationPanel
             title="MOEX"
             env={overview?.securities?.env}

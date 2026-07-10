@@ -107,3 +107,25 @@ sources:
     ttl_hours: 36
     fetch_interval_min: 10
     default_symbols: [MOEX, SBER, GAZP, LKOH, GMKN, YNDX, TMOS, RUB, BTC, ETH]
+
+  - id: esrb_press
+    name: ESRB — press releases
+    source_tier: official
+    feed_type: rss
+    feed_url: https://www.esrb.europa.eu/pub/rss/pressreleases.xml
+    allowed_domains: [esrb.europa.eu, www.esrb.europa.eu]
+    ttl_hours: 168
+    fetch_interval_min: 120
+    default_symbols: [CRYPTO, EUR, MACRO]
+    tags: [regulatory]
+
+  - id: fsb_press
+    name: FSB — press releases
+    source_tier: official
+    feed_type: rss
+    feed_url: https://www.fsb.org/feed/
+    allowed_domains: [fsb.org, www.fsb.org]
+    ttl_hours: 168
+    fetch_interval_min: 120
+    default_symbols: [CRYPTO, MACRO]
+    tags: [regulatory]

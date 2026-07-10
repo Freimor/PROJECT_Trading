@@ -1,0 +1,19 @@
+# Ollama model registry — bootstrap on new host, no manual `ollama pull` scripts
+# API: GET /api/ollama/models/status, POST /api/ollama/models/ensure
+
+version: "1.0.0"
+
+# Pull missing required models in background when db-api starts
+bootstrap_on_startup: true
+
+# Skip auto-pull if disk free (GB) below this threshold
+min_disk_free_gb: 8
+
+pull_timeout_sec: 7200
+
+# Extra models beyond those inferred from crypto/securities/scalp configs
+extra_required: []
+
+# Never auto-delete and block manual delete unless force=true
+protected:
+  - qwen3.5:9b

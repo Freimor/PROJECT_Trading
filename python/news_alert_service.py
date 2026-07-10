@@ -78,6 +78,16 @@ def resolve_watch_symbols() -> list[str]:
         return [s.upper() for s in explicit]
 
     symbols: set[str] = set()
+    try:
+        from workflow_universe_service import all_enabled_symbols
+
+        symbols.update(all_enabled_symbols())
+    except Exception:
+        pass
+
+    if symbols:
+        return sorted(symbols)
+
     guardrails = get_guardrails()
     symbols.update(guardrails.get("symbols", {}).get("moex_whitelist", []))
     symbols.update(guardrails.get("symbols", {}).get("crypto_whitelist", []))
@@ -308,6 +318,7 @@ def process_news_alerts(*, limit: int = 10) -> dict[str, Any]:
                    verification_status, trust_score, matched_symbols, published_at
             FROM news_items
             WHERE (expires_at IS NULL OR expires_at > ?)
+              AND trade_relevant = 1
             ORDER BY published_at DESC
             LIMIT 80
             """,

@@ -5,6 +5,8 @@
 version: "1.0.0"
 
 llm:
+  # validate_only: сигнал только из rule_filter; LLM может veto (reject), не генерирует сделки
+  mode: validate_only  # validate_only | advisory | disabled
   # Общие параметры LLM (пороги по рынку — в crypto_config.llm и securities_config.swing_signals.llm)
   max_tokens: 4096
   require_counter_thesis: true
@@ -45,3 +47,7 @@ portfolio:
   # Общий лимит убытка по crypto + securities (в % от equity)
   combined_daily_loss_limit_pct: 0.03
   base_currency: RUB
+
+# Пресеты риска: conservative | balanced | aggressive (см. python/risk_profile_service.py)
+risk_profiles:
+  default: balanced

@@ -4,6 +4,7 @@ import { POLL } from "../config/polling";
 import { useI18n } from "../i18n/LanguageContext";
 import { usePolling } from "../hooks/usePolling";
 import type { StrategyState } from "../types";
+import { strategyDescription, strategyRationale } from "../utils/strategyText";
 
 type Props = {
   market: "crypto" | "securities";
@@ -11,7 +12,7 @@ type Props = {
 };
 
 export default function StrategySelector({ market, onChange }: Props) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
 
@@ -21,10 +22,7 @@ export default function StrategySelector({ market, onChange }: Props) {
     staggerKey: `strategy-${market}`,
   });
 
-  const strategies = useMemo(
-    () => (data?.strategies ?? []).filter((s) => s.uses_llm !== false),
-    [data?.strategies],
-  );
+  const strategies = useMemo(() => data?.strategies ?? [], [data?.strategies]);
 
   const select = async (strategyId: string) => {
     if (strategyId === data?.active || busy) return;
@@ -72,9 +70,17 @@ export default function StrategySelector({ market, onChange }: Props) {
             onClick={() => select(s.id)}
           >
             <strong>{t(`strategies.${s.id}.label` as "strategies.llm_swing.label")}</strong>
+            {s.uses_llm === false && (
+              <span className="muted small"> · {t("workspace.noLlm")}</span>
+            )}
             <span className="muted small strategy-desc">
-              {t(`strategies.${s.id}.description` as "strategies.llm_swing.description")}
+              {strategyDescription(s, lang === "en" ? "en" : "ru", market)}
             </span>
+            {strategyRationale(s, lang === "en" ? "en" : "ru") && (
+              <span className="muted small strategy-desc" style={{ display: "block", marginTop: "0.25rem" }}>
+                {strategyRationale(s, lang === "en" ? "en" : "ru")}
+              </span>
+            )}
           </button>
         ))}
       </div>

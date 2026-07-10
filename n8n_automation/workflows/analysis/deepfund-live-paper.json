@@ -1,0 +1,53 @@
+{
+  "id": "wfDeepFund01",
+  "name": "deepfund-live-paper",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8,20 * * *" }] }
+      },
+      "id": "df010001-0001-4000-8000-000000000001",
+      "name": "Twice daily MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/deepfund/cycle",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { equity: 10000 } }}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "df010001-0001-4000-8000-000000000002",
+      "name": "Run DeepFund Cycle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '🧪 DeepFund cycle\\nSession: ' + ($json.session_id ?? '?') + '\\nStatus: ' + ($json.status ?? '?') } }}",
+        "options": {}
+      },
+      "id": "df010001-0001-4000-8000-000000000003",
+      "name": "Telegram Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Twice daily MSK": { "main": [[{ "node": "Run DeepFund Cycle", "type": "main", "index": 0 }]] },
+    "Run DeepFund Cycle": { "main": [[{ "node": "Telegram Summary", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "analysis" }, { "name": "deepfund" }],
+  "active": false
+}

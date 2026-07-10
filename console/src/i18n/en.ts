@@ -6,10 +6,12 @@ const en: TranslationTree = {
     overview: "Overview",
     crypto: "Crypto",
     moex: "MOEX",
+    news: "News",
     events: "Events",
     llm: "LLM",
     paper: "Paper",
     benchmark: "Benchmark",
+    research: "Research",
     workflows: "n8n",
     control: "Control",
   },
@@ -19,6 +21,7 @@ const en: TranslationTree = {
     expand: "Expand",
     all: "all",
     open: "Open",
+    close: "Close",
     workspace: "Workspace",
     control: "Control",
     statusOk: "OK",
@@ -28,6 +31,7 @@ const en: TranslationTree = {
     statusOn: "On",
     connected: "connected",
     notConfigured: "not configured",
+    saving: "Saving…",
   },
   overview: {
     title: "System overview",
@@ -103,11 +107,15 @@ const en: TranslationTree = {
     noQuotes: "No quotes. Check Binance testnet / network.",
     loadingMoex: "Loading MOEX ISS quotes…",
     strategy: "Strategy",
+    noLlm: "no LLM",
     markerMenu: "Chart markers",
     markersLlm: "LLM",
     markersOrders: "Orders",
     markersNews: "News",
     markersFills: "Fills",
+    newsFor: "News: {{symbol}}",
+    allNews: "All news",
+    newsEmpty: "No news for this symbol. Load the feed on the News page.",
     cashRub: "cash on account",
     pieces: "pcs",
     operationMode: "Automation mode",
@@ -131,17 +139,100 @@ const en: TranslationTree = {
     detailSignalsOnly: "Signals only, no orders (dry_run in YAML)",
     detailLive: "Live trading",
     passwordRequired: "Enter operator password in the header and click Save",
+    wrongOperatorPassword: "Incorrect password. Please try again.",
+    networkError: "Could not reach the API. Check that db-api and console are running.",
   },
   strategies: {
     llm_swing: {
       label: "LLM swing (4h)",
       description:
-        "Looks for short-term setups on BTC/ETH: technical indicators (RSI, trend) first, then a local LLM approves or rejects the trade idea. For learning; no profit guarantee.",
+        "Indicator signal and LLM review on selected USDT pairs. Pairs and risk — in «Strategy sub-settings».",
+      detail: `Strategy overview
+Automated swing setup search on 4h crypto candles. The system does not trade every bar: indicator rules narrow candidates first, then a local LLM reviews context and news.
+
+Pipeline stages
+1. signal — load 4h candles; compute RSI, MACD, EMA50/EMA200.
+2. filter — technical rule gate (below). If no rule matches → skip, LLM is not called.
+3. llm — approve/reject with indicators + news.
+4. guardrails — risk limits, kill-switch, dry_run/paper/live mode.
+5. risk / order — position size and order (dry_run logs only).
+
+Why the technical filter exists
+A symbol passes if AT LEAST ONE rule fires:
+• RSI < 35 — oversold (potential bounce)
+• RSI > 65 — overbought (potential swing reversal context)
+• MACD: histogram > 0 and MACD > signal — bullish momentum
+• close > EMA200 and EMA50 > EMA200 — uptrend (golden-cross context)
+
+If RSI is between 35 and 65, MACD is weak, and EMA trend is absent, the filter rejects with no_rule_match. That is expected: it filters ~70–90% of cycles so LLM is not called on noise.
+
+Note: journal stage signal/approve means indicators were computed, not an approved trade.
+
+Trading timeframe vs chart
+Trading always uses 4h (crypto_config.yaml). The workspace chart timeframe is for viewing quotes only.
+
+Pairs and modes
+Pair list and risk preset: «Strategy sub-settings». Modes: dry_run (journal only), paper (testnet), live (explicit opt-in only).`,
+    },
+    deepfund_paper: {
+      label: "DeepFund paper",
+      description:
+        "Parallel LLM paper test on post-training-cutoff data — honest eval without history overfit.",
+      detail: `Why (DeepFund, arXiv:2505.11065)
+Standard backtests inflate LLM performance. DeepFund isolates the post-training period in a separate live-paper journal.
+
+Why a separate strategy
+• Not mixed with llm_swing — keeps production vs research metrics clean.
+• Workflow deepfund-live-paper on its own cron (twice daily).
+• Same guardrails; focus is model comparison, not main bot PnL.
+
+When to enable
+After llm_swing is stable in paper; when you need evidence on fresh data.`,
+    },
+    crypto_scalp_hybrid: {
+      label: "Scalp hybrid 5m",
+      description:
+        "5m scalp: ~80% script trades, ~20% borderline via fast LLM (qwen2.5:3b). Paper/dry_run only.",
+      detail: `Overview
+5m hybrid scalp: clear impulses execute via rules_engine; borderline cases hit fast LLM in ~20% slots.
+
+Routing (ambiguity_score)
+• ≤ 0.35 — script
+• 0.35–0.72 + sample slot — qwen2.5:3b validate-only
+• > 0.72 — skip
+
+Config: trading_wiki/config/crypto_scalp_hybrid.yaml`,
     },
     swing_signals: {
       label: "Swing + LLM (MOEX)",
       description:
-        "Trades stocks from the watchlist (SBER, GAZP, etc.) on the daily chart: indicator filter, then LLM reviews news risk and context. Orders only during MOEX session hours (weekdays).",
+        "Daily swing on stocks from the selected watchlist: indicator filter, then LLM. Tickers in «Strategy sub-settings».",
+      detail: `Strategy overview
+MOEX stock swing on daily candles. RSI/MACD/EMA filter, then LLM; orders only during the session.
+
+Filter
+Pass on RSI < 40, RSI > 60, bullish MACD, or EMA200 uptrend — similar to crypto; thresholds in securities_config.yaml.`,
+    },
+    index_dca: {
+      label: "Index DCA (TMOS)",
+      description: "Monthly MOEX index ETF purchase without LLM — passive accumulation.",
+      detail: `Why (passive investing research)
+For long horizons, regular broad-index buys often beat active timing.
+
+Why no LLM
+Fewer failure modes; DCA needs discipline, not per-tick forecasts. Workflow securities-dca-sandbox — 1st of month, 10:00 MSK.`,
+    },
+    factor_sleeve: {
+      label: "Factor sleeve (momentum)",
+      description: "MOEX factor sleeve: momentum rebalance top-N without LLM.",
+      detail: `Why (MOEX factor literature)
+Factor premia show on weeks/months, not intraday swing. Separate from Swing + LLM to keep hypotheses clean.`,
+    },
+    bond_ladder: {
+      label: "Bond ladder (OFZ)",
+      description: "OFZ ladder: duration, drift, rate-shock alerts — no LLM trading.",
+      detail: `Why (Ivashchenko & Kosowski, 2024)
+Bond capacity is limited; retail should manage duration and ladder rungs, not LLM timing.`,
     },
   },
   events: {
@@ -155,6 +246,11 @@ const en: TranslationTree = {
     symbol: "Symbol",
     openLlm: "Open LLM Audit",
     confidence: "Confidence",
+    explanation: "Why",
+    rejectCode: "Reject code",
+    counterThesis: "Counter-thesis",
+    llmRaw: "LLM response",
+    pipeline: "Pipeline chain",
   },
   activity: {
     title: "System feed",
@@ -162,6 +258,8 @@ const en: TranslationTree = {
     autoScrollOff: "Auto-scroll: off",
     empty: "No events in the last 3 days",
     records: "records",
+    noDetail: "No details for this event",
+    detailError: "Could not load details",
   },
   header: {
     title: "Trading Console",
@@ -178,6 +276,85 @@ const en: TranslationTree = {
     live: "Live",
     ollama: "Ollama",
     last: "Last",
+  },
+  controlStrip: {
+    aria: "System control strip",
+    killButton: "Emergency shutdown",
+    killActive: "System disabled",
+    killDisableTitle: "Emergency shutdown?",
+    killDisableLead: "All workflows stop. No new signals or orders will run.",
+    killDisableRisk: "Use only in critical situations. Confirm shutdown.",
+    killEnableTitle: "Enable system?",
+    killEnableLead: "Clears kill switch. Workflows can run again in the current mode.",
+    killEnableRisk: "Make sure markets and modes are configured correctly.",
+    killConfirm: "Confirm",
+    killCancel: "Cancel",
+    cryptoWorkflow: "Crypto workflow",
+    moexWorkflow: "MOEX workflow",
+    workflowOff: "off",
+    workflowDemo: "demo",
+    workflowLive: "live",
+    uptime: "Uptime",
+  },
+  news: {
+    title: "News",
+    subtitle: "Signals Engine — feed, LLM analysis, and context for the trading automaton",
+    empty: "No news yet — wait for ingest or check sources.",
+    unknownSource: "Source",
+    usedInSignal: "In signal",
+    ingested: "In feed",
+    verified: "verified",
+    symbols: "Symbols",
+    relatedSignals: "Related signals",
+    openEvents: "Events",
+    ingestNow: "Fetch news",
+    ingesting: "Fetching…",
+    ingestDone: "New items: {{count}}",
+    analyzePending: "Run LLM analysis",
+    analyzing: "Analyzing…",
+    analyzedCount: "Analyzed: {{count}}",
+    noAnalysisYet: "LLM analysis not run yet",
+    userContext: "Operator context",
+    userContextPlaceholder: "Your note on this item (until the automaton uses it)…",
+    userContextLocked: "Context locked (signal already consumed)",
+    saveContext: "Save context",
+    contextSaved: "Saved",
+    signalPending: "Signal pending",
+    signalConsumed: "Consumed by automaton",
+    sourcesTitle: "Selected sources",
+    sourcesHint: "Trust = tier + manual override",
+    sourceOn: "On",
+    sourceOff: "Off",
+    settingsTitle: "Signals Engine settings",
+    settingAnalysis: "LLM news analysis",
+    settingOnIngest: "Analyze on ingest",
+    settingUserContext: "Include operator context",
+    settingMinConf: "Min confidence for signal",
+    settingBatch: "Analysis batch size",
+    saveSettings: "Save settings",
+    filterTitle: "Trade relevance filter",
+    settingFilter: "Filter non-trading news",
+    filterMode: "Filter mode",
+    modeStrict: "Strict — universe tickers only",
+    modeBalanced: "Balanced (recommended)",
+    modeLoose: "Loose — one keyword",
+    modeHint: {
+      strict: "Pass: source tag + ticker from enabled workflow quotes.",
+      balanced:
+        "Pass: tag + (universe ticker OR ≥2 keywords with score OR title keyword + specific ticker).",
+      loose: "Pass: tag + any ticker or one include keyword.",
+    },
+    minKeywords: "Min keywords",
+    minScore: "Min score",
+    requireKeywordInTitle: "Keyword in headline",
+    settingRequireSymbolOrKw: "Ticker OR keyword required",
+    keywordsInclude: "Include keywords",
+    keywordsExclude: "Exclude (sports, movies…)",
+    keywordsHint: "one per line",
+    reapplyFilters: "Reapply filters to feed",
+    reapplying: "Reapplying…",
+    reapplyDone: "In feed: {{relevant}}, hidden: {{filtered}}",
+    filteredOut: "filtered out: {{count}}",
   },
   footer: {
     disclaimer: "Not investment advice. Event times are UTC in DB, shown in local time.",
@@ -290,6 +467,7 @@ const en: TranslationTree = {
     cancelCalibConfirm: "Cancel calibration",
     calibCancelled: "Calibration cancelled — no data saved",
     calibCancelling: "Cancelling…",
+    calibInterrupted: "Calibration interrupted (service restart). Please start again.",
     calibBlockedBy: "Finish or cancel calibration on {{market}} first",
     stagesTitle: "Testing stages",
     stagesHint: "What each benchmark and calibration step checks.",
@@ -297,6 +475,217 @@ const en: TranslationTree = {
     stagesCalibration: "LLM calibration",
     concurrentCalibNote:
       "Only one market can calibrate at a time — a second start is blocked until the first finishes or is cancelled. LLM calls are queued (3 min timeout per case). Contexts do not mix: each request is stateless.",
+    evaluationTitle: "Per-model evaluation (workflow)",
+    evaluationHint:
+      "Computed from benchmark_cases (original_model) and outcome labels. Lets you compare how different LLM models behaved in live workflows over the last 30 days.",
+    evaluationEmpty: "No labeled per-model data yet (run Update outcome first).",
+    approves: "approve",
+    rejects: "reject",
+    avgReturnApprove: "avg return/approve %",
+    hostCapabilityTitle: "Host capability",
+    hostCapabilitySubtitle:
+      "CPU/RAM, Ollama latency, and strategy × model matrix: can this machine meet the schedule (e.g. 2 min interval vs 3 min per LLM).",
+    runHostAudit: "Run host audit",
+    hostAuditing: "Auditing…",
+    hostAuditDone: "Host audit complete",
+    hostAuditError: "Host audit failed",
+    hostCpu: "CPU (logical)",
+    hostRam: "RAM",
+    hostDisk: "Disk free",
+    hostOllama: "Ollama",
+    hostLatency: "LLM latency (avg)",
+    hostLatencyMax: "max",
+    hostStrategy: "Strategy",
+    hostBudget: "Budget",
+    hostRequired: "Required",
+    hostFeasible: "Feasible",
+    hostNotFeasible: "Not feasible",
+    hostHeadroom: "Headroom",
+    hostNoAudit: "Host audit has not been run yet",
+    hostLastAudit: "Last audit",
+    ollamaRegistryTitle: "Ollama model registry",
+    ollamaRegistrySubtitle:
+      "Required models are derived from crypto/securities/scalp configs. Missing models auto-pull on db-api startup.",
+    ollamaEnsureMissing: "Pull missing models",
+    ollamaEnsuring: "Pulling…",
+    ollamaEnsureError: "Ensure failed",
+    ollamaPullError: "Pull failed",
+    ollamaNeedPassword: "Operator password required (Settings → Operator password)",
+    ollamaMissing: "Missing",
+    ollamaAllPresent: "All required models present",
+    ollamaModel: "Model",
+    ollamaRole: "Role",
+    ollamaInstalled: "OK",
+    ollamaPull: "Pull",
+    ollamaDiskFree: "Disk free",
+    ollamaExtra: "Extra models in Ollama",
+  },
+  workflowsPage: {
+    title: "n8n Workflows",
+    subtitle: "Per-market automation enablement and cron schedule",
+    subtitleTechnical: "n8n workflow status. Start, stop, and quotes — on Crypto and MOEX tabs.",
+    manageOnMarkets: "Start and stop workflows on the Crypto and MOEX tabs. This page shows import status only.",
+    n8nSetup: "Create an API key in n8n (Settings → API keys) and set N8N_API_KEY in .env",
+    n8nError: "n8n unavailable — check N8N_API_KEY",
+    statusOn: "on",
+    statusOff: "off",
+    groupCrypto: "Crypto",
+    groupMoex: "MOEX",
+    groupOther: "Other workflows",
+    syncProfile: "Enable for current mode profile",
+    syncing: "Applying…",
+    marketOn: "automations running",
+    marketOff: "automations off",
+    modeLine: "Mode: {{mode}} ({{trading}})",
+    expectedLine: "Expected for mode: {{names}}",
+    noExpected: "No workflows required for current mode (e.g. live)",
+    killTitle: "Kill switch is active",
+    killHint: "All workflows are forced off. Clear kill switch in the top control strip.",
+    whyOffTitle: "Why does the status bar show off?",
+    whyOffHint:
+      "n8n workflows are inactive. Click Enable for current mode profile per market, or toggle manually. Demo/Paper mode on Crypto/MOEX tabs defines which workflows should run.",
+    cryptoOff: "Crypto: no active workflows",
+    moexOff: "MOEX: no active workflows",
+    operatorLead: "Operator password is required for this action.",
+    operatorRisk: "Active n8n workflows or their schedule will change.",
+    cronTitle: "Change cron",
+  },
+  universe: {
+    title: "Quotes",
+    enabledCount: "{{count}} of {{total}} enabled",
+    runtime: "runtime",
+    fromYaml: "YAML default",
+    searchPlaceholder: "Search ticker or pair…",
+    llmTitle: "LLM: build quote list",
+    llmHintPlaceholder: "Optional hint: liquid large caps, no memecoins…",
+    llmReplace: "Replace list",
+    llmMerge: "Add missing",
+    disableOthers: "Disable symbols not in recommendation",
+    llmPreview: "LLM preview",
+    llmApply: "Apply LLM",
+    llmSuggested: "Suggestion",
+    resetYaml: "Reset to YAML",
+    resetConfirm: "Reset quote list to YAML defaults?",
+    newsHint: "Enabled quotes are the symbol list for LLM on each workflow run.",
+    llmRunsHint: "On each run the workflow runs LLM for every enabled symbol.",
+  },
+  strategySubsettings: {
+    title: "Strategy sub-settings",
+    riskTitle: "Risk preset",
+    riskHint:
+      "Preset controls position size and swing signal conservatism (RSI, LLM confidence). On-chain is unchanged.",
+    swingSignalsTitle: "Swing signal thresholds",
+    rsiBand: "RSI (long / short)",
+    minConfidence: "LLM min confidence",
+    macdCross: "MACD cross",
+    required: "required",
+    optional: "optional",
+    onchainNote: "On-chain filter (hash rate) is independent of this preset — macro layer.",
+    marketCrypto: "Crypto",
+    marketMoex: "MOEX",
+    runtime: "runtime",
+    defaultPreset: "default",
+    effectiveTitle: "Active now: {{profile}} · {{market}}",
+    activeBadge: "active",
+    riskPerTrade: "Risk per trade",
+    riskPerTradeShort: "per trade",
+    dailyLimit: "Daily limit",
+    dailyLimitShort: "day",
+    maxPositions: "Max positions",
+    maxNotional: "Max capital share",
+    minStop: "Min stop",
+    positionsShort: "pos.",
+    effective: "Active",
+    applyRisk: "Apply preset",
+    applyRiskRisk: "Risk limits for automated trades will change.",
+    riskBlockedHalt: "Change blocked: daily loss halt active until tomorrow (UTC).",
+    riskBlockedPositions: "Change blocked: open positions on this market.",
+    universeTitle: "Quotes (pairs / tickers)",
+  },
+  workflowPanel: {
+    title: "Operating mode",
+    strategySection: "Strategy",
+    moreDetails: "More details",
+    modeSection: "Mode",
+    start: "Start",
+    stop: "Stop",
+    running: "running",
+    stopped: "stopped",
+    syncProfile: "Enable for mode",
+    syncing: "Applying…",
+    modeLine: "Mode: {{mode}} ({{trading}})",
+    offHint: "Pick strategy and mode, then click Start.",
+    uptime: "Uptime",
+    killBlocked: "Kill switch is active — start is blocked.",
+    n8nUnavailable: "n8n unavailable — check N8N_API_KEY in .env",
+    pickMode: "Workflow mode (one at a time)",
+    notImported: "not imported",
+    importFromRepo: "Import workflows from repository",
+    importing: "Importing…",
+    importHint: "Some modes are not in n8n yet. Click to load JSON from n8n_automation/workflows/.",
+    importDone: "Imported/updated: {{count}} workflows",
+    importPartial: "Import: {{ok}} OK, errors: {{err}}",
+    restart: "Restart (reset uptime)",
+    uptimePending: "updating…",
+    scheduleLabel: "Trigger frequency",
+    scheduleApply: "Change frequency",
+    testRun: "Test run",
+    testRunRisk: "Runs the pipeline once for every enabled symbol (like an n8n tick).",
+    testRunDryHint: "Dry run does not place orders — switch to Demo/paper to test trades.",
+    testRunDone: "Test run finished. Trades: {{executed}}",
+    testRunStarted: "Test run in progress… This may take several minutes (LLM per symbol).",
+    testRunTimeoutHint:
+      "The UI request timed out, but the server may still be processing symbols. Check the activity feed.",
+    orders7d: "Trades (7 days)",
+    lastSignal: "Last signal",
+    hintMoexDaily: "MOEX swing defaults to once daily (weekdays 18:15 MSK). Increase frequency or use Test run.",
+  },
+  workflowModes: {
+    cryptoSignalDry: "Signals — dry run (no orders)",
+    cryptoSignalPaper: "Signals — paper / testnet",
+    cryptoMonitor: "Testnet position monitor",
+    moexSwingDry: "Swing — dry run",
+    moexSwingPaper: "Swing — paper / sandbox",
+    moexDca: "DCA — sandbox",
+  },
+  operationModes: {
+    dryRun: "Dry run (no orders)",
+    paper: "Demo / paper",
+    live: "Live",
+  },
+  research: {
+    title: "Research",
+    subtitle: "Paper discovery (arXiv, OpenAlex, BIS…) and NeuraTrade Ollama leaderboard",
+    papersCard: "papers library — candidates",
+    neuratradeCard: "NeuraTrade harness (Ollama)",
+    pending: "Pending review",
+    approved: "Approved / drafts",
+    ingest: "Fetch new",
+    runHarness: "Run harness cycle",
+    candidatesTitle: "Candidates for library",
+    noCandidates: "No candidates for this filter",
+    noLeaderboard: "No harness data in 30 days — run a cycle",
+    neuratradeHint:
+      "Deterministic golden fixtures (NeuraTradeBench-style) + model comparison. Artifacts → data/neuratrade/reports/",
+    recommendedModel: "Recommended model",
+    fixturePassRate: "Fixture accuracy",
+    latency: "Latency",
+    approveDraft: "Approve → Obsidian draft",
+    reject: "Reject",
+    draft: "Draft",
+    log: "Action log",
+    model: "Model",
+    avgScore: "Avg score",
+    runs: "Runs",
+    passes: "Passes",
+    sourcesNote:
+      "Sources: arXiv, CrossRef, OpenAlex, Semantic Scholar, BIS/IMF RSS. Drafts → papers/inbox/. Final ingest to papers/ is manual.",
+    filter: {
+      pending: "Pending",
+      approved: "Approved",
+      rejected: "Rejected",
+      all: "All",
+    },
   },
 };
 

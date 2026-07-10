@@ -1,0 +1,9 @@
+# On-chain macro context (hash ribbons, activity)
+# Reference: https://doi.org/10.1016/j.chaos.2023.114305
+
+version: "1.0.0"
+enabled: true
+timespan: "1year"
+hash_rate_ma_short: 30
+hash_rate_ma_long: 60
+allow_long_in_bearish: false

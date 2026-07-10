@@ -11,10 +11,9 @@ COPY indicators/ ./indicators/
 COPY bridges/ ./bridges/
 COPY evaluation/ ./evaluation/
 COPY backtest/ ./backtest/
-COPY config_loader.py guardrails.py utils.py event_log.py llm_client.py \
-     binance_client.py news_service.py crypto_pipeline.py securities_pipeline.py \
-     smoke_test.py runtime_settings.py effective_config.py admin_service.py \
-     telegram_notify.py telegram_proxy.py testing_service.py bot_data_service.py automation_control_service.py operator_auth.py automation_docs.py news_verification.py news_alert_service.py paper_trading_service.py n8n_service.py benchmark_service.py historical_benchmark_service.py market_data.py ohlcv_cache.py calibration_service.py market_llm_config.py charts_service.py llm_audit_service.py portfolio_snapshot_service.py portfolio_performance_service.py activity_feed_service.py strategy_service.py event_summary.py ./
+COPY on_chain/ ./on_chain/
+COPY trading_agents/ ./trading_agents/
+COPY *.py ./
 COPY proxy_gateway/ ./proxy_gateway/
 
 ENV TRADING_DB_PATH=/data/trading.db

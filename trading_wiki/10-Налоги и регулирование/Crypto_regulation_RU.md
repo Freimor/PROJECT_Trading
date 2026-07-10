@@ -232,13 +232,13 @@ Testnet — для **technical** testing без real money. Compliance review н
 
 См. также: [[Academic_sources]].
 
-| Категория | Что изучать | Почему полезно | URL |
+| Категория | Ресурс | Что подтверждает | URL |
 |---|---|---|---|
-| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Структурные риски крипто/DeFi и варианты политики — полезно для обоснования «консервативных» ограничений в crypto-flow | https://www.bis.org/publ/othp72.pdf |
-| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Системные риски stablecoins/CIPs/MFGs — релевантно для комплаенс флагов и мониторинга интеграции с TradFi | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
-| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Контекст AI/поведения/риска — полезно при формулировке guardrails и ответственности оператора | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
-| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Академический пример использования LLM в финансовых решениях — полезно как фон, но не как «разрешение» на live trading | https://ieeexplore.ieee.org/document/11200704/ |
-| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — актуально для контроля рисков и снижения нестабильности | https://arxiv.org/abs/2503.13544 |
+| ESRB (2025) | Crypto systemic risks report | Макропруденциальные риски stablecoins, CIPs | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
+| ESRB (2025) | Third-country stablecoins recommendation | Ограничения multi-issuer stablecoins в EU к 2026 | https://www.esrb.europa.eu/pub/pdf/recommendations/esrb.recommendation251020.en.pdf |
+| FSB (2025) | Thematic Peer Review crypto framework | Глобальный комплаенс-контекст MiCA/FATF | https://www.fsb.org/uploads/P161025-1.pdf |
+| FSB (2024) | G20 Crypto Roadmap Status | Статус внедрения политики G20 | https://www.fsb.org/2024/10/g20-crypto-asset-policy-implementation-roadmap-status-report/ |
+| BIS (2022) | WP 1049 retail crypto adoption | Розница входит на пиках — аргумент за testnet-first | https://www.bis.org/publ/work1049.htm |
 
 ---
 

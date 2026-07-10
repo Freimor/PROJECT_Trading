@@ -29,14 +29,35 @@ from automation_control_service import (
     apply_trading_mode,
     clear_market_mode,
     clear_trading_mode,
+    get_active_market_workflow,
     get_automation_control_state,
     get_market_control_state,
+    get_market_diagnostics,
     normalize_trading_mode,
     operation_mode_detail,
+    run_workflow_once,
+    sync_market_workflows,
     toggle_workflow_by_name,
+    select_market_workflow,
+    start_market_workflow,
+    stop_market_workflows,
     trading_mode_to_operation,
 )
-from strategy_service import get_strategy_state, set_active_strategy
+from strategy_service import get_strategy_state, set_active_strategy, symbols_for_workflow
+from risk_profile_service import get_risk_profile_state, reset_risk_profile, set_risk_profile
+from asset_catalog_service import search_assets
+from workflow_universe_service import (
+    WORKFLOW_REGISTRY,
+    add_symbols_to_workflow,
+    apply_llm_universe_suggestion,
+    get_workflow_universe,
+    remove_symbol_from_workflow,
+    reset_workflow_universe,
+    save_workflow_universe,
+    set_symbol_enabled,
+    suggest_universe_with_llm,
+    _fallback_universe_suggestion,
+)
 from admin_service import (
     apply_kill_switch,
     create_confirmation,
@@ -55,12 +76,13 @@ from bot_data_service import (
     get_crypto_testnet_dashboard,
     get_host_status,
     get_system_summary,
-    list_news_sources,
     list_recent_news,
+    list_signal_news_feed,
     wiki_table_of_contents,
 )
 from config_loader import load_config, wiki_root
 from crypto_pipeline import run_crypto_signal
+from crypto_scalp_pipeline import run_crypto_scalp_signal
 from effective_config import get_config_effective, get_guardrails
 from db.connection import get_connection, get_db_path
 from db.init_db import init_database
@@ -83,24 +105,38 @@ from news_alert_service import (
     resolve_watch_symbols,
     update_alert_settings,
 )
+from signals_engine_service import (
+    analyze_news_item,
+    analyze_pending_news,
+    get_engine_settings,
+    list_sources_enriched,
+    save_user_context,
+    update_engine_settings,
+    update_news_source,
+    reapply_trade_filters,
+)
 from paper_trading_service import (
     capture_snapshot,
     get_paper_config,
     paper_effectiveness,
     reset_paper_session,
     run_crypto_paper_trade,
+    run_crypto_scalp_paper_trade,
     run_securities_swing_paper,
     start_paper_session,
 )
 from n8n_service import (
     activate_workflow,
     deactivate_workflow,
+    import_all_workflows,
+    import_market_workflows,
     list_workflows,
     set_workflow_cron,
 )
 from benchmark_service import (
     aggregate_golden_results,
     benchmark_report,
+    benchmark_report_by_model,
     get_benchmark_snapshot,
     label_outcomes,
     list_golden_cases,
@@ -123,7 +159,26 @@ from calibration_service import (
     run_calibration_temperature,
     start_calibration_job,
 )
-from charts_service import get_chart_candles, get_chart_markers, list_symbols_for_market
+from backtest.metrics import dry_run_funnel, signal_summary
+from backtest.finsaber import list_backtest_runs, run_walk_forward_backtest
+from deepfund_service import close_session, get_active_session, run_deepfund_cycle, start_session
+from factor_sleeve_service import factor_sleeve_rebalance_plan, rank_factor_universe
+from regulatory_monitor import scan_regulatory_risk
+from papers_monitor import (
+    create_obsidian_draft,
+    ingest_paper_candidates,
+    list_candidates,
+    list_pending_candidates,
+    research_dashboard,
+    update_candidate_status,
+)
+from neuratrade_harness import get_leaderboard, recommend_model, run_harness_cycle
+from on_chain.metrics import compute_on_chain_context
+from bond_ladder_service import evaluate_bond_ladder
+from geopolitical_risk import compute_geopolitical_score, geo_adjust_notional
+from host_capability_service import get_last_host_audit, run_host_capability_audit
+from trading_agents.orchestrator import run_trading_agents
+from charts_service import get_chart_candles, get_chart_indicators, get_chart_markers, list_symbols_for_market
 from llm_audit_service import get_llm_decision, list_llm_decisions
 from portfolio_snapshot_service import capture_exchange_position_snapshots, get_equity_curve
 from portfolio_performance_service import get_portfolio_performance
@@ -137,8 +192,11 @@ from historical_benchmark_service import (
 )
 from securities_pipeline import run_securities_dca_dry_run, run_securities_swing_dry_run
 from event_summary import summarize_trade_event
-from activity_feed_service import log_system_activity
+from event_context_service import build_event_context
+from activity_feed_service import get_activity_feed, log_system_activity
+from market_llm_config import normalize_market
 from telegram_proxy import proxy_status, select_working_proxy
+from runtime_settings import set_runtime_value
 
 
 def _utc_now() -> str:
@@ -149,6 +207,43 @@ def _utc_now() -> str:
 async def lifespan(_: FastAPI):
     init_database()
     seed_sources()
+    try:
+        from news_service import ingest_all, news_verification_stats, purge_expired
+
+        stats = news_verification_stats()
+        if sum(stats.get("by_status", {}).values()) == 0:
+            purge_expired()
+            ingest_all()
+            log_system_activity("Первичная загрузка новостей", category="news", level="info")
+    except Exception as exc:
+        log_system_activity(f"News bootstrap: {exc}", category="news", level="warn")
+    try:
+        from automation_control_service import sync_market_workflows
+
+        for market in ("crypto", "securities"):
+            result = sync_market_workflows(market)
+            activated = [w["name"] for w in result.get("workflows", []) if w.get("action") == "activated"]
+            if activated:
+                log_system_activity(
+                    f"Синхронизация n8n ({market}): включены {', '.join(activated)}",
+                    category="control",
+                    level="info",
+                )
+            missing = result.get("missing") or []
+            if missing:
+                log_system_activity(
+                    f"n8n: не найдены workflow {missing} — импортируйте JSON",
+                    category="control",
+                    level="warn",
+                )
+    except Exception as exc:
+        log_system_activity(f"Workflow sync при старте: {exc}", category="control", level="warn")
+    try:
+        from ollama_manager_service import bootstrap_ollama_models_background
+
+        bootstrap_ollama_models_background()
+    except Exception as exc:
+        log_system_activity(f"Ollama bootstrap: {exc}", category="system", level="warn")
     log_system_activity("Старт системы", category="system", level="success")
     yield
 
@@ -290,6 +385,7 @@ class CalibrationRequest(BaseModel):
     market: Literal["crypto", "securities"] | None = None
     temperatures: list[float] | None = None
     min_confidence: list[float] | None = None
+    operator: str = "web"
 
 
 class CalibrationTemperatureRequest(BaseModel):
@@ -300,6 +396,11 @@ class CalibrationTemperatureRequest(BaseModel):
 
 class StrategySelectRequest(BaseModel):
     strategy_id: str
+    operator: str = "web:operator"
+
+
+class RiskProfileSetRequest(BaseModel):
+    profile_id: str
     operator: str = "web:operator"
 
 
@@ -350,6 +451,79 @@ class NewsAlertsSettingsRequest(BaseModel):
     trade_enabled: bool | None = None
     trade_push: bool | None = None
     operator: str = "api"
+
+
+class SignalsEngineSettingsRequest(BaseModel):
+    analysis_enabled: bool | None = None
+    analyze_on_ingest: bool | None = None
+    batch_size: int | None = Field(None, ge=1, le=50)
+    min_confidence: float | None = Field(None, ge=0, le=1)
+    min_significance_score: float | None = Field(None, ge=0, le=1)
+    max_signals_per_symbol: int | None = Field(None, ge=1, le=20)
+    include_user_context: bool | None = None
+    filter_enabled: bool | None = None
+    active_tags: list[str] | None = None
+    keywords_include: list[str] | None = None
+    keywords_exclude: list[str] | None = None
+    require_symbol_or_keyword: bool | None = None
+    filter_mode: str | None = Field(None, pattern="^(loose|balanced|strict)$")
+    min_keywords: int | None = Field(None, ge=1, le=10)
+    min_relevance_score: float | None = Field(None, ge=0, le=10)
+    require_keyword_in_title: bool | None = None
+    operator: str = "api"
+
+
+class NewsUserContextRequest(BaseModel):
+    context_text: str = Field("", max_length=2000)
+    operator: str = "console"
+
+
+class NewsSourceUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    tags: list[str] | None = None
+    user_trust_override: float | None = Field(None, ge=0, le=1)
+    clear_trust_override: bool = False
+
+
+class WorkflowUniverseSaveRequest(BaseModel):
+    items: list[dict[str, Any]]
+    operator: str = "web:operator"
+
+
+class WorkflowUniverseAddRequest(BaseModel):
+    symbols: list[str]
+    enabled: bool = True
+    operator: str = "web:operator"
+
+
+class WorkflowUniverseToggleRequest(BaseModel):
+    symbol: str
+    enabled: bool
+    operator: str = "web:operator"
+
+
+class WorkflowUniverseLlmRequest(BaseModel):
+    mode: Literal["replace", "merge"] = "merge"
+    disable_others: bool = False
+    hint: str | None = None
+    apply: bool = False
+    operator: str = "web:operator"
+
+
+class WorkflowSelectRequest(BaseModel):
+    workflow_name: str
+    trading_mode: Literal["dry_run", "paper", "live"] | None = None
+    operator: str = "web:operator"
+
+
+class WorkflowScheduleRequest(BaseModel):
+    option_id: str
+    operator: str = "web:operator"
+
+
+class WorkflowRunOnceRequest(BaseModel):
+    workflow_name: str
+    operator: str = "web:operator"
 
 
 def _check_admin_key(
@@ -508,6 +682,21 @@ def list_trade_events(
         conn.close()
 
 
+@app.get("/api/events/{event_id}")
+def get_trade_event(event_id: str) -> dict[str, Any]:
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM trade_events WHERE id = ?", (event_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="event_not_found")
+        data = dict(row)
+        data["summary"] = summarize_trade_event(data)
+        data["context"] = build_event_context(data)
+        return data
+    finally:
+        conn.close()
+
+
 @app.get("/api/charts/candles")
 def charts_candles(
     market: Literal["crypto", "securities"] = "crypto",
@@ -518,6 +707,25 @@ def charts_candles(
     use_cache: bool = False,
 ) -> dict[str, Any]:
     return get_chart_candles(
+        market=market,
+        symbol=symbol,
+        interval=interval,
+        limit=limit,
+        testnet=testnet,
+        use_cache=use_cache,
+    )
+
+
+@app.get("/api/charts/indicators")
+def charts_indicators(
+    market: Literal["crypto", "securities"] = "crypto",
+    symbol: str = "BTCUSDT",
+    interval: str = "4h",
+    limit: int = 200,
+    testnet: bool = True,
+    use_cache: bool = False,
+) -> dict[str, Any]:
+    return get_chart_indicators(
         market=market,
         symbol=symbol,
         interval=interval,
@@ -634,6 +842,47 @@ def strategies_set_active(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/strategy/risk-profile/{market}")
+def strategy_risk_profile_get(market: str) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return {"status": "ok", **get_risk_profile_state(market)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/strategy/risk-profile/{market}")
+def strategy_risk_profile_set(
+    market: str,
+    body: RiskProfileSetRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    try:
+        return {"status": "ok", **set_risk_profile(market, body.profile_id, operator=body.operator)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/strategy/risk-profile/{market}/reset")
+def strategy_risk_profile_reset(
+    market: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    try:
+        return {"status": "ok", **reset_risk_profile(market, operator="web:operator")}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 # --- Crypto pipeline (этап 2) ---
 
 @app.post("/api/crypto/signal")
@@ -644,8 +893,50 @@ def crypto_signal(body: CryptoSignalRequest) -> dict[str, Any]:
     )
 
 
+@app.post("/api/crypto/scalp/signal")
+def crypto_scalp_signal(
+    symbol: str = "BTCUSDT",
+    env: str = "dry_run",
+    skip_llm: bool = False,
+    equity: float = 10000.0,
+) -> dict[str, Any]:
+    scalp_cfg = load_config("crypto_scalp_hybrid")
+    wf = (
+        str(scalp_cfg.get("dry_run", {}).get("workflow_name", "crypto-scalp-hybrid-dry-run"))
+        if env == "dry_run"
+        else str(scalp_cfg.get("paper", {}).get("workflow_name", "crypto-scalp-hybrid-paper"))
+    )
+    return run_crypto_scalp_signal(
+        symbol=symbol,
+        env=env,
+        workflow_name=wf,
+        skip_llm=skip_llm,
+        equity=equity,
+    )
+
+
 @app.get("/api/crypto/pairs")
 def crypto_pairs() -> list[str]:
+    try:
+        wf = get_active_market_workflow("crypto")
+        if not wf:
+            state = get_strategy_state("crypto")
+            wf = str(state.get("strategy", {}).get("workflow", ""))
+        if wf:
+            symbols = symbols_for_workflow(wf)
+            if symbols:
+                return symbols
+        for fallback in (
+            "crypto-scalp-hybrid-paper",
+            "crypto-signal-paper",
+            "crypto-signal-dry-run",
+            "crypto-scalp-hybrid-dry-run",
+        ):
+            symbols = symbols_for_workflow(fallback)
+            if symbols:
+                return symbols
+    except Exception:
+        pass
     return load_config("crypto_config").get("pairs", [])
 
 
@@ -771,7 +1062,133 @@ def securities_swing(body: SecuritiesSwingRequest) -> dict[str, Any]:
 
 @app.get("/api/securities/swing-universe")
 def swing_universe() -> list[str]:
+    wf = get_active_market_workflow("securities")
+    if wf and wf.startswith("securities-swing"):
+        symbols = symbols_for_workflow(wf)
+        if symbols:
+            return symbols
+    for fallback in ("securities-swing-paper", "securities-swing-dry-run"):
+        symbols = symbols_for_workflow(fallback)
+        if symbols:
+            return symbols
     return load_config("securities_config").get("swing_signals", {}).get("universe", [])
+
+
+@app.get("/api/assets/search")
+def assets_search(
+    market: Literal["crypto", "securities"],
+    q: str = "",
+    limit: int = 20,
+) -> dict[str, Any]:
+    items = search_assets(market, q, limit=min(max(limit, 1), 50))
+    return {"status": "ok", "market": market, "query": q, "items": items}
+
+
+@app.get("/api/workflows/registry")
+def workflows_registry() -> dict[str, Any]:
+    return {"status": "ok", "workflows": WORKFLOW_REGISTRY}
+
+
+@app.get("/api/workflows/{workflow_name}/universe")
+def workflow_universe_get(workflow_name: str) -> dict[str, Any]:
+    try:
+        return {"status": "ok", **get_workflow_universe(workflow_name)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.put("/api/workflows/{workflow_name}/universe")
+def workflow_universe_put(workflow_name: str, body: WorkflowUniverseSaveRequest) -> dict[str, Any]:
+    try:
+        saved = save_workflow_universe(workflow_name, body.items, operator=body.operator)
+        return {"status": "ok", **saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/workflows/{workflow_name}/universe/add")
+def workflow_universe_add(workflow_name: str, body: WorkflowUniverseAddRequest) -> dict[str, Any]:
+    try:
+        saved = add_symbols_to_workflow(
+            workflow_name,
+            body.symbols,
+            enabled=body.enabled,
+            operator=body.operator,
+        )
+        return {"status": "ok", **saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/workflows/{workflow_name}/universe/toggle")
+def workflow_universe_toggle(
+    workflow_name: str,
+    body: WorkflowUniverseToggleRequest,
+) -> dict[str, Any]:
+    try:
+        saved = set_symbol_enabled(
+            workflow_name,
+            body.symbol,
+            body.enabled,
+            operator=body.operator,
+        )
+        return {"status": "ok", **saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/workflows/{workflow_name}/universe/remove")
+def workflow_universe_remove(
+    workflow_name: str,
+    body: WorkflowUniverseToggleRequest,
+) -> dict[str, Any]:
+    try:
+        saved = remove_symbol_from_workflow(workflow_name, body.symbol, operator=body.operator)
+        return {"status": "ok", **saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/workflows/{workflow_name}/universe/reset")
+def workflow_universe_reset(workflow_name: str) -> dict[str, Any]:
+    try:
+        saved = reset_workflow_universe(workflow_name)
+        return {"status": "ok", **saved}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/workflows/{workflow_name}/universe/llm-suggest")
+def workflow_universe_llm(
+    workflow_name: str,
+    body: WorkflowUniverseLlmRequest,
+) -> dict[str, Any]:
+    try:
+        suggestion = suggest_universe_with_llm(workflow_name, hint=body.hint)
+        if suggestion.get("status") != "ok":
+            suggestion = _fallback_universe_suggestion(
+                workflow_name,
+                hint=body.hint,
+                llm_error=suggestion.get("message"),
+            )
+        if body.apply and suggestion.get("symbols"):
+            applied = apply_llm_universe_suggestion(
+                workflow_name,
+                suggestion["symbols"],
+                mode=body.mode,
+                disable_others=body.disable_others,
+                operator=body.operator,
+            )
+            return {
+                "status": "ok",
+                "suggestion": suggestion,
+                "universe": applied,
+            }
+        return {"status": "ok", "suggestion": suggestion}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.get("/api/tinvest/portfolio")
@@ -831,6 +1248,11 @@ def eval_champion(body: ChampionRequest) -> dict[str, Any]:
 @app.get("/api/benchmark/report")
 def benchmark_report_endpoint(days: int = 30, market: str | None = None) -> dict[str, Any]:
     return benchmark_report(days=days, market=market)
+
+
+@app.get("/api/benchmark/report/by-model")
+def benchmark_report_by_model_endpoint(days: int = 30, market: str | None = None) -> dict[str, Any]:
+    return benchmark_report_by_model(days=days, market=market)
 
 
 @app.post("/api/benchmark/sample")
@@ -914,6 +1336,67 @@ def benchmark_ollama_reset(model: str | None = None) -> dict[str, Any]:
     return reset_ollama_cache(model)
 
 
+@app.get("/api/benchmark/host-capability/last")
+def benchmark_host_capability_last() -> dict[str, Any]:
+    last = get_last_host_audit()
+    return last or {"status": "empty"}
+
+
+@app.post("/api/benchmark/host-capability/run")
+def benchmark_host_capability_run(
+    llm_samples: int = 2,
+    models: str | None = None,
+) -> dict[str, Any]:
+    model_list = [m.strip() for m in models.split(",") if m.strip()] if models else None
+    return run_host_capability_audit(models=model_list, llm_samples=llm_samples)
+
+
+@app.get("/api/automation/pipeline-health")
+def automation_pipeline_health(days: int = 1) -> dict[str, Any]:
+    """Explain missing events: workflows, modes, last trade_events."""
+    from db.connection import get_connection
+
+    ctrl = get_automation_control_state()
+    conn = get_connection()
+    try:
+        last = conn.execute(
+            """
+            SELECT event_at, market, env, stage, workflow_name, reject_reason
+            FROM trade_events ORDER BY event_at DESC LIMIT 1
+            """
+        ).fetchone()
+        today_count = conn.execute(
+            """
+            SELECT COUNT(*) as c FROM trade_events
+            WHERE event_at >= datetime('now', '-1 day')
+            """
+        ).fetchone()["c"]
+    finally:
+        conn.close()
+    hints: list[str] = []
+    if not last:
+        hints.append("Нет событий в trade_events — проверьте активные workflow в n8n")
+    elif today_count == 0:
+        hints.append(
+            f"Сегодня 0 событий; последнее: {last['event_at']} ({last['workflow_name']}, env={last['env']})"
+        )
+    for wf in ctrl.get("workflows", []):
+        if wf.get("expected_for_mode") and not wf.get("active"):
+            hints.append(f"Workflow {wf['name']} должен быть активен в режиме paper, но выключен")
+    crypto_wf = next((w for w in ctrl.get("workflows", []) if w.get("name") == "crypto-signal-paper"), None)
+    if crypto_wf and crypto_wf.get("active"):
+        hints.append(
+            "crypto-signal-paper пишет события через /api/paper/crypto/run (workflow_name=crypto-paper-auto), не crypto-signal-dry-run"
+        )
+    return {
+        "control": ctrl,
+        "events_last_24h": today_count,
+        "last_event": dict(last) if last else None,
+        "hints": hints,
+        "tinvest_sandbox": check_tinvest_connection(sandbox=True),
+    }
+
+
 @app.get("/api/benchmark/calibrate/plan")
 def benchmark_calibrate_plan(market: str | None = None) -> dict[str, Any]:
     return get_calibration_plan(market=market)
@@ -948,6 +1431,76 @@ def ollama_models() -> dict[str, Any]:
     return list_ollama_models()
 
 
+@app.get("/api/ollama/models/status")
+def ollama_models_status() -> dict[str, Any]:
+    from ollama_manager_service import get_models_status
+
+    return get_models_status()
+
+
+@app.post("/api/ollama/models/ensure")
+def ollama_models_ensure(
+    include_optional: bool = False,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from ollama_manager_service import ensure_required_models
+
+    return ensure_required_models(
+        operator="web:operator",
+        background=True,
+        include_optional=include_optional,
+    )
+
+
+@app.post("/api/ollama/models/pull")
+def ollama_models_pull(
+    body: dict[str, Any],
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from ollama_manager_service import pull_ollama_model
+
+    model = str(body.get("model", "")).strip()
+    if not model:
+        raise HTTPException(status_code=400, detail="model required")
+    return pull_ollama_model(model, operator="web:operator", background=True)
+
+
+@app.post("/api/ollama/models/delete")
+def ollama_models_delete(
+    body: dict[str, Any],
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from ollama_manager_service import delete_ollama_model
+
+    model = str(body.get("model", "")).strip()
+    if not model:
+        raise HTTPException(status_code=400, detail="model required")
+    try:
+        return delete_ollama_model(
+            model,
+            operator="web:operator",
+            force=bool(body.get("force")),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/ollama/pull/{job_id}")
+def ollama_pull_job_status(job_id: str) -> dict[str, Any]:
+    from ollama_manager_service import get_pull_job
+
+    job = get_pull_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job_not_found")
+    return job
+
+
 @app.post("/api/benchmark/calibrate")
 def benchmark_calibrate(body: CalibrationRequest | None = None) -> dict[str, Any]:
     body = body or CalibrationRequest()
@@ -978,6 +1531,38 @@ def benchmark_calibrate_finalize(body: CalibrationRequest | None = None) -> dict
 def benchmark_calibrate_last_snapshot(market: str | None = None) -> dict[str, Any]:
     snap = get_calibration_snapshot(market=market)
     return snap or {"status": "empty", "market": market or "crypto"}
+
+
+@app.post("/api/benchmark/calibrate/apply")
+def benchmark_calibrate_apply(body: CalibrationRequest | None = None) -> dict[str, Any]:
+    body = body or CalibrationRequest()
+    operator = body.operator or "web"
+    mkt = normalize_market(body.market)
+    snap = get_calibration_snapshot(market=mkt)
+    if not isinstance(snap, dict) or snap.get("status") != "ok":
+        return {"status": "error", "message": "no_calibration_snapshot", "market": mkt}
+    rec = snap.get("recommended")
+    if not isinstance(rec, dict) or rec.get("temperature") is None or rec.get("min_confidence") is None:
+        return {"status": "error", "message": "snapshot_missing_recommendation", "market": mkt}
+
+    override = {
+        "temperature": float(rec["temperature"]),
+        "min_confidence": float(rec["min_confidence"]),
+        "source": "calibration_snapshot",
+        "snapshot_saved_at": snap.get("saved_at"),
+        "snapshot_model": snap.get("model"),
+    }
+    set_runtime_value(f"llm_override:{mkt}", override, updated_by=str(operator))
+    try:
+        log_system_activity(
+            f"LLM параметры применены ({mkt}): T={override['temperature']}, conf={override['min_confidence']}",
+            category=mkt,
+            level="info",
+            payload=override,
+        )
+    except Exception:
+        pass
+    return {"status": "ok", "market": mkt, "override": override}
 
 
 @app.post("/api/benchmark/snapshot")
@@ -1023,6 +1608,140 @@ def backtest_funnel(market: str = "crypto", days: int = 7) -> dict[str, Any]:
 @app.get("/api/backtest/summary")
 def backtest_summary(market: str = "crypto", days: int = 30) -> dict[str, Any]:
     return signal_summary(market=market, days=days)
+
+
+@app.post("/api/backtest/finsaber")
+def backtest_finsaber(
+    symbol: str = "BTCUSDT",
+    timeframe: str = "4h",
+    bars: int = 500,
+    forward_bars: int = 6,
+) -> dict[str, Any]:
+    return run_walk_forward_backtest(
+        symbol=symbol, timeframe=timeframe, bars=bars, forward_bars=forward_bars,
+    )
+
+
+@app.get("/api/backtest/finsaber/runs")
+def backtest_finsaber_runs(limit: int = 20) -> list[dict[str, Any]]:
+    return list_backtest_runs(limit=limit)
+
+
+@app.post("/api/deepfund/start")
+def deepfund_start(label: str = "deepfund-live-paper") -> dict[str, Any]:
+    return start_session(label=label)
+
+
+@app.get("/api/deepfund/session")
+def deepfund_session() -> dict[str, Any]:
+    session = get_active_session()
+    return session or {"status": "none"}
+
+
+@app.post("/api/deepfund/cycle")
+def deepfund_cycle(equity: float = 10000.0) -> dict[str, Any]:
+    return run_deepfund_cycle(equity=equity)
+
+
+@app.post("/api/deepfund/close")
+def deepfund_close() -> dict[str, Any]:
+    return close_session()
+
+
+@app.get("/api/onchain/context")
+def onchain_context() -> dict[str, Any]:
+    return compute_on_chain_context()
+
+
+@app.get("/api/factor-sleeve/rank")
+def factor_sleeve_rank() -> dict[str, Any]:
+    return rank_factor_universe()
+
+
+@app.post("/api/factor-sleeve/rebalance")
+def factor_sleeve_rebalance() -> dict[str, Any]:
+    return factor_sleeve_rebalance_plan()
+
+
+@app.post("/api/regulatory/scan")
+def regulatory_scan(auto_kill_switch: bool = False) -> dict[str, Any]:
+    return scan_regulatory_risk(auto_kill_switch=auto_kill_switch)
+
+
+@app.post("/api/neuratrade/cycle")
+def neuratrade_cycle(body: dict[str, Any] | None = None, equity: float = 10000.0) -> dict[str, Any]:
+    payload = body or {}
+    return run_harness_cycle(
+        equity=float(payload.get("equity", equity)),
+        mode=payload.get("mode"),
+    )
+
+
+@app.get("/api/neuratrade/leaderboard")
+def neuratrade_leaderboard(limit: int = 15) -> list[dict[str, Any]]:
+    return get_leaderboard(limit=limit)
+
+
+@app.get("/api/neuratrade/recommend")
+def neuratrade_recommend() -> dict[str, Any]:
+    rec = recommend_model()
+    return {"status": "ok", "recommended": rec}
+
+
+@app.post("/api/papers/monitor/ingest")
+def papers_monitor_ingest(create_drafts: bool = False) -> dict[str, Any]:
+    return ingest_paper_candidates(create_drafts=create_drafts)
+
+
+@app.get("/api/papers/monitor/pending")
+def papers_monitor_pending(limit: int = 30) -> list[dict[str, Any]]:
+    return list_pending_candidates(limit=limit)
+
+
+@app.get("/api/papers/monitor/candidates")
+def papers_monitor_candidates(status: str = "pending", limit: int = 50) -> list[dict[str, Any]]:
+    return list_candidates(status=status, limit=limit)
+
+
+@app.get("/api/research/dashboard")
+def research_dashboard_api() -> dict[str, Any]:
+    return research_dashboard()
+
+
+@app.post("/api/papers/monitor/{candidate_id}/draft")
+def papers_create_draft(candidate_id: str) -> dict[str, Any]:
+    return create_obsidian_draft(candidate_id)
+
+
+@app.post("/api/papers/monitor/{candidate_id}/status")
+def papers_update_status(candidate_id: str, body: dict[str, Any]) -> dict[str, Any]:
+    status = str(body.get("status", "rejected"))
+    return update_candidate_status(candidate_id, status)
+
+
+@app.post("/api/trading-agents/run")
+def trading_agents_run(body: dict[str, Any]) -> dict[str, Any]:
+    return run_trading_agents(
+        market=body.get("market", "crypto"),
+        symbol=body["symbol"],
+        indicators=body.get("indicators", {}),
+        news_summary=body.get("news_summary", ""),
+    )
+
+
+@app.get("/api/bond-ladder/evaluate")
+def bond_ladder_evaluate(key_rate_pct: float | None = None) -> dict[str, Any]:
+    return evaluate_bond_ladder(key_rate_pct=key_rate_pct)
+
+
+@app.get("/api/geopolitical/score")
+def geopolitical_score() -> dict[str, Any]:
+    return compute_geopolitical_score()
+
+
+@app.post("/api/geopolitical/adjust-notional")
+def geopolitical_adjust(body: dict[str, Any]) -> dict[str, Any]:
+    return geo_adjust_notional(float(body.get("notional", 0)), str(body.get("ticker", "")))
 
 
 # --- Reports ---
@@ -1102,6 +1821,16 @@ def news_latest(limit: int = 8, include_trades: bool = True) -> list[dict[str, A
     return list_recent_news(limit=limit, include_trades=include_trades)
 
 
+@app.get("/api/news/signal-feed")
+def news_signal_feed(
+    limit: int = 40,
+    market: str | None = None,
+    universe_only: bool = False,
+) -> dict[str, Any]:
+    items = list_signal_news_feed(limit=limit, market=market, universe_only=universe_only)
+    return {"status": "ok", "count": len(items), "items": items, "market": market}
+
+
 @app.get("/api/news/alerts/settings")
 def news_alerts_settings() -> dict[str, Any]:
     settings = get_alert_settings()
@@ -1124,6 +1853,65 @@ def news_alerts_process(limit: int = 5) -> dict[str, Any]:
     return process_news_alerts(limit=limit)
 
 
+@app.get("/api/signals-engine/settings")
+def signals_engine_settings() -> dict[str, Any]:
+    return get_engine_settings()
+
+
+@app.post("/api/signals-engine/settings")
+def signals_engine_settings_update(body: SignalsEngineSettingsRequest) -> dict[str, Any]:
+    return update_engine_settings(
+        analysis_enabled=body.analysis_enabled,
+        analyze_on_ingest=body.analyze_on_ingest,
+        batch_size=body.batch_size,
+        min_confidence=body.min_confidence,
+        min_significance_score=body.min_significance_score,
+        max_signals_per_symbol=body.max_signals_per_symbol,
+        include_user_context=body.include_user_context,
+        filter_enabled=body.filter_enabled,
+        active_tags=body.active_tags,
+        keywords_include=body.keywords_include,
+        keywords_exclude=body.keywords_exclude,
+        require_symbol_or_keyword=body.require_symbol_or_keyword,
+        filter_mode=body.filter_mode,
+        min_keywords=body.min_keywords,
+        min_relevance_score=body.min_relevance_score,
+        require_keyword_in_title=body.require_keyword_in_title,
+        operator=body.operator,
+    )
+
+
+@app.post("/api/signals-engine/reapply-filters")
+def signals_engine_reapply_filters(limit: int = 400) -> dict[str, Any]:
+    return reapply_trade_filters(limit=limit)
+
+
+@app.post("/api/signals-engine/analyze-pending")
+def signals_engine_analyze_pending(limit: int = 12) -> dict[str, Any]:
+    return analyze_pending_news(limit=limit)
+
+
+@app.post("/api/news/items/{item_id}/analyze")
+def news_item_analyze(item_id: str) -> dict[str, Any]:
+    return analyze_news_item(item_id)
+
+
+@app.put("/api/news/items/{item_id}/context")
+def news_item_context(item_id: str, body: NewsUserContextRequest) -> dict[str, Any]:
+    return save_user_context(item_id, body.context_text, operator=body.operator)
+
+
+@app.patch("/api/news/sources/{source_id}")
+def news_source_update(source_id: str, body: NewsSourceUpdateRequest) -> dict[str, Any]:
+    return update_news_source(
+        source_id,
+        enabled=body.enabled,
+        tags=body.tags,
+        user_trust_override=body.user_trust_override,
+        clear_trust_override=body.clear_trust_override,
+    )
+
+
 # --- Paper trading test harness ---
 
 @app.get("/api/paper/status")
@@ -1144,6 +1932,11 @@ def paper_session_start(label: str = "paper-test", operator: str = "api") -> dic
 @app.post("/api/paper/session/reset")
 def paper_session_reset(reset_moex: bool = True, operator: str = "api") -> dict[str, Any]:
     return reset_paper_session(reset_moex=reset_moex, operator=operator)
+
+
+@app.post("/api/paper/crypto/scalp/run")
+def paper_crypto_scalp_run(symbol: str = "BTCUSDT", skip_llm: bool = False) -> dict[str, Any]:
+    return run_crypto_scalp_paper_trade(symbol=symbol, skip_llm=skip_llm)
 
 
 @app.post("/api/paper/crypto/run")
@@ -1197,6 +1990,143 @@ def automation_control_market(market: str) -> dict[str, Any]:
         return get_market_control_state(market)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/n8n/workflows/import")
+def n8n_import_workflows(
+    market: str = "all",
+    update: bool = True,
+) -> dict[str, Any]:
+    """Import workflow JSON exports from n8n_automation/workflows into n8n."""
+    try:
+        if market == "all":
+            return import_all_workflows(update_if_exists=update)
+        if market in ("crypto", "securities"):
+            return import_market_workflows(market, update_if_exists=update)
+        raise HTTPException(status_code=400, detail="unknown market")
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/sync-profile")
+def n8n_sync_profile(
+    market: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return sync_market_workflows(market)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/select")
+def n8n_select_workflow(
+    market: str,
+    body: WorkflowSelectRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return start_market_workflow(
+            market,
+            body.workflow_name.strip(),
+            trading_mode=body.trading_mode,
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/n8n/workflows/stop")
+def n8n_stop_workflows(
+    market: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return stop_market_workflows(market)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.get("/api/automation/schedule/{workflow_name}")
+def automation_schedule_get(workflow_name: str) -> dict[str, Any]:
+    from workflow_schedule_service import get_workflow_schedule
+
+    try:
+        return get_workflow_schedule(workflow_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/automation/schedule/{workflow_name}")
+def automation_schedule_set(
+    workflow_name: str,
+    body: WorkflowScheduleRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    from workflow_schedule_service import set_workflow_schedule
+
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    try:
+        return set_workflow_schedule(
+            workflow_name,
+            body.option_id,
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.get("/api/automation/diagnostics/{market}")
+def automation_diagnostics(market: str, days: int = 7) -> dict[str, Any]:
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return get_market_diagnostics(market, days=days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/automation/run-once")
+def automation_run_once(
+    market: str,
+    body: WorkflowRunOnceRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return run_workflow_once(
+            market,
+            body.workflow_name.strip(),
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.post("/api/n8n/workflows/{workflow_id}/activate")
@@ -1259,7 +2189,7 @@ def news_verification_stats_endpoint() -> dict[str, Any]:
 
 @app.get("/api/news/sources")
 def news_sources() -> list[dict[str, Any]]:
-    return list_news_sources()
+    return list_sources_enriched()
 
 
 @app.post("/api/admin/services/restart-plan")

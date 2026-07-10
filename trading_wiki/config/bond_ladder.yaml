@@ -1,0 +1,22 @@
+# Bond ladder — OFZ duration monitoring
+# Reference: https://doi.org/10.1080/0015198X.2024.2360390
+
+version: "1.0.0"
+assumed_key_rate_pct: 16.0
+key_rate_shock_bps: 100
+duration_drift_alert_years: 0.5
+shock_loss_alert_pct: 2.0
+
+rungs:
+  - ticker: SU26238RMFS4
+    weight: 0.34
+    duration_years: 2.5
+    target_duration_years: 2.5
+  - ticker: SU26240RMFS0
+    weight: 0.33
+    duration_years: 5.0
+    target_duration_years: 5.0
+  - ticker: SU26243RMFS4
+    weight: 0.33
+    duration_years: 7.0
+    target_duration_years: 7.0

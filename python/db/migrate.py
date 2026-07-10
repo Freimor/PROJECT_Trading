@@ -246,6 +246,231 @@ def migrate_system_activity_v1(conn: sqlite3.Connection) -> list[str]:
     return applied
 
 
+def migrate_news_filter_v1(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    if not _column_exists(conn, "news_items", "trade_relevant"):
+        conn.execute(
+            "ALTER TABLE news_items ADD COLUMN trade_relevant INTEGER NOT NULL DEFAULT 1"
+        )
+        applied.append("news_items.trade_relevant")
+    if not _column_exists(conn, "news_items", "filter_meta"):
+        conn.execute("ALTER TABLE news_items ADD COLUMN filter_meta TEXT")
+        applied.append("news_items.filter_meta")
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_news_trade_relevant
+        ON news_items(trade_relevant, published_at DESC)
+        """
+    )
+    return applied
+
+
+def migrate_signals_engine_v1(conn: sqlite3.Connection) -> list[str]:
+    """Signals Engine: LLM analysis persistence, news signals, user context."""
+    applied: list[str] = []
+
+    for col, ddl in [
+        ("body_raw", "ALTER TABLE news_items ADD COLUMN body_raw TEXT"),
+        ("llm_analysis_json", "ALTER TABLE news_items ADD COLUMN llm_analysis_json TEXT"),
+        ("llm_model", "ALTER TABLE news_items ADD COLUMN llm_model TEXT"),
+        ("llm_analyzed_at", "ALTER TABLE news_items ADD COLUMN llm_analyzed_at TEXT"),
+    ]:
+        if not _column_exists(conn, "news_items", col):
+            conn.execute(ddl)
+            applied.append(f"news_items.{col}")
+
+    for col, ddl in [
+        ("tags", "ALTER TABLE news_sources ADD COLUMN tags TEXT"),
+        ("user_trust_override", "ALTER TABLE news_sources ADD COLUMN user_trust_override REAL"),
+    ]:
+        if not _column_exists(conn, "news_sources", col):
+            conn.execute(ddl)
+            applied.append(f"news_sources.{col}")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS news_signals (
+            id                  TEXT PRIMARY KEY,
+            news_item_id        TEXT NOT NULL,
+            market              TEXT NOT NULL DEFAULT 'macro',
+            symbols             TEXT NOT NULL,
+            impact              TEXT,
+            confidence          REAL,
+            significance_score  REAL,
+            headline_ru         TEXT,
+            analysis_ru         TEXT,
+            reasoning_trace     TEXT,
+            model               TEXT,
+            status              TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'consumed', 'expired', 'rejected')),
+            consumed_by_event_id TEXT,
+            consumed_at         TEXT,
+            created_at          TEXT NOT NULL,
+            expires_at          TEXT,
+            FOREIGN KEY (news_item_id) REFERENCES news_items(id)
+        )
+        """
+    )
+    applied.append("news_signals")
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_news_signals_status
+        ON news_signals(status, created_at DESC)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_news_signals_item
+        ON news_signals(news_item_id)
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS news_user_context (
+            id              TEXT PRIMARY KEY,
+            news_item_id    TEXT NOT NULL UNIQUE,
+            operator        TEXT,
+            context_text    TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL,
+            updated_at      TEXT NOT NULL,
+            locked_at       TEXT
+        )
+        """
+    )
+    applied.append("news_user_context")
+    return applied
+
+
+def migrate_papers_p0_p2(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    tables = [
+        """
+        CREATE TABLE IF NOT EXISTS backtest_runs (
+            id TEXT PRIMARY KEY,
+            started_at TEXT NOT NULL,
+            label TEXT NOT NULL,
+            symbol TEXT,
+            timeframe TEXT,
+            report_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'completed'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS deepfund_sessions (
+            id TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            training_cutoff_date TEXT,
+            started_by TEXT,
+            metrics_json TEXT DEFAULT '{}'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS deepfund_events (
+            id TEXT PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            event_at TEXT NOT NULL,
+            symbol TEXT,
+            status TEXT,
+            payload_json TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS neuratrade_results (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            recorded_at TEXT NOT NULL,
+            model TEXT NOT NULL,
+            symbol TEXT,
+            score REAL,
+            status TEXT,
+            payload_json TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS papers_candidates (
+            id TEXT PRIMARY KEY,
+            discovered_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            title TEXT NOT NULL,
+            summary TEXT,
+            published TEXT,
+            url TEXT NOT NULL UNIQUE,
+            relevance_score REAL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'rejected', 'ingested'))
+        )
+        """,
+    ]
+    for ddl in tables:
+        conn.execute(ddl)
+    applied.extend(
+        ["backtest_runs", "deepfund_sessions", "deepfund_events", "neuratrade_results", "papers_candidates"]
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_backtest_runs_at ON backtest_runs(started_at DESC)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_papers_candidates_status ON papers_candidates(status, discovered_at DESC)"
+    )
+    return applied
+
+
+def migrate_host_capability_v1(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS host_capability_audits (
+            id TEXT PRIMARY KEY,
+            audited_at TEXT NOT NULL,
+            report_json TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_host_capability_audits_at ON host_capability_audits(audited_at DESC)"
+    )
+    applied.append("host_capability_audits")
+    return applied
+
+
+def migrate_papers_v2(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    for col, ddl in [
+        ("citation_count", "ALTER TABLE papers_candidates ADD COLUMN citation_count INTEGER"),
+        ("metadata_json", "ALTER TABLE papers_candidates ADD COLUMN metadata_json TEXT"),
+        ("draft_path", "ALTER TABLE papers_candidates ADD COLUMN draft_path TEXT"),
+        ("reviewed_at", "ALTER TABLE papers_candidates ADD COLUMN reviewed_at TEXT"),
+    ]:
+        if not _column_exists(conn, "papers_candidates", col):
+            conn.execute(ddl)
+            applied.append(f"papers_candidates.{col}")
+    return applied
+
+
+def migrate_neuratrade_v2(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    for col, ddl in [
+        ("case_id", "ALTER TABLE neuratrade_results ADD COLUMN case_id TEXT"),
+        ("mode", "ALTER TABLE neuratrade_results ADD COLUMN mode TEXT"),
+        ("latency_ms", "ALTER TABLE neuratrade_results ADD COLUMN latency_ms INTEGER"),
+        ("expected_action", "ALTER TABLE neuratrade_results ADD COLUMN expected_action TEXT"),
+        ("actual_action", "ALTER TABLE neuratrade_results ADD COLUMN actual_action TEXT"),
+        ("pass_expected", "ALTER TABLE neuratrade_results ADD COLUMN pass_expected INTEGER"),
+        ("ablation_id", "ALTER TABLE neuratrade_results ADD COLUMN ablation_id TEXT"),
+    ]:
+        if not _column_exists(conn, "neuratrade_results", col):
+            conn.execute(ddl)
+            applied.append(f"neuratrade_results.{col}")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_neuratrade_model_at ON neuratrade_results(model, recorded_at DESC)"
+    )
+    applied.append("idx_neuratrade_model_at")
+    return applied
+
+
 def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str]]:
     close = False
     if conn is None:
@@ -260,6 +485,12 @@ def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str
         benchmark = migrate_benchmark_v1(conn)
         benchmark_v2 = migrate_benchmark_v2(conn)
         system_activity = migrate_system_activity_v1(conn)
+        signals_engine = migrate_signals_engine_v1(conn)
+        news_filter = migrate_news_filter_v1(conn)
+        papers_p0_p2 = migrate_papers_p0_p2(conn)
+        papers_v2 = migrate_papers_v2(conn)
+        host_cap = migrate_host_capability_v1(conn)
+        neuratrade_v2 = migrate_neuratrade_v2(conn)
         conn.commit()
         return {
             "news_v2": news,
@@ -268,6 +499,12 @@ def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str
             "benchmark_v1": benchmark,
             "benchmark_v2": benchmark_v2,
             "system_activity_v1": system_activity,
+            "signals_engine_v1": signals_engine,
+            "news_filter_v1": news_filter,
+            "papers_p0_p2": papers_p0_p2,
+            "papers_v2": papers_v2,
+            "host_capability_v1": host_cap,
+            "neuratrade_v2": neuratrade_v2,
         }
     finally:
         if close:

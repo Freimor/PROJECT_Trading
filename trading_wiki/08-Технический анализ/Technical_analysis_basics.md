@@ -254,13 +254,12 @@ Minimum: 200+ для EMA200; 100 для MACD(26). Binance `limit=500`; MOEX ISS 
 
 См. также: [[Academic_sources]].
 
-| Категория | Что изучать | Почему полезно | URL |
+| Категория | Ресурс | Что подтверждает | URL |
 |---|---|---|---|
-| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Даёт контекст «что в рынках меняется со временем» (режимы) — важно для anti-overfit в ТА-сигналах | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
-| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases и framing — полезно для ограничения «чтения паттернов» и борьбы с confirmation bias в ТА | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
-| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример использования LLM/эвристик в контуре решений; полезно при обсуждении «LLM как слой над ТА» | https://ieeexplore.ieee.org/document/11200704/ |
-| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Идея устойчивости решений/портфельных весов; релевантно для ансамблей сигналов и снижения variance | https://arxiv.org/abs/2503.13544 |
-| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Пример, как моделирование превращается в исполнимые веса/ордера — полезно при автоматизации TA→order | https://www.hse.ru/en/edu/vkr/929592108 |
+| Lopez-Lira & Tang (2024) | Anderson PDF | ChatGPT-сентимент предсказывает дневные доходности OOS | https://www.anderson.ucla.edu/sites/default/files/document/2024-04/4.19.24%20Alejandro%20Lopez%20Lira%20ChatGPT_V3.pdf |
+| Digital Finance | StockTwits events (2024) | События в соцсетях → краткосрочные ценовые эффекты | https://doi.org/10.1007/s42521-024-00105-2 |
+| Chaos Solitons & Fractals | Ketenci et al. (2024) | On-chain ribbons как TA-подобные сигналы для BTC | https://doi.org/10.1016/j.chaos.2023.114305 |
+| MIT / A. Lo (2022) | 15.481x | Режимность рынков — anti-overfit для TA | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/ |
 
 ---
 

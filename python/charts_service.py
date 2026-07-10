@@ -10,8 +10,8 @@ from binance_client import fetch_klines
 from config_loader import load_config
 from db.connection import get_connection
 from db.migrate import run_migrations
-from indicators.technical import parse_binance_klines
-from market_data import fetch_moex_candles_as_of
+from indicators.technical import compute_indicator_series, parse_binance_klines
+from market_data import fetch_moex_candles_as_of, moex_iss_interval, resample_ohlcv
 from strategy_service import symbols_for_market
 
 MARKER_STAGES = ("llm", "guardrails", "order", "fill", "risk")
@@ -58,16 +58,40 @@ def _fetch_live_candles(
         return [_normalize_candle(c) for c in parsed]
 
     as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    interval = 24 if timeframe in ("1d", "24h", "d") else 60
-    moex = fetch_moex_candles_as_of(symbol, interval=interval, as_of=as_of, limit=limit)
+    tf = str(timeframe).strip().lower()
+    iss_interval = moex_iss_interval(tf)
+    fetch_limit = limit * 4 if tf == "4h" else limit
+    moex = fetch_moex_candles_as_of(
+        symbol, interval=iss_interval, as_of=as_of, limit=fetch_limit
+    )
+    if tf == "4h":
+        moex = resample_ohlcv(moex, 4 * 3600)
+        if limit > 0 and len(moex) > limit:
+            moex = moex[-limit:]
     return [_normalize_candle(c) for c in moex]
 
 
-def _cache_is_fresh(candles: list[dict[str, Any]], *, max_age_seconds: int = 7 * 86400) -> bool:
+def _cache_max_age_seconds(market: str, interval: str) -> int:
+    tf = str(interval).strip().lower()
+    if market == "securities":
+        if tf in ("1d", "24h", "d"):
+            return 4 * 86400
+        return 8 * 3600
+    if tf in ("1d", "24h", "d"):
+        return 2 * 86400
+    return 6 * 3600
+
+
+def _cache_is_fresh(
+    candles: list[dict[str, Any]],
+    *,
+    market: str,
+    interval: str,
+) -> bool:
     if not candles:
         return False
     newest = max(c["time"] for c in candles)
-    threshold = int(datetime.now(timezone.utc).timestamp()) - max_age_seconds
+    threshold = int(datetime.now(timezone.utc).timestamp()) - _cache_max_age_seconds(market, interval)
     return newest >= threshold
 
 
@@ -96,7 +120,7 @@ def get_chart_candles(
         )
         if len(cached) >= 30:
             normalized = [_normalize_candle(c) for c in cached]
-            if _cache_is_fresh(normalized):
+            if _cache_is_fresh(normalized, market=market, interval=interval):
                 candles = normalized
 
     if len(candles) < 30:
@@ -107,7 +131,7 @@ def get_chart_candles(
             limit=limit,
             testnet=testnet,
         )
-        if live:
+        if live and _cache_is_fresh(live, market=market, interval=interval):
             candles = live
             raw_for_cache = []
             for c in live:
@@ -132,6 +156,8 @@ def get_chart_candles(
                     timeframe=interval,
                     candles=raw_for_cache,
                 )
+        elif live:
+            candles = live
 
     return {
         "status": "ok",
@@ -143,6 +169,82 @@ def get_chart_candles(
     }
 
 
+def get_chart_indicators(
+    *,
+    market: str,
+    symbol: str,
+    interval: str = "4h",
+    limit: int = 200,
+    testnet: bool = True,
+    use_cache: bool = True,
+) -> dict[str, Any]:
+    """Indicator time series aligned with chart candles."""
+    candle_resp = get_chart_candles(
+        market=market,
+        symbol=symbol,
+        interval=interval,
+        limit=limit,
+        testnet=testnet,
+        use_cache=use_cache,
+    )
+    candles = candle_resp.get("candles") or []
+    if len(candles) < 30:
+        return {
+            "status": "error",
+            "message": "insufficient_candles",
+            "market": market,
+            "symbol": symbol.upper(),
+            "interval": interval,
+            "series": {},
+            "levels": {},
+        }
+
+    raw_candles = [
+        {
+            "t": c["time"],
+            "o": c["open"],
+            "h": c["high"],
+            "l": c["low"],
+            "c": c["close"],
+            "v": c.get("volume", 0),
+        }
+        for c in candles
+    ]
+    series = compute_indicator_series(raw_candles)
+
+    levels: dict[str, float] = {}
+    if market == "crypto":
+        rf = load_config("crypto_config").get("rule_filter", {})
+        levels["rsi_oversold"] = float(rf.get("rsi_oversold", 35))
+        levels["rsi_overbought"] = float(rf.get("rsi_overbought", 65))
+    elif market == "securities":
+        levels["rsi_oversold"] = 40.0
+        levels["rsi_overbought"] = 60.0
+
+    return {
+        "status": "ok",
+        "market": market,
+        "symbol": symbol.upper(),
+        "interval": interval,
+        "series": series,
+        "levels": levels,
+    }
+
+
+
+def _symbol_in_matched(matched_raw: str | None, sym: str, full_symbol: str) -> bool:
+    if not matched_raw:
+        return False
+    try:
+        parsed = json.loads(matched_raw)
+        if isinstance(parsed, list):
+            upper = {str(x).upper() for x in parsed}
+            return sym in upper or full_symbol.upper() in upper
+    except (json.JSONDecodeError, TypeError):
+        pass
+    matched = matched_raw.upper()
+    return sym in matched or full_symbol.upper() in matched
+
 
 def _news_markers_for_symbol(*, market: str, symbol: str, limit: int = 40) -> list[dict[str, Any]]:
     """Significant news as chart markers."""
@@ -152,12 +254,12 @@ def _news_markers_for_symbol(*, market: str, symbol: str, limit: int = 40) -> li
         now = datetime.now(timezone.utc).isoformat()
         rows = conn.execute(
             """
-            SELECT id, title, published_at, source_name, trust_score, matched_symbols
+            SELECT id, title, published_at, fetched_at, source_name, trust_score, matched_symbols
             FROM news_items
             WHERE (expires_at IS NULL OR expires_at > ?)
               AND matched_symbols IS NOT NULL
               AND verification_status IN ('verified', 'trusted', 'pending')
-            ORDER BY published_at DESC
+            ORDER BY COALESCE(published_at, fetched_at) DESC
             LIMIT ?
             """,
             (now, limit * 3),
@@ -167,15 +269,17 @@ def _news_markers_for_symbol(*, market: str, symbol: str, limit: int = 40) -> li
 
     out: list[dict[str, Any]] = []
     for row in rows:
-        matched = (row["matched_symbols"] or "").upper()
-        if sym not in matched and symbol.upper() not in matched:
+        if not _symbol_in_matched(row["matched_symbols"], sym, symbol):
+            continue
+        when = row["published_at"] or row["fetched_at"]
+        if not when:
             continue
         title = (row["title"] or "News")[:40]
         out.append(
             {
                 "id": f"news-{row['id']}",
-                "time": _to_unix_seconds(row["published_at"]),
-                "event_at": row["published_at"],
+                "time": _to_unix_seconds(when),
+                "event_at": when,
                 "env": "news",
                 "stage": "news",
                 "decision": "info",

@@ -1,0 +1,55 @@
+# Host capability — strategy feasibility vs Ollama latency
+# Used by Benchmark page: can this PC run strategy X with model Y?
+
+version: "1.0.0"
+max_models: 5
+max_parallel_llm: 1
+llm_samples: 2
+
+# safety_margin: required_sec must be <= budget_sec * margin (0.85 = 15% headroom)
+
+strategies:
+  - id: crypto_swing_4h
+    label: "Crypto swing 4h (2 пары, LLM каждый тик)"
+    interval_sec: 14400
+    symbols: 2
+    llm_calls_per_symbol: 1
+    safety_margin: 0.85
+    note: "Текущий crypto-signal-paper"
+
+  - id: crypto_aggressive_2m
+    label: "Агрессивный скальпинг 2m (2 пары)"
+    interval_sec: 120
+    symbols: 2
+    llm_calls_per_symbol: 1
+    safety_margin: 0.9
+    note: "Пример: если 1 LLM = 3 мин → невозможно"
+
+  - id: crypto_scalp_hybrid_5m
+    label: "Scalp hybrid 5m (20% LLM слотов)"
+    interval_sec: 300
+    symbols: 2
+    llm_calls_per_symbol: 0.2
+    safety_margin: 0.85
+    note: "80% script / 20% qwen3.5:4b — crypto_scalp_hybrid"
+
+  - id: moex_swing_daily
+    label: "MOEX swing 1d (5 тикеров)"
+    interval_sec: 86400
+    symbols: 5
+    llm_calls_per_symbol: 1
+    safety_margin: 0.8
+
+  - id: neuratrade_harness
+    label: "NeuraTrade harness (3 модели × 2 пары)"
+    interval_sec: 86400
+    symbols: 6
+    llm_calls_per_symbol: 1
+    safety_margin: 0.75
+
+  - id: trading_agents
+    label: "TradingAgents (3 LLM вызова на символ)"
+    interval_sec: 14400
+    symbols: 2
+    llm_calls_per_symbol: 3
+    safety_margin: 0.85

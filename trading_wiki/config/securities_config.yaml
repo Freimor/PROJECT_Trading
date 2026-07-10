@@ -33,10 +33,7 @@ session:
   start_hour: 10
   end_hour: 19
 
-risk:
-  risk_per_trade: 0.01
-  daily_loss_limit: 0.03
-  max_open_positions: 3
+# Лимиты риска — guardrails.yaml + runtime пресет (см. docs/roadmap-razvitiya.md)
 
 tax:
   track_deals: true

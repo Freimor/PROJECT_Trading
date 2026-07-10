@@ -16,10 +16,7 @@ pairs:
 timeframe: 4h
 schedule_cron: "5 */4 * * *"
 
-max_open_positions: 2
-risk_per_trade: 0.01
-daily_loss_limit: 0.03
-llm_min_confidence: 0.7
+# Лимиты риска — guardrails.yaml + runtime пресет (см. docs/roadmap-razvitiya.md, веха A)
 
 llm:
   temperature: 0.1
@@ -33,6 +30,19 @@ rule_filter:
   rsi_oversold: 35
   rsi_overbought: 65
   require_macd_cross: false
+
+# BIS retail guard — block long in FOMO conditions
+# Reference: https://www.bis.org/publ/work1049.htm
+retail_guard:
+  enabled: true
+  rsi_fomo_threshold: 72
+  max_extension_above_ema200_pct: 0.15
+  price_percentile_lookback: 90
+  price_percentile_block: 0.85
+  volume_spike_multiplier: 2.5
+
+on_chain:
+  enabled: true
 
 dca:
   symbol: BTCUSDT

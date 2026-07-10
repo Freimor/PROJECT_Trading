@@ -1,0 +1,21 @@
+# TradingAgents multi-agent (arXiv:2412.20138)
+
+version: "1.0.0"
+ollama_model: qwen3.5:9b
+validator_prompt_version: crypto_validate_v1
+
+analyst_system: "You are a financial analyst. Cite only input data. No invented numbers."
+analyst_prompt: |
+  Analyze {symbol} for swing trade setup.
+  Indicators: {indicators}
+  News: {news}
+  Output: thesis (2 sentences), key risks (bullets).
+
+risk_system: "You are a risk manager. Reject hype and overconfidence."
+risk_prompt: |
+  Review analyst report for {symbol}.
+  Report: {analyst_report}
+  Indicators: {indicators}
+  Say REJECT if risk too high; otherwise APPROVE with caveats.
+
+risk_reject_phrases: [reject, do not trade, high risk, отклон, не торговать]

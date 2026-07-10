@@ -5,7 +5,7 @@ sources:
   - https://www.hse.ru/ma/invest/
   - https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/
   - https://wp.hse.ru/en/prepfr_FE
-updated: 2026-07-06
+updated: 2026-07-10
 level: reference
 style: informational
 ---
@@ -17,6 +17,7 @@ style: informational
 ## Главное
 
 - Приоритет источникам **не старше 5 лет** (с 2021). Классика (Shiller, Lo 2005) — только как фон.
+- **Библиотека papers/** — 74 проверенных работ с анализом: [`../papers/README.md`](../papers/README.md), [`../papers/papers_analysis.yaml`](../papers/papers_analysis.yaml), [`../docs/papers-research-report-2026-07.md`](../docs/papers-research-report-2026-07.md).
 - Карта ниже связывает тему Wiki с курсом или статьёй.
 - В статьях — таблица «Академические источники»; сводка здесь.
 - Для LLM/RAG: тег `#academic`, поле `academic_sources` в YAML.
@@ -32,10 +33,13 @@ style: informational
 | [[Order_types]], [[Stop_loss_take_profit]] | Cornell/MIT (NBER) | Li, Ye, Zheng (2021) — типы ордеров |
 | [[Portfolio_diversification]], [[Position_sizing]] | SSRN, Nature, IEEE | Jaeger & Marinelli (2022); Torrente & Uberti (2024); Agal et al. (2025) |
 | [[Cognitive_biases]], [[Trader_psychology]] | MIT Sloan | Lo — Adaptive Markets (курс 2022) |
-| [[Crypto_basics]], [[Bitcoin_overview]] | BIS, ECB, ESRB, ВШЭ | BIS Papers 156, 159; Dobrynskaya & Dubrovskiy (2022) |
-| [[IMOEX_RTS]], [[MOEX_stocks]] | ВШЭ | Manushkin (2024) Fama-French на российском рынке |
-| [[n8n_architecture_overview]], [[LLM_prompts_trading]] | MIT, Stanford GSB, IEEE | Lo (AI advising); Stanford FINANCE 341; sentiment+DRL (2025) |
-| [[Technical_analysis_basics]] | Stanford GSB | FINANCE 562 Trading Strategies; FINANCE 361 Behavioral Finance |
+| [[Crypto_basics]], [[Bitcoin_overview]] | BIS, ECB, ESRB, ВШЭ | BIS WP 1049/1087/1227; ESRB 2025; Dobrynskaya (2022) |
+| [[Crypto_indicators]] | BIS, Chaos Solitons, EJF | On-chain ribbons; whale typology |
+| [[IMOEX_RTS]], [[MOEX_stocks]] | ВШЭ, Economy of Region | Abramov factor models 2025; volatility spillovers 2025 |
+| [[n8n_architecture_overview]], [[LLM_prompts_trading]] | FINSABER, DeepFund, TradingAgents | LLM benchmarks 2025; Lopez-Lira 2024 |
+| [[Technical_analysis_basics]] | Lopez-Lira, Digital Finance | ChatGPT sentiment; StockTwits events |
+| [[Bonds_basics]] | Financial Analysts Journal | Ivashchenko bond capacity 2024 |
+| [[Portfolio_diversification]] | JF, NBER, GFJ | Jensen replication 2023; DRL portfolio 2024 |
 
 ---
 
@@ -147,22 +151,61 @@ style: informational
 
 ### Криптовалюты
 
-| Год | Организация | Документ | Ссылка |
-|-----|------------|----------|--------|
-| 2024 | BIS | CBDC survey (91% ЦБ) | [BIS Paper 159](https://www.bis.org/publ/bppdf/bispap159.htm) |
-| 2024 | BIS | Crypto, DeFi, stability | [BIS Paper 156](https://www.bis.org/publ/bppdf/bispap156.pdf) |
+| Год | Организация / авторы | Документ | Ссылка |
+|-----|---------------------|----------|--------|
 | 2025 | ESRB | Macroprudential crypto risks | [ESRB Report 2025](https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf) |
+| 2025 | FSB | Thematic Peer Review crypto framework | [FSB P161025](https://www.fsb.org/uploads/P161025-1.pdf) |
+| 2024 | BIS | DEX liquidity (Uniswap V3) | [BIS WP 1227](https://www.bis.org/publ/work1227.htm) |
+| 2024 | BIS | Crypto carry / futures basis | [BIS WP 1087](https://www.bis.org/publ/work1087.htm) |
+| 2024 | Ketenci et al. | Blockchain metrics (Hash Ribbon) | [doi.org/10.1016/j.chaos.2023.114305](https://doi.org/10.1016/j.chaos.2023.114305) |
+| 2023 | Liu et al. | Bitcoin trading patterns (whales) | [doi.org/10.1080/1351847X.2023.2241883](https://doi.org/10.1080/1351847X.2023.2241883) |
+| 2022 | BIS | Retail crypto adoption | [BIS WP 1049](https://www.bis.org/publ/work1049.htm) |
 | 2022 | ВШЭ | Крипто и акции: risk factors | [WP BRP 86/FE/2022](https://wp.hse.ru/fe/BRP/86/2022) |
 
-**Связь:** [[Crypto_basics]], [[Crypto_regulation_RU]].
+**Связь:** [[Crypto_basics]], [[Crypto_regulation_RU]], [[Crypto_indicators]].
+
+### LLM и автоматизация
+
+| Год | Авторы | Вывод | Ссылка |
+|-----|--------|-------|--------|
+| 2025 | FINSABER | LLM alpha исчезает при bias-free 20y backtest | [arXiv:2505.07078](https://arxiv.org/abs/2505.07078) |
+| 2025 | DeepFund | Live-тест: топ LLM теряют на реальном рынке | [arXiv:2505.11065](https://arxiv.org/abs/2505.11065) |
+| 2025 | StockBench | Большинство LLM < buy-and-hold | [arXiv:2510.02209](https://arxiv.org/abs/2510.02209) |
+| 2025 | TradingAgents | Multi-agent LLM framework (Ollama-ready) | [arXiv:2412.20138](https://arxiv.org/abs/2412.20138) |
+| 2024 | Lopez-Lira & Tang | ChatGPT sentiment предсказывает акции OOS | [Anderson PDF](https://www.anderson.ucla.edu/sites/default/files/document/2024-04/4.19.24%20Alejandro%20Lopez%20Lira%20ChatGPT_V3.pdf) |
+
+**Связь:** [[LLM_rules_and_guardrails]], [[n8n_architecture_overview]].
+
+### Методология бэктеста
+
+| Год | Авторы | Ссылка |
+|-----|--------|--------|
+| 2022 | López de Prado | Type I/II errors Sharpe | [doi.org/10.3905/jpm.2022.1.403](https://doi.org/10.3905/jpm.2022.1.403) |
+| 2023 | Jensen, Kelly, Pedersen | Replication crisis in finance | [doi.org/10.1111/jofi.13249](https://doi.org/10.1111/jofi.13249) |
+| 2023 | Arnott et al. | Factor momentum (RFS) | [doi.org/10.1093/rfs/hhad006](https://doi.org/10.1093/rfs/hhad006) |
+
+**Связь:** [[LLM_rules_and_guardrails]], [[Portfolio_diversification]].
 
 ### Российский рынок
 
 | Год | Автор | Тема | Ссылка |
 |-----|-------|------|--------|
+| 2025 | Abramov et al. (ВШЭ) | Factor models MOEX 2007–2024 | [doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81](https://doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81) |
+| 2025 | Volatility spillovers MOEX sectors | 2020–2024 | [doi.org/10.31737/22212264_2025_2_65-84](https://doi.org/10.31737/22212264_2025_2_65-84) |
 | 2024 | Manushkin (ВШЭ) | Fama-French 5-factor, Россия | [WP BRP 95/FE/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
+| 2024 | Aizenman et al. | Geopolitical shocks → commodities | [doi.org/10.1016/j.ejpoleco.2024.102574](https://doi.org/10.1016/j.ejpoleco.2024.102574) |
+| 2023 | Nazarova (ВШЭ) | Momentum на MOEX | [doi.org/10.31107/2075-1990-2023-1-58-73](https://doi.org/10.31107/2075-1990-2023-1-58-73) |
+| 2023 | MOEX herding | Russia–Ukraine war | [doi.org/10.1108/rbf-01-2023-0014](https://doi.org/10.1108/rbf-01-2023-0014) |
 
 **Связь:** [[IMOEX_RTS]], [[MOEX_stocks]].
+
+### Облигации
+
+| Год | Авторы | Ссылка |
+|-----|--------|--------|
+| 2024 | Ivashchenko & Kosowski | Bond strategy capacity | [doi.org/10.1080/0015198X.2024.2360390](https://doi.org/10.1080/0015198X.2024.2360390) |
+
+**Связь:** [[Bonds_basics]].
 
 ---
 

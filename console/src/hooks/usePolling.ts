@@ -32,6 +32,16 @@ export function usePolling<T>(
   const pauseWhenHidden = options?.pauseWhenHidden ?? true;
   const errorSource = options?.errorSource;
   const staggerKey = options?.staggerKey ?? errorSource ?? "";
+  const prevStaggerKey = useRef(staggerKey);
+
+  useEffect(() => {
+    if (prevStaggerKey.current === staggerKey) return;
+    prevStaggerKey.current = staggerKey;
+    failuresRef.current = 0;
+    setData(null);
+    setLoading(true);
+    setError("");
+  }, [staggerKey]);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;

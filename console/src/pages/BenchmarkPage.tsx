@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost } from "../api";
+import { apiGet, apiPost, getOperatorPassword } from "../api";
 import PortfolioCard from "../components/PortfolioCard";
 import { POLL } from "../config/polling";
 import { useErrorNotifications } from "../context/ErrorNotifications";
@@ -33,6 +33,32 @@ type OllamaModelsResp = {
   status?: string;
   models?: Array<{ name: string }>;
   message?: string;
+};
+
+type ModelOutcome = {
+  cases_labeled?: number;
+  approve_count?: number;
+  reject_count?: number;
+  precision_approve?: number | null;
+  recall?: number | null;
+  good_approves?: number;
+  bad_approves?: number;
+  missed_opportunities?: number;
+  good_rejects?: number;
+  simulated_pnl_approve_pct?: number;
+  avg_return_per_approve_pct?: number | null;
+};
+
+type ByModelReport = {
+  status?: string;
+  days?: number;
+  by_market?: Record<
+    string,
+    {
+      models?: string[];
+      by_model?: Record<string, ModelOutcome>;
+    }
+  >;
 };
 
 type MarketLlmBlock = {
@@ -80,6 +106,67 @@ type CalibPlan = {
   stages?: CalibStage[];
 };
 
+type HostStrategyEval = {
+  id?: string;
+  label?: string;
+  interval_sec?: number;
+  budget_sec?: number;
+  required_sec?: number;
+  feasible?: boolean;
+  headroom_sec?: number;
+  note?: string;
+};
+
+type HostFeasibility = {
+  model?: string;
+  latency_ms_avg?: number;
+  parallel_assumed?: number;
+  strategies?: HostStrategyEval[];
+  error?: string[];
+};
+
+type HostAuditReport = {
+  status?: string;
+  host?: {
+    cpu_logical?: number;
+    ram_total_gb?: number;
+    ram_available_gb?: number;
+    ram_used_pct?: number;
+    disk_free_gb?: number;
+  };
+  ollama?: { host?: string; status?: string; models_count?: number };
+  model_benchmarks?: Array<{
+    model?: string;
+    status?: string;
+    latency_ms_avg?: number;
+    latency_ms_max?: number;
+  }>;
+  feasibility?: HostFeasibility[];
+};
+
+type HostAuditLast = {
+  status?: string;
+  audited_at?: string;
+  report?: HostAuditReport;
+};
+
+type OllamaRequiredRow = {
+  name: string;
+  role?: string;
+  optional?: boolean;
+  installed?: boolean;
+  installed_name?: string | null;
+};
+
+type OllamaModelsStatus = {
+  status?: string;
+  required?: OllamaRequiredRow[];
+  missing_required?: string[];
+  extra_installed?: string[];
+  disk_free_gb?: number;
+  bootstrap_last?: unknown;
+};
+
 const MODEL_STORAGE_KEY = (m: Market) => `benchmark-calib-model:${m}`;
 
 function formatElapsed(sec: number): string {
@@ -112,6 +199,8 @@ export default function BenchmarkPage() {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [hostBusy, setHostBusy] = useState(false);
+  const [ollamaMgrBusy, setOllamaMgrBusy] = useState(false);
   const resumedRef = useRef(false);
   const completedRef = useRef<string | null>(null);
   const { report } = useErrorNotifications();
@@ -121,6 +210,12 @@ export default function BenchmarkPage() {
     POLL.OPS,
     true,
     { staggerKey: "benchmark-report" },
+  );
+  const { data: byModelData, refresh: refreshByModel } = usePolling<ByModelReport>(
+    () => apiGet("/api/benchmark/report/by-model?days=30"),
+    POLL.OPS,
+    true,
+    { staggerKey: "benchmark-report-by-model" },
   );
   const { data: llmSettings, refresh: refreshLlmSettings } = usePolling<LlmSettings>(
     () => apiGet("/api/benchmark/llm-settings"),
@@ -145,6 +240,19 @@ export default function BenchmarkPage() {
     POLL.OPS * 2,
     true,
     { staggerKey: `benchmark-calib-${market}` },
+  );
+  const { data: hostAuditLast, refresh: refreshHostAudit } = usePolling<HostAuditLast>(
+    () => apiGet("/api/benchmark/host-capability/last"),
+    POLL.OPS,
+    true,
+    { staggerKey: "benchmark-host-capability" },
+  );
+
+  const { data: ollamaStatus, refresh: refreshOllamaStatus } = usePolling<OllamaModelsStatus>(
+    () => apiGet("/api/ollama/models/status"),
+    POLL.OPS,
+    true,
+    { staggerKey: "benchmark-ollama-status" },
   );
 
   const marketBlock = llmSettings?.markets?.[market];
@@ -260,9 +368,16 @@ export default function BenchmarkPage() {
     }
     if (jobStatus.state === "error") {
       const marketLabel = market === "crypto" ? t("benchmark.marketCrypto") : t("benchmark.marketMoex");
-      const message = jobStatus.error || jobStatus.message || t("benchmark.calibError");
-      setLog(`${marketLabel} — ${t("benchmark.calibError")}: ${message}`);
-      report("benchmark/calibrate", message);
+      const interrupted = jobStatus.error === "worker_lost" || jobStatus.error === "stalled";
+      if (interrupted) {
+        // Прерывание из-за перезапуска сервиса / зависания — не критичная ошибка.
+        setLog(`${marketLabel}: ${t("benchmark.calibInterrupted")}`);
+        report("benchmark/calibrate", null);
+      } else {
+        const message = jobStatus.error || jobStatus.message || t("benchmark.calibError");
+        setLog(`${marketLabel} — ${t("benchmark.calibError")}: ${message}`);
+        report("benchmark/calibrate", message);
+      }
     }
     if (jobStatus.state === "cancelled") {
       const marketLabel = market === "crypto" ? t("benchmark.marketCrypto") : t("benchmark.marketMoex");
@@ -279,11 +394,69 @@ export default function BenchmarkPage() {
       await apiPost("/api/benchmark/sample?days=30", {});
       await apiPost("/api/benchmark/label", {});
       refreshReport();
+      refreshByModel();
       setLog(t("benchmark.outcomeDone"));
     } catch (err) {
       report("benchmark/outcome", String(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runHostAudit = async () => {
+    if (hostBusy || marketJobRunning) return;
+    setHostBusy(true);
+    report("benchmark/host-capability", null);
+    try {
+      const model = selectedModel || yamlModel || undefined;
+      const qs = model ? `?models=${encodeURIComponent(model)}&llm_samples=2` : "?llm_samples=2";
+      await apiPost(`/api/benchmark/host-capability/run${qs}`, {});
+      refreshHostAudit();
+      setLog(t("benchmark.hostAuditDone"));
+    } catch (err) {
+      setLog(`${t("benchmark.hostAuditError")}: ${String(err)}`);
+      report("benchmark/host-capability", String(err));
+    } finally {
+      setHostBusy(false);
+    }
+  };
+
+  const runEnsureOllamaModels = async () => {
+    if (ollamaMgrBusy) return;
+    const password = getOperatorPassword();
+    if (!password) {
+      setLog(t("benchmark.ollamaNeedPassword"));
+      return;
+    }
+    setOllamaMgrBusy(true);
+    try {
+      const result = await apiPost("/api/ollama/models/ensure", {}, { operatorPassword: password });
+      setLog(JSON.stringify(result, null, 2));
+      refreshOllamaStatus();
+    } catch (err) {
+      setLog(`${t("benchmark.ollamaEnsureError")}: ${String(err)}`);
+      report("ollama/ensure", String(err));
+    } finally {
+      setOllamaMgrBusy(false);
+    }
+  };
+
+  const runPullModel = async (model: string) => {
+    if (ollamaMgrBusy || !model) return;
+    const password = getOperatorPassword();
+    if (!password) {
+      setLog(t("benchmark.ollamaNeedPassword"));
+      return;
+    }
+    setOllamaMgrBusy(true);
+    try {
+      const result = await apiPost("/api/ollama/models/pull", { model }, { operatorPassword: password });
+      setLog(JSON.stringify(result, null, 2));
+      refreshOllamaStatus();
+    } catch (err) {
+      setLog(`${t("benchmark.ollamaPullError")}: ${String(err)}`);
+    } finally {
+      setOllamaMgrBusy(false);
     }
   };
 
@@ -328,6 +501,32 @@ export default function BenchmarkPage() {
     yamlModel,
   ]);
 
+  const applyCalibration = useCallback(async () => {
+    const marketLabel = market === "crypto" ? t("benchmark.marketCrypto") : t("benchmark.marketMoex");
+    report("benchmark/calibrate", null);
+    try {
+      const resp = await apiPost<{ status?: string; override?: Record<string, unknown>; message?: string }>(
+        "/api/benchmark/calibrate/apply",
+        { market, operator: "web" },
+      );
+      if (resp.status === "ok") {
+        const ov = resp.override ?? {};
+        setLog(
+          `${marketLabel}: применены параметры — T=${String(ov.temperature ?? "—")} conf=${String(
+            ov.min_confidence ?? "—",
+          )}`,
+        );
+        refreshLlmSettings();
+      } else {
+        setLog(`${marketLabel}: не удалось применить — ${String(resp.message ?? resp.status ?? "error")}`);
+        report("benchmark/calibrate", String(resp.message ?? resp.status ?? "error"));
+      }
+    } catch (err) {
+      setLog(`${marketLabel}: ошибка применения — ${String(err)}`);
+      report("benchmark/calibrate", String(err));
+    }
+  }, [market, refreshLlmSettings, report, t]);
+
   const cancelCalibration = useCallback(async () => {
     setCancelling(true);
     const marketLabel = market === "crypto" ? t("benchmark.marketCrypto") : t("benchmark.marketMoex");
@@ -348,10 +547,14 @@ export default function BenchmarkPage() {
 
   const rep = reportData as Record<string, unknown> | null;
   const byMarket = (rep?.by_market ?? {}) as Record<string, { outcome?: Record<string, unknown> }>;
+  const hostReport =
+    hostAuditLast?.status === "empty" ? null : (hostAuditLast?.report as HostAuditReport | undefined);
+  const hostFeasibility = hostReport?.feasibility ?? [];
   const cal = (calib as Record<string, unknown> | null) ?? marketBlock?.last_calibration ?? null;
   const rec = cal?.recommended as Record<string, unknown> | undefined;
   const llm = marketBlock?.llm;
   const job = jobStatus;
+  const byModelMarket = byModelData?.by_market ?? {};
 
   const progressPct = useMemo(() => {
     if (job?.progress_pct != null) return Math.max(0, Math.min(100, job.progress_pct));
@@ -674,6 +877,46 @@ export default function BenchmarkPage() {
           ))}
         </PortfolioCard>
 
+        <PortfolioCard title={t("benchmark.evaluationTitle")}>
+          <p className="muted small">{t("benchmark.evaluationHint")}</p>
+          {Object.entries(byModelMarket).length === 0 ? (
+            <p className="muted">{t("benchmark.evaluationEmpty")}</p>
+          ) : (
+            Object.entries(byModelMarket).map(([mkt, block]) => (
+              <div key={mkt} className="market-block">
+                <strong>{mkt}</strong>
+                {(block.models ?? []).length === 0 ? (
+                  <div className="muted small">{t("benchmark.evaluationEmpty")}</div>
+                ) : (
+                  (block.models ?? []).map((modelName) => {
+                    const st = block.by_model?.[modelName] ?? {};
+                    return (
+                      <div key={modelName} className="muted small" style={{ marginTop: "0.35rem" }}>
+                        <div>
+                          <strong className="mono-small">{modelName}</strong>
+                        </div>
+                        <div>
+                          {t("benchmark.precision")}: {String(st.precision_approve ?? "—")} ·{" "}
+                          {t("benchmark.recall")}: {String(st.recall ?? "—")} ·{" "}
+                          {t("benchmark.labeled")}: {String(st.cases_labeled ?? 0)}
+                        </div>
+                        <div>
+                          {t("benchmark.approves")}: {String(st.approve_count ?? 0)} ·{" "}
+                          {t("benchmark.rejects")}: {String(st.reject_count ?? 0)} ·{" "}
+                          {t("benchmark.avgReturnApprove")}:{" "}
+                          {st.avg_return_per_approve_pct == null
+                            ? "—"
+                            : String(st.avg_return_per_approve_pct)}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ))
+          )}
+        </PortfolioCard>
+
         <PortfolioCard
           title={`${t("benchmark.lastCalibrationTitle")} — ${
             market === "crypto" ? t("benchmark.marketCrypto") : t("benchmark.marketMoex")
@@ -681,6 +924,10 @@ export default function BenchmarkPage() {
         >
           {cal?.status === "ok" && rec ? (
             <>
+              <div className="metric-row">
+                <span>{t("benchmark.selectModel")}</span>
+                <strong className="mono-small">{String(cal.model ?? "—")}</strong>
+              </div>
               <div className="metric-row">
                 <span>{t("benchmark.recommendation")}</span>
                 <strong>
@@ -692,12 +939,171 @@ export default function BenchmarkPage() {
                 <strong>{String(rec.composite_score)}</strong>
               </div>
               <p className="muted small">{String(cal.recommendation_note ?? "")}</p>
+              <div className="btn-row" style={{ marginTop: "0.75rem" }}>
+                <button type="button" className="primary tiny" onClick={applyCalibration}>
+                  Применить к модели
+                </button>
+              </div>
             </>
           ) : (
             <p className="muted">{t("benchmark.noCalibration")}</p>
           )}
         </PortfolioCard>
       </div>
+
+      <PortfolioCard title={t("benchmark.hostCapabilityTitle")}>
+        <p className="muted small">{t("benchmark.hostCapabilitySubtitle")}</p>
+        <div className="btn-row" style={{ marginBottom: "0.75rem" }}>
+          <button
+            type="button"
+            className="primary tiny"
+            disabled={hostBusy || marketJobRunning}
+            onClick={() => void runHostAudit()}
+          >
+            {hostBusy ? t("benchmark.hostAuditing") : t("benchmark.runHostAudit")}
+          </button>
+          {hostAuditLast?.audited_at ? (
+            <span className="muted small">
+              {t("benchmark.hostLastAudit")}: {hostAuditLast.audited_at}
+            </span>
+          ) : null}
+        </div>
+        {!hostReport ? (
+          <p className="muted">{t("benchmark.hostNoAudit")}</p>
+        ) : (
+          <>
+            <div className="grid cards-3" style={{ marginBottom: "1rem" }}>
+              <div className="metric-row">
+                <span>{t("benchmark.hostCpu")}</span>
+                <strong>{String(hostReport.host?.cpu_logical ?? "—")}</strong>
+              </div>
+              <div className="metric-row">
+                <span>{t("benchmark.hostRam")}</span>
+                <strong>
+                  {hostReport.host?.ram_available_gb != null
+                    ? `${hostReport.host.ram_available_gb} / ${hostReport.host.ram_total_gb} GB (${hostReport.host.ram_used_pct}%)`
+                    : "—"}
+                </strong>
+              </div>
+              <div className="metric-row">
+                <span>{t("benchmark.hostDisk")}</span>
+                <strong>
+                  {hostReport.host?.disk_free_gb != null ? `${hostReport.host.disk_free_gb} GB` : "—"}
+                </strong>
+              </div>
+              <div className="metric-row">
+                <span>{t("benchmark.hostOllama")}</span>
+                <strong className="mono-small">
+                  {hostReport.ollama?.status ?? "—"} · {hostReport.ollama?.models_count ?? 0} models
+                </strong>
+              </div>
+            </div>
+            {hostFeasibility.map((block) => (
+              <div key={block.model ?? "unknown"} className="market-block" style={{ marginBottom: "1rem" }}>
+                <strong className="mono-small">{block.model}</strong>
+                {block.latency_ms_avg != null ? (
+                  <div className="muted small">
+                    {t("benchmark.hostLatency")}: {block.latency_ms_avg} ms (
+                    {t("benchmark.hostLatencyMax")}:{" "}
+                    {hostReport.model_benchmarks?.find((m) => m.model === block.model)?.latency_ms_max ?? "—"} ms)
+                    {block.parallel_assumed != null ? ` · parallel≈${block.parallel_assumed}` : ""}
+                  </div>
+                ) : (
+                  <div className="muted small">{block.error?.join("; ") ?? "—"}</div>
+                )}
+                {(block.strategies ?? []).length > 0 ? (
+                  <table className="data-table compact" style={{ marginTop: "0.5rem" }}>
+                    <thead>
+                      <tr>
+                        <th>{t("benchmark.hostStrategy")}</th>
+                        <th>{t("benchmark.hostBudget")}</th>
+                        <th>{t("benchmark.hostRequired")}</th>
+                        <th>{t("benchmark.hostHeadroom")}</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(block.strategies ?? []).map((s) => (
+                        <tr key={s.id ?? s.label}>
+                          <td>
+                            <div>{s.label}</div>
+                            {s.note ? <div className="muted small">{s.note}</div> : null}
+                          </td>
+                          <td className="mono-small">{s.budget_sec != null ? `${s.budget_sec}s` : "—"}</td>
+                          <td className="mono-small">{s.required_sec != null ? `${s.required_sec}s` : "—"}</td>
+                          <td className="mono-small">
+                            {s.headroom_sec != null ? `${s.headroom_sec}s` : "—"}
+                          </td>
+                          <td>
+                            <span className={s.feasible ? "status-ok" : "status-error"}>
+                              {s.feasible ? t("benchmark.hostFeasible") : t("benchmark.hostNotFeasible")}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null}
+              </div>
+            ))}
+          </>
+        )}
+      </PortfolioCard>
+
+      <PortfolioCard title={t("benchmark.ollamaRegistryTitle")}>
+        <p className="muted small">{t("benchmark.ollamaRegistrySubtitle")}</p>
+        <div className="btn-row" style={{ marginBottom: "0.75rem" }}>
+          <button type="button" disabled={ollamaMgrBusy} onClick={() => void runEnsureOllamaModels()}>
+            {ollamaMgrBusy ? t("benchmark.ollamaEnsuring") : t("benchmark.ollamaEnsureMissing")}
+          </button>
+          <button type="button" disabled={ollamaMgrBusy} onClick={() => refreshOllamaStatus()}>
+            {t("header.refresh")}
+          </button>
+          {ollamaStatus?.disk_free_gb != null ? (
+            <span className="muted small">
+              {t("benchmark.ollamaDiskFree")}: {ollamaStatus.disk_free_gb} GB
+            </span>
+          ) : null}
+        </div>
+        {(ollamaStatus?.missing_required?.length ?? 0) > 0 ? (
+          <p className="warn-text small">
+            {t("benchmark.ollamaMissing")}: {(ollamaStatus?.missing_required ?? []).join(", ")}
+          </p>
+        ) : (
+          <p className="muted small">{t("benchmark.ollamaAllPresent")}</p>
+        )}
+        <table className="simple-table" style={{ marginTop: "0.5rem" }}>
+          <thead>
+            <tr>
+              <th>{t("benchmark.ollamaModel")}</th>
+              <th>{t("benchmark.ollamaRole")}</th>
+              <th>{t("benchmark.ollamaInstalled")}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {(ollamaStatus?.required ?? []).map((row) => (
+              <tr key={row.name}>
+                <td className="mono-small">{row.name}</td>
+                <td>{row.role ?? "—"}</td>
+                <td>{row.installed ? "✓" : row.optional ? "—" : "✗"}</td>
+                <td>
+                  {!row.installed ? (
+                    <button type="button" className="tiny" disabled={ollamaMgrBusy} onClick={() => void runPullModel(row.name)}>
+                      {t("benchmark.ollamaPull")}
+                    </button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {(ollamaStatus?.extra_installed?.length ?? 0) > 0 ? (
+          <p className="muted small" style={{ marginTop: "0.5rem" }}>
+            {t("benchmark.ollamaExtra")}: {(ollamaStatus?.extra_installed ?? []).join(", ")}
+          </p>
+        ) : null}
+      </PortfolioCard>
 
       {log ? (
         <PortfolioCard title={t("benchmark.logTitle")}>

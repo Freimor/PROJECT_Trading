@@ -1,0 +1,50 @@
+{
+  "id": "wfFactor01",
+  "name": "securities-factor-sleeve",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 10 * * 1" }] }
+      },
+      "id": "fs010001-0001-4000-8000-000000000001",
+      "name": "Monday 10:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/factor-sleeve/rebalance",
+        "options": { "timeout": 120000 }
+      },
+      "id": "fs010001-0001-4000-8000-000000000002",
+      "name": "Factor Rebalance Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '📈 Factor sleeve\\nAction: ' + ($json.action ?? '?') + '\\nSelected: ' + JSON.stringify($json.selected ?? []) } }}",
+        "options": {}
+      },
+      "id": "fs010001-0001-4000-8000-000000000003",
+      "name": "Telegram Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Monday 10:00 MSK": { "main": [[{ "node": "Factor Rebalance Plan", "type": "main", "index": 0 }]] },
+    "Factor Rebalance Plan": { "main": [[{ "node": "Telegram Plan", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "securities" }, { "name": "factor" }],
+  "active": false
+}

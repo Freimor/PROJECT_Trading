@@ -1,23 +1,43 @@
-import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { apiGet } from "../api";
 import PortfolioCard from "../components/PortfolioCard";
+import StatusDot from "../components/StatusDot";
 import { POLL } from "../config/polling";
 import { useErrorNotifications } from "../context/ErrorNotifications";
+import { useI18n } from "../i18n/LanguageContext";
 import { usePolling } from "../hooks/usePolling";
 
 type Workflow = { id: string; name: string; active: boolean };
 
-const CRON_PRESETS = [
-  { label: "15m", expr: "*/15 * * * *" },
-  { label: "1h", expr: "0 * * * *" },
-  { label: "4h", expr: "0 */4 * * *" },
-];
+type MarketControl = {
+  operation_mode?: string;
+  trading_mode?: string;
+  workflows?: Workflow[];
+  n8n?: { status?: string; message?: string };
+};
+
+type ControlState = {
+  crypto?: MarketControl;
+  securities?: MarketControl;
+};
+
+const CRYPTO_NAMES = new Set([
+  "crypto-signal-dry-run",
+  "crypto-signal-paper",
+  "crypto-monitor-testnet",
+]);
+
+const SECURITIES_NAMES = new Set([
+  "securities-swing-dry-run",
+  "securities-swing-paper",
+  "securities-dca-sandbox",
+]);
 
 export default function WorkflowsPage() {
-  const [log, setLog] = useState("");
+  const { t } = useI18n();
   const { report } = useErrorNotifications();
 
-  const { data, refresh } = usePolling<{ status: string; workflows?: Workflow[]; message?: string }>(
+  const { data } = usePolling<{ status: string; workflows?: Workflow[]; message?: string }>(
     () => apiGet("/api/n8n/workflows"),
     POLL.OPS,
     true,
@@ -25,6 +45,13 @@ export default function WorkflowsPage() {
       errorSource: "GET /api/n8n/workflows",
       staggerKey: "n8n-workflows",
     },
+  );
+
+  const { data: control } = usePolling<ControlState>(
+    () => apiGet("/api/automation/control"),
+    POLL.OPS,
+    true,
+    { staggerKey: "n8n-control" },
   );
 
   useEffect(() => {
@@ -35,77 +62,81 @@ export default function WorkflowsPage() {
     }
   }, [data, report]);
 
-  const toggle = async (wf: Workflow) => {
-    report("n8n/toggle", null);
-    const path = wf.active
-      ? `/api/n8n/workflows/${wf.id}/deactivate`
-      : `/api/n8n/workflows/${wf.id}/activate`;
-    try {
-      const r = await apiPost(path);
-      setLog(JSON.stringify(r, null, 2));
-      refresh();
-    } catch (err) {
-      report("n8n/toggle", String(err));
-    }
-  };
+  const workflows = data?.workflows ?? [];
 
-  const setCron = async (wf: Workflow, expr: string) => {
-    report("n8n/cron", null);
-    try {
-      const r = await apiPost(`/api/n8n/workflows/${wf.id}/cron`, { cron_expression: expr });
-      setLog(JSON.stringify(r, null, 2));
-    } catch (err) {
-      report("n8n/cron", String(err));
+  const grouped = useMemo(() => {
+    const crypto: Workflow[] = [];
+    const securities: Workflow[] = [];
+    const other: Workflow[] = [];
+    for (const wf of workflows) {
+      if (CRYPTO_NAMES.has(wf.name)) crypto.push(wf);
+      else if (SECURITIES_NAMES.has(wf.name)) securities.push(wf);
+      else other.push(wf);
     }
-  };
+    return { crypto, securities, other };
+  }, [workflows]);
+
+  const renderList = (items: Workflow[]) => (
+    <ul className="workflow-status-list">
+      {items.map((wf) => (
+        <li key={wf.id}>
+          <StatusDot tone={wf.active ? "ok" : "off"} />
+          <span className="mono-small">{wf.name}</span>
+          <span className={`pill tiny ${wf.active ? "ok" : ""}`}>
+            {wf.active ? t("workflowPanel.running") : t("workflowPanel.stopped")}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
 
   if (data?.status === "error") {
     return (
       <div className="page">
-        <h2>🧩 n8n Workflows</h2>
-        <p className="muted">
-          Создайте API key в n8n (Settings → API keys) и задайте N8N_API_KEY в .env
-        </p>
+        <h2>{t("workflowsPage.title")}</h2>
+        <p className="muted">{t("workflowsPage.n8nSetup")}</p>
       </div>
     );
   }
 
-  const workflows = data?.workflows ?? [];
-
   return (
     <div className="page">
       <div className="page-title">
-        <h2>🧩 n8n Workflows</h2>
-        <p className="muted">Включение и расписание (как в Telegram)</p>
+        <h2>{t("workflowsPage.title")}</h2>
+        <p className="muted">{t("workflowsPage.subtitleTechnical")}</p>
       </div>
 
-      <div className="workflow-list">
-        {workflows.map((wf) => (
-          <PortfolioCard key={wf.id} title={wf.name} subtitle={wf.id}>
-            <div className="btn-row">
-              <button type="button" onClick={() => toggle(wf)}>
-                {wf.active ? "⏸ Выключить" : "▶️ Включить"}
-              </button>
-              <span className={`pill ${wf.active ? "ok" : ""}`}>
-                {wf.active ? "active" : "off"}
-              </span>
-            </div>
-            <div className="btn-row" style={{ marginTop: "0.5rem" }}>
-              {CRON_PRESETS.map((p) => (
-                <button key={p.expr} type="button" className="tiny" onClick={() => setCron(wf, p.expr)}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </PortfolioCard>
-        ))}
+      <div className="workflow-alert">
+        <p className="small">{t("workflowsPage.manageOnMarkets")}</p>
       </div>
 
-      {log && (
-        <PortfolioCard title="Ответ API">
-          <pre>{log}</pre>
-        </PortfolioCard>
-      )}
+      <PortfolioCard title={t("workflowsPage.groupCrypto")}>
+        <p className="muted small">
+          {t("workflowsPage.modeLine", {
+            mode: control?.crypto?.operation_mode ?? "—",
+            trading: control?.crypto?.trading_mode ?? "—",
+          })}
+        </p>
+        {grouped.crypto.length ? renderList(grouped.crypto) : (
+          <p className="muted">{t("control.noWorkflows")}</p>
+        )}
+      </PortfolioCard>
+
+      <PortfolioCard title={t("workflowsPage.groupMoex")}>
+        <p className="muted small">
+          {t("workflowsPage.modeLine", {
+            mode: control?.securities?.operation_mode ?? "—",
+            trading: control?.securities?.trading_mode ?? "—",
+          })}
+        </p>
+        {grouped.securities.length ? renderList(grouped.securities) : (
+          <p className="muted">{t("control.noWorkflows")}</p>
+        )}
+      </PortfolioCard>
+
+      {grouped.other.length ? (
+        <PortfolioCard title={t("workflowsPage.groupOther")}>{renderList(grouped.other)}</PortfolioCard>
+      ) : null}
     </div>
   );
 }

@@ -1,0 +1,63 @@
+{
+  "id": "wfBond01",
+  "name": "bond-ladder-flow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 * * 1-5" }] }
+      },
+      "id": "bl010001-0001-4000-8000-000000000001",
+      "name": "Weekdays 09:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://db-api:8000/api/bond-ladder/evaluate",
+        "options": { "timeout": 60000 }
+      },
+      "id": "bl010001-0001-4000-8000-000000000002",
+      "name": "Evaluate Ladder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [{ "value1": "={{ ($json.alerts ?? []).length }}", "operation": "larger", "value2": 0 }]
+        }
+      },
+      "id": "bl010001-0001-4000-8000-000000000003",
+      "name": "Has alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'WARN', message: '📊 Bond ladder alert\\nDuration: ' + ($json.portfolio_duration_years ?? '?') + 'y\\nAlerts: ' + JSON.stringify($json.alerts ?? []) } }}",
+        "options": {}
+      },
+      "id": "bl010001-0001-4000-8000-000000000004",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 220]
+    }
+  ],
+  "connections": {
+    "Weekdays 09:00 MSK": { "main": [[{ "node": "Evaluate Ladder", "type": "main", "index": 0 }]] },
+    "Evaluate Ladder": { "main": [[{ "node": "Has alerts?", "type": "main", "index": 0 }]] },
+    "Has alerts?": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "securities" }, { "name": "bonds" }],
+  "active": false
+}

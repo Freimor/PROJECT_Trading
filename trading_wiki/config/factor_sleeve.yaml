@@ -1,0 +1,9 @@
+# MOEX factor sleeve — separate from intraday swing
+# Reference: https://doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81
+
+version: "1.0.0"
+universe: [SBER, GAZP, LKOH, GMKN, YNDX, TMOS, NVTK, ROSN]
+momentum_lookback_days: 120
+top_n: 3
+min_momentum_return: 0.0
+rebalance_cron: "0 10 * * 1"

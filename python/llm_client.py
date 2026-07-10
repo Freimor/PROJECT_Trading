@@ -11,6 +11,14 @@ import httpx
 
 from config_loader import load_config, load_prompt_body
 from market_llm_config import get_market_llm_config, get_market_ollama_model
+from runtime_settings import get_runtime_value
+
+
+def _resolved_model(market: str, model: str | None) -> str:
+    override = get_runtime_value("ollama_model_override")
+    if isinstance(override, str) and override.strip():
+        return override.strip()
+    return model or get_market_ollama_model(market)
 
 
 def ollama_host() -> str:
@@ -76,6 +84,12 @@ def reset_ollama_cache(model: str | None = None) -> dict[str, Any]:
         return {"status": "error", "model": model, "message": str(exc), "action": "unload"}
 
 
+def _qwen35_disable_thinking(model: str) -> bool:
+    """Qwen 3.5 thinking mode adds latency and can break JSON format."""
+    name = model.lower().replace("_", ".")
+    return "qwen3.5" in name or "qwen35" in name
+
+
 def validate_signal(
     *,
     market: str,
@@ -90,11 +104,11 @@ def validate_signal(
     timeout_ms: int | None = None,
 ) -> dict[str, Any]:
     llm_cfg = get_market_llm_config(market)
-    model = model or get_market_ollama_model(market)
+    model = _resolved_model(market, model)
     prompt_file = f"{prompt_version}.md" if not prompt_version.endswith(".md") else prompt_version
     system_raw = load_prompt_body(prompt_file)
 
-  # Strip YAML frontmatter if present
+    # Strip YAML frontmatter if present
     if system_raw.startswith("---"):
         parts = system_raw.split("---", 2)
         system_prompt = parts[2].strip() if len(parts) >= 3 else system_raw
@@ -136,6 +150,8 @@ def validate_signal(
             "num_predict": num_predict,
         },
     }
+    if _qwen35_disable_thinking(model):
+        payload["think"] = False
 
     start = time.perf_counter()
     try:
@@ -166,6 +182,8 @@ def validate_signal(
         if parsed.get("action") not in ("approve", "reject"):
             parsed["action"] = "reject"
             parsed["reject_reason"] = "invalid_action"
+        if parsed.get("action") == "reject" and not parsed.get("reject_reason"):
+            parsed["reject_reason"] = parsed.get("reasoning") or "llm_rejected_no_reason"
         return {**parsed, "latency_ms": latency_ms, "model": model, "raw": content}
     except httpx.TimeoutException:
         return {

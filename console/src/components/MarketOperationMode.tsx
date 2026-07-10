@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { apiGet, apiPost } from "../api";
+import { apiGet, apiPost, formatOperatorFacingError } from "../api";
 import ModeChangeConfirmModal from "./ModeChangeConfirmModal";
 import PortfolioCard from "./PortfolioCard";
 import StatusDot from "./StatusDot";
@@ -68,7 +68,7 @@ export default function MarketOperationMode({
         refresh();
         onModeApplied?.();
       } catch (err) {
-        const message = String(err);
+        const message = formatOperatorFacingError(err, t);
         setModalError(message);
         report(`workspace/mode-${market}`, message);
       } finally {

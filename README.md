@@ -56,7 +56,7 @@
 
 - **Глоссарий** — [`Financial_glossary.md`](./trading_wiki/Financial_glossary.md) (~150+ терминов); краткая версия в [`00-Основы/Glossary.md`](./trading_wiki/00-Основы/Glossary.md)
 
-- **Академические источники** — курсы и публикации 2021+ (ВШЭ, MIT, Stanford, BIS, NBER); сводка в [`Academic_sources.md`](./trading_wiki/Academic_sources.md)
+- **Академические источники** — **74 работы** (2021–2026) в [`papers/`](./papers/README.md) с анализом достоверности; сводка в Wiki: [`Academic_sources.md`](./trading_wiki/Academic_sources.md); отчёт: [`docs/papers-research-report-2026-07.md`](./docs/papers-research-report-2026-07.md); мониторинг новых публикаций — web-console **Research** (`/research`)
 
 - Информация с официальных источников; эвристики трейдинга отделены от норм регуляторов.
 
@@ -73,6 +73,8 @@
 Документация системы: [`n8n_automation/README.md`](./n8n_automation/README.md)  
 
 Wiki-обзор: [`Automation_system.md`](./trading_wiki/06-Стратегии%20автоматизированной%20LLM%20торговли/Automation_system.md)
+
+**Roadmap развития (вехи):** [`docs/roadmap-razvitiya.md`](./docs/roadmap-razvitiya.md)
 
 
 

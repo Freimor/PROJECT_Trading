@@ -1,0 +1,59 @@
+{
+  "id": "wfCryptoScalpDry01",
+  "name": "crypto-scalp-hybrid-dry-run",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "id": "cs20001-0001-4000-8000-000000000001",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://db-api:8000/api/crypto/pairs",
+        "options": {}
+      },
+      "id": "cs20001-0001-4000-8000-000000000002",
+      "name": "Get Pairs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pairs = $input.first().json;\nconst list = Array.isArray(pairs) ? pairs : [];\nreturn list.map(symbol => ({ json: { symbol } }));"
+      },
+      "id": "cs20001-0001-4000-8000-000000000003",
+      "name": "Split Pairs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://db-api:8000/api/crypto/scalp/signal?symbol={{ $json.symbol }}&env=dry_run",
+        "options": { "timeout": 180000 }
+      },
+      "id": "cs20001-0001-4000-8000-000000000004",
+      "name": "Run Scalp Dry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": { "main": [[{ "node": "Get Pairs", "type": "main", "index": 0 }]] },
+    "Get Pairs": { "main": [[{ "node": "Split Pairs", "type": "main", "index": 0 }]] },
+    "Split Pairs": { "main": [[{ "node": "Run Scalp Dry", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "crypto" }, { "name": "dry_run" }, { "name": "scalp" }],
+  "active": false
+}

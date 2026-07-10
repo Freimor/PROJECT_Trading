@@ -215,14 +215,15 @@ Raw blockchain data public; aggregated metrics often paid.
 
 ## Академические источники
 
-Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
+Полный свод: [[Academic_sources]]. Библиотека **74 работ** с анализом: [`papers/`](../papers/README.md).
 
-| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
-|-----------|----------------|--------------------------------|--------|
-| IEEE Access | CVaR + DRL + LLM sentiment (2025) | Технические индикаторы + FinBERT sentiment для торговых сигналов | [doi.org/10.1109/access.2025.3624652](https://doi.org/10.1109/access.2025.3624652) |
-| arXiv | Kim et al. — 2503.13544 (2025) | Deep Ensembles для robust portfolio optimization на крипторынке | [arxiv.org/html/2503.13544](https://arxiv.org/html/2503.13544) |
-| Stanford GSB | FINANCE 562 — Financial Trading Strategies | Технический анализ и алгоритмические торговые стратегии | [www.gsb.stanford.edu/experience/learning/experi...](https://www.gsb.stanford.edu/experience/learning/experiential-learning/rail/curricular-integration) |
-| MIT | 15.481X Adaptive Markets (Fall 2022) | Ограничения технического анализа в адаптивных рынках | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
+| Учреждение | Ресурс (2021+) | Что подтверждает | Ссылка |
+|-----------|----------------|------------------|--------|
+| BIS | WP 1049 — retail crypto adoption | Розница входит на пиках; киты продают | [bis.org/publ/work1049.htm](https://www.bis.org/publ/work1049.htm) |
+| Chaos Solitons & Fractals | Ketenci et al. (2024) | On-chain ribbons (hash rate, CPTRA) | [doi.org/10.1016/j.chaos.2023.114305](https://doi.org/10.1016/j.chaos.2023.114305) |
+| European J. Finance | Liu et al. (2023) | <1% BTC users = >95% volume | [doi.org/10.1080/1351847X.2023.2241883](https://doi.org/10.1080/1351847X.2023.2241883) |
+| PeerJ CS | Baroiu et al. (2023) | On-chain + sentiment в bull/bear | [doi.org/10.7717/peerj-cs.1750](https://doi.org/10.7717/peerj-cs.1750) |
+| IEEE Access | CVaR + DRL + LLM (2025) | Тех. индикаторы + sentiment | [doi.org/10.1109/access.2025.3624652](https://doi.org/10.1109/access.2025.3624652) |
 
 ---
 

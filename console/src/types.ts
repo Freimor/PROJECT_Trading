@@ -2,11 +2,39 @@ export type StrategyInfo = {
   id: string;
   label: string;
   description?: string;
+  description_en?: string;
+  rationale_ru?: string;
+  rationale_en?: string;
+  paper_ref?: string;
+  kind?: string;
   workflow?: string;
   symbols?: string[];
   chart_default?: string;
   chart_interval?: string;
   uses_llm?: boolean;
+  chart_overlays?: ChartOverlays;
+};
+
+export type ChartOverlayPanel = {
+  id: string;
+  series: string[];
+  levels?: string[];
+  histogram?: string;
+};
+
+export type ChartOverlays = {
+  price?: string[];
+  panels?: ChartOverlayPanel[];
+};
+
+export type IndicatorPoint = {
+  time: number;
+  value: number;
+};
+
+export type ChartIndicators = {
+  series: Record<string, IndicatorPoint[]>;
+  levels: Record<string, number>;
 };
 
 export type StrategyState = {
@@ -68,10 +96,43 @@ export type TradeEvent = {
   reject_reason?: string;
   inputs_hash?: string;
   summary?: string;
+  workflow_name?: string;
+  model?: string;
+  context?: {
+    explanation?: string | null;
+    reject_hint?: string | null;
+    missing_llm_stage?: boolean;
+    pipeline?: Array<{
+      id: string;
+      stage: string;
+      decision?: string;
+      reject_reason?: string;
+      event_at?: string;
+      payload?: Record<string, unknown>;
+    }>;
+    llm_audit?: {
+      parsed_action?: string;
+      confidence?: number;
+      counter_thesis?: string;
+      reject_reason?: string;
+      model?: string;
+      raw_response?: string;
+    } | null;
+  };
+};
+
+export type WorkflowPnl = {
+  status?: string;
+  pnl_pct?: number | null;
+  direction?: "up" | "down" | "flat";
+  current_total?: number | null;
+  baseline_total?: number | null;
+  currency?: string;
 };
 
 export type AutomationOverview = {
   kill_switch: boolean;
+  kill_switch_updated_at?: string;
   trading_mode: string;
   operation_mode?: string;
   operation_detail?: string;
@@ -90,6 +151,11 @@ export type AutomationOverview = {
     mode?: string;
     operation_mode?: string;
     operation_detail?: string;
+    mode_updated_at?: string;
+    workflow_started_at?: string | null;
+    workflow_pnl?: WorkflowPnl | null;
+    workflows_active?: boolean;
+    active_workflows?: string[];
     pairs?: string[];
     active_strategy?: string;
     strategy_label?: string;
@@ -101,6 +167,11 @@ export type AutomationOverview = {
     mode?: string;
     operation_mode?: string;
     operation_detail?: string;
+    mode_updated_at?: string;
+    workflow_started_at?: string | null;
+    workflow_pnl?: WorkflowPnl | null;
+    workflows_active?: boolean;
+    active_workflows?: string[];
     active_mode?: string;
     strategy_label?: string;
     tinvest_api?: string;

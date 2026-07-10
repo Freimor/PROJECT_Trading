@@ -1,0 +1,53 @@
+{
+  "id": "wfFinsaber01",
+  "name": "finsaber-backtest-weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 0" }] }
+      },
+      "id": "fb010001-0001-4000-8000-000000000001",
+      "name": "Sunday 08:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/backtest/finsaber",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { symbol: 'BTCUSDT', timeframe: '4h', bars: 500, forward_bars: 6 } }}",
+        "options": { "timeout": 300000 }
+      },
+      "id": "fb010001-0001-4000-8000-000000000002",
+      "name": "Run FINSABER Backtest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '📉 FINSABER backtest\\nDSR: ' + ($json.deflated_sharpe ?? '?') + '\\nPass: ' + ($json.finsaber_pass ?? false) } }}",
+        "options": {}
+      },
+      "id": "fb010001-0001-4000-8000-000000000003",
+      "name": "Telegram Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Sunday 08:00 MSK": { "main": [[{ "node": "Run FINSABER Backtest", "type": "main", "index": 0 }]] },
+    "Run FINSABER Backtest": { "main": [[{ "node": "Telegram Report", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "analysis" }, { "name": "backtest" }],
+  "active": false
+}

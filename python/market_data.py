@@ -64,6 +64,55 @@ def _moex_begin_to_iso(begin: Any) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def moex_iss_interval(timeframe: str) -> int:
+    """Map UI timeframe to MOEX ISS candle interval (minutes as int: 10, 60, 24)."""
+    tf = str(timeframe).strip().lower()
+    if tf in ("1d", "24h", "d"):
+        return 24
+    if tf in ("10m",):
+        return 10
+    return 60
+
+
+def resample_ohlcv(candles: list[dict[str, Any]], bucket_seconds: int) -> list[dict[str, Any]]:
+    """Aggregate OHLCV rows (keys: t/time, o/open, h/high, l/low, c/close, v/volume)."""
+    if bucket_seconds <= 0 or len(candles) < 2:
+        return candles
+
+    def _time(row: dict[str, Any]) -> int:
+        raw = row.get("time", row.get("t"))
+        if isinstance(raw, (int, float)):
+            val = float(raw)
+            return int(val / 1000) if val > 1e12 else int(val)
+        if isinstance(raw, str) and raw.isdigit():
+            val = float(raw)
+            return int(val / 1000) if val > 1e12 else int(val)
+        return int(_parse_dt(str(raw)).timestamp())
+
+    def _float(row: dict[str, Any], key: str, alt: str) -> float:
+        return float(row.get(key, row.get(alt, 0)))
+
+    buckets: dict[int, list[dict[str, Any]]] = {}
+    for row in sorted(candles, key=_time):
+        key = (_time(row) // bucket_seconds) * bucket_seconds
+        buckets.setdefault(key, []).append(row)
+
+    out: list[dict[str, Any]] = []
+    for key in sorted(buckets):
+        grp = buckets[key]
+        out.append(
+            {
+                "t": key,
+                "o": _float(grp[0], "open", "o"),
+                "h": max(_float(x, "high", "h") for x in grp),
+                "l": min(_float(x, "low", "l") for x in grp),
+                "c": _float(grp[-1], "close", "c"),
+                "v": sum(_float(x, "volume", "v") for x in grp),
+            }
+        )
+    return out
+
+
 def fetch_moex_candles_as_of(
     secid: str,
     *,
@@ -75,25 +124,49 @@ def fetch_moex_candles_as_of(
     till_dt = _parse_dt(as_of)
     till = till_dt.strftime("%Y-%m-%d")
     if interval >= 24:
-        from_dt = (till_dt - timedelta(days=max(limit * 2, 30))).strftime("%Y-%m-%d")
+        from_dt = (till_dt - timedelta(days=max(limit + 10, 30))).strftime("%Y-%m-%d")
     else:
-        from_dt = (till_dt - timedelta(hours=max(limit * 2, 48))).strftime("%Y-%m-%d")
+        from_dt = (till_dt - timedelta(hours=max(limit + 24, 72))).strftime("%Y-%m-%d")
 
     url = (
         f"https://iss.moex.com/iss/engines/stock/markets/shares/"
         f"boards/TQBR/securities/{secid.upper()}/candles.json"
     )
+    cols: list[str] = []
+    all_rows: list[list[Any]] = []
+    start = 0
+    page_size = 0
+
     with httpx.Client(timeout=45) as client:
-        resp = client.get(
-            url,
-            params={"interval": interval, "from": from_dt, "till": till},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    cols = data["candles"]["columns"]
-    rows = data["candles"]["data"]
+        while True:
+            resp = client.get(
+                url,
+                params={
+                    "interval": interval,
+                    "from": from_dt,
+                    "till": till,
+                    "start": start,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            block = data.get("candles") or {}
+            if not cols:
+                cols = list(block.get("columns") or [])
+            rows = block.get("data") or []
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if page_size == 0:
+                page_size = len(rows)
+            start += len(rows)
+            if len(rows) < page_size:
+                break
+            if start > 50_000:
+                break
+
     candles: list[dict[str, float]] = []
-    for row in rows:
+    for row in all_rows:
         rec = dict(zip(cols, row))
         candles.append(
             {
@@ -142,13 +215,18 @@ def candles_for_benchmark(
             limit=limit,
         )
     else:
-        interval = 24 if timeframe in ("1d", "24h", "d") else 60
+        iss_interval = moex_iss_interval(timeframe)
+        fetch_limit = limit * 4 if str(timeframe).strip().lower() == "4h" else limit
         candles = fetch_moex_candles_as_of(
             symbol,
-            interval=interval,
+            interval=iss_interval,
             as_of=as_of,
-            limit=limit,
+            limit=fetch_limit,
         )
+        if str(timeframe).strip().lower() == "4h":
+            candles = resample_ohlcv(candles, 4 * 3600)
+            if limit > 0 and len(candles) > limit:
+                candles = candles[-limit:]
 
     if use_cache and candles:
         upsert_candles(market=market, symbol=symbol, timeframe=tf_key, candles=candles)

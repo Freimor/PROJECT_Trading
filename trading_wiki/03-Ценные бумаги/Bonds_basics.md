@@ -197,10 +197,9 @@ Broker terminal, MOEX ISS, fund factsheets.
 
 | Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
 |-----------|----------------|--------------------------------|--------|
-| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Облигации и крипто: сравнение risk factors и pricing | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
-| ВШЭ | Журнал Corporate Finance Research — Frecautan (2024) | Зелёные облигации РФ, хеджирование в кризис | [cfjournal.hse.ru/](https://cfjournal.hse.ru/) |
-| Stanford GSB | FINANCE 201 — Investment Valuation | Оценка fixed income, duration, yield, credit risk | [bulletin.stanford.edu/courses/2090781](https://bulletin.stanford.edu/courses/2090781) |
-| ВШЭ | Lapshin — BRP 88–89/FE/2022 | Иммунизация облигационного портфеля, model risk | [wp.hse.ru/en/prepfr_FE](https://wp.hse.ru/en/prepfr_FE) |
+| ВШЭ | Dobrynskaya & Dubrovskiy — BRP 86/FE/2022 | Крипто vs акции: risk factors | [wp.hse.ru/fe/BRP/86/2022](https://wp.hse.ru/fe/BRP/86/2022) |
+| Financial Analysts J. | Ivashchenko & Kosowski (2024) | Capacity облигационных стратегий; turnover | [doi.org/10.1080/0015198X.2024.2360390](https://doi.org/10.1080/0015198X.2024.2360390) |
+| ВШЭ | Lapshin — BRP 88–89/FE/2022 | Иммунизация облигационного портфеля | [wp.hse.ru/en/prepfr_FE](https://wp.hse.ru/en/prepfr_FE) |
 
 ---
 

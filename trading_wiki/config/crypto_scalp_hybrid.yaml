@@ -1,0 +1,63 @@
+# Crypto scalp hybrid — 80% script / 20% LLM (5m)
+# validate_only + fast model (qwen3.5:4b, think=false) on borderline setups only
+
+version: "1.0.0"
+
+timeframe: 5m
+schedule_cron: "*/5 * * * *"
+schedule_minutes: 5
+
+pairs:
+  - BTCUSDT
+  - ETHUSDT
+
+# Доля тиков, где при пограничном сигнале вызывается LLM (остальное — скрипт)
+llm_sample_pct: 20
+
+# ambiguity_score: 0 = уверенный скрипт, 1 = полный шум
+ambiguity:
+  clear_max: 0.35      # ≤ → execute без LLM (script)
+  border_min: 0.35     # зона возможного LLM
+  border_max: 0.72     # > → skip (слишком неясно)
+  llm_veto_only: true  # LLM только approve/reject, не генерирует вход
+
+ollama_model_fast: qwen3.5:4b
+ollama_model_fallback: qwen3.5:9b
+prompt_version: crypto_scalp_validate_v1
+
+llm:
+  temperature: 0.05
+  min_confidence: 0.65
+  timeout_ms: 120000
+
+# Микро-правила 5m (до ambiguity)
+scalp_rules:
+  momentum_bars: 3
+  momentum_min_pct: 0.15
+  rsi_active_low: 38
+  rsi_active_high: 62
+  volume_spike_min: 1.35
+  require_trend_align: true
+
+risk:
+  scale_notional_pct: 0.5   # половина от стандартного max_notional swing
+  min_stop_distance_pct: 0.008
+
+retail_guard:
+  enabled: true
+  rsi_fomo_threshold: 78
+  max_extension_above_ema200_pct: 0.08
+
+on_chain:
+  enabled: true
+
+paper:
+  workflow_name: crypto-scalp-hybrid-paper
+  auto_workflow_name: crypto-scalp-auto
+
+dry_run:
+  workflow_name: crypto-scalp-hybrid-dry-run
+
+references:
+  - https://arxiv.org/abs/2505.07078
+  - https://www.bis.org/publ/work1049.htm

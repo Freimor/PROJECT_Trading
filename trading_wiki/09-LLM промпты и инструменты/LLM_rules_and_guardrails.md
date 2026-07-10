@@ -277,13 +277,13 @@ Wiki **не** юридическая консультация.
 
 См. также: [[Academic_sources]].
 
-| Категория | Что изучать | Почему полезно | URL |
+| Категория | Ресурс | Что подтверждает | URL |
 |---|---|---|---|
-| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Про «AI в финансах» и риск ошибок/стимулов — помогает обосновать строгие guardrails и fail-closed дизайн | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
-| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Глубже про heuristics/biases/фрейминг — полезно для правил против hype/confirmation и структурированных outputs | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
-| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример, почему без аудита/воспроизводимости LLM-решения трудно валидировать; поддерживает требование audit log | https://ieeexplore.ieee.org/document/11200704/ |
-| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли — аргумент в пользу «двухмодельной» проверки и консенсуса | https://arxiv.org/abs/2503.13544 |
-| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Демонстрирует end-to-end принятие решений; полезно для требований «модель не должна напрямую исполнять ордера» | https://www.hse.ru/en/edu/vkr/929592108 |
+| FINSABER (2025) | arXiv:2505.07078 | LLM alpha исчезает при честном long-term backtest | https://arxiv.org/abs/2505.07078 |
+| DeepFund (2025) | arXiv:2505.11065 | Live-тест: time-travel bias в LLM backtests | https://arxiv.org/abs/2505.11065 |
+| Lopez de Prado (2022) | JPM | Type I/II errors при multiple testing Sharpe | https://doi.org/10.3905/jpm.2022.1.403 |
+| Lopez-Lira (2025) | BoF PDF | LLM-агенты: prompt → correlated instability | https://www.suomenpankki.fi/globalassets/bof/en/financial-stability/events/can-large-language-models-trade-ai-agents-competing-in-stock-markets_alejandro-lopez-lira.pdf |
+| MIT / A. Lo (2022) | 15.481x | AMH: guardrails и fail-closed дизайн | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/ |
 
 ---
 

@@ -1,0 +1,50 @@
+{
+  "id": "wfPapers01",
+  "name": "papers-monitor-weekly",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 6 * * 1" }] }
+      },
+      "id": "pm010001-0001-4000-8000-000000000001",
+      "name": "Monday 06:00 MSK",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/papers/monitor/ingest",
+        "options": { "timeout": 120000 }
+      },
+      "id": "pm010001-0001-4000-8000-000000000002",
+      "name": "Ingest arXiv CrossRef",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: 'INFO', message: '📚 Papers monitor\\nNew candidates: ' + ($json.new_count ?? 0) + '\\nReview: /api/papers/monitor/pending' } }}",
+        "options": {}
+      },
+      "id": "pm010001-0001-4000-8000-000000000003",
+      "name": "Telegram Digest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Monday 06:00 MSK": { "main": [[{ "node": "Ingest arXiv CrossRef", "type": "main", "index": 0 }]] },
+    "Ingest arXiv CrossRef": { "main": [[{ "node": "Telegram Digest", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "analysis" }, { "name": "papers" }],
+  "active": false
+}

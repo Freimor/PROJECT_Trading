@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiGet } from "../api";
 import PortfolioCard from "../components/PortfolioCard";
@@ -13,6 +13,8 @@ export default function EventsPage() {
   const [env, setEnv] = useState("");
   const [stage, setStage] = useState("");
   const [selected, setSelected] = useState<TradeEvent | null>(null);
+  const [detail, setDetail] = useState<TradeEvent | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const fetcher = useCallback(() => {
     const q = new URLSearchParams({ limit: "80" });
@@ -26,6 +28,31 @@ export default function EventsPage() {
     errorSource: "GET /api/events",
     staggerKey: "events-list",
   });
+
+  useEffect(() => {
+    if (!selected?.id) {
+      setDetail(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    apiGet<TradeEvent>(`/api/events/${selected.id}`)
+      .then((row) => {
+        if (!cancelled) setDetail(row);
+      })
+      .catch(() => {
+        if (!cancelled) setDetail(selected);
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  const view = detail ?? selected;
+  const ctx = view?.context;
 
   return (
     <div className="page">
@@ -54,6 +81,7 @@ export default function EventsPage() {
             <select value={stage} onChange={(e) => setStage(e.target.value)}>
               <option value="">{t("common.all")}</option>
               <option value="signal">signal</option>
+              <option value="filter">filter</option>
               <option value="llm">llm</option>
               <option value="guardrails">guardrails</option>
               <option value="order">order</option>
@@ -99,21 +127,58 @@ export default function EventsPage() {
 
         <PortfolioCard
           title={t("events.details")}
-          status={selected ? { label: selected.stage, tone: "neutral" } : undefined}
+          status={view ? { label: view.stage, tone: "neutral" } : undefined}
         >
-          {!selected && <p className="muted">{t("events.clickRow")}</p>}
-          {selected && (
+          {!view && <p className="muted">{t("events.clickRow")}</p>}
+          {view && (
             <div className="detail-block">
-              {selected.summary && <p className="event-summary">{selected.summary}</p>}
-              <div className="muted small">id: {selected.id}</div>
+              {detailLoading && <p className="muted small">{t("common.loading")}</p>}
+              {view.summary && <p className="event-summary">{view.summary}</p>}
+              {ctx?.explanation && (
+                <div className="info-block" style={{ marginTop: "0.75rem" }}>
+                  <strong>{t("events.explanation")}</strong>
+                  <p>{ctx.explanation}</p>
+                </div>
+              )}
+              <div className="muted small">id: {view.id}</div>
               <div>
-                {selected.stage} / {selected.decision}
+                {view.stage} / {view.decision}
+                {view.workflow_name ? ` · ${view.workflow_name}` : ""}
               </div>
               <div>
-                {t("events.confidence")}: {selected.confidence ?? "—"}
+                {t("events.confidence")}: {view.confidence ?? "—"}
+                {view.model ? ` · ${view.model}` : ""}
               </div>
-              {selected.reject_reason && <div className="warn">{selected.reject_reason}</div>}
-              {selected.stage === "llm" && (
+              {view.reject_reason && (
+                <div className="warn">
+                  {t("events.rejectCode")}: {view.reject_reason}
+                </div>
+              )}
+              {ctx?.llm_audit?.counter_thesis && (
+                <div className="muted small" style={{ marginTop: "0.5rem" }}>
+                  <strong>{t("events.counterThesis")}:</strong> {ctx.llm_audit.counter_thesis}
+                </div>
+              )}
+              {ctx?.llm_audit?.raw_response && (
+                <details className="small" style={{ marginTop: "0.5rem" }}>
+                  <summary>{t("events.llmRaw")}</summary>
+                  <pre className="mono-small">{ctx.llm_audit.raw_response}</pre>
+                </details>
+              )}
+              {(ctx?.pipeline?.length ?? 0) > 1 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <strong className="small">{t("events.pipeline")}</strong>
+                  <ul className="muted small" style={{ margin: "0.35rem 0 0", paddingLeft: "1.1rem" }}>
+                    {(ctx?.pipeline ?? []).map((step) => (
+                      <li key={step.id}>
+                        {step.stage} → {step.decision}
+                        {step.reject_reason ? ` (${step.reject_reason})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {(view.stage === "llm" || ctx?.llm_audit) && (
                 <Link to="/llm" className="card-link">
                   {t("events.openLlm")}
                 </Link>

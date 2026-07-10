@@ -266,12 +266,13 @@ Investor.gov: не слишком часто. В n8n v1 — **weekly alert**, re
 
 Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
 
-| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
-|-----------|----------------|--------------------------------|--------|
-| SSRN | Jaeger & Marinelli (2022) — abstract 4068889 | Network-based diversification через multilayer graphs | [papers.ssrn.com/sol3/papers.cfm?abstract_id=406...](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4068889) |
-| SSRN | Torrente & Uberti (2024) — abstract 4840399 | Диверсификация из risk measures, long-short стратегии | [papers.ssrn.com/sol3/papers.cfm?abstract_id=484...](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4840399) |
-| Nature Scientific Reports | Agal, Raulji, Odedra (2025) | ML + risk-based asset allocation для диверсификации | [doi.org/10.1038/s41598-025-26337-x](https://doi.org/10.1038/s41598-025-26337-x) |
-| MIT | 15.481X Adaptive Markets (Fall 2022) | Динамическая аллокация в адаптивных рынках | [ocw.mit.edu/courses/15-481x-adaptive-markets-fi...](https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/) |
+| Учреждение | Ресурс (2021+) | Что подтверждает | Ссылка |
+|-----------|----------------|------------------|--------|
+| Journal of Finance | Jensen et al. (2023) | Replication crisis: многие факторы не воспроизводятся OOS | [doi.org/10.1111/jofi.13249](https://doi.org/10.1111/jofi.13249) |
+| Review of Financial Studies | Arnott et al. (2023) | Factor momentum — динамическая диверсификация | [doi.org/10.1093/rfs/hhad006](https://doi.org/10.1093/rfs/hhad006) |
+| Global Finance J. | DRL portfolio TD3 (2024) | DRL для multi-asset allocation | [doi.org/10.1016/j.gfj.2024.101016](https://doi.org/10.1016/j.gfj.2024.101016) |
+| Nature Scientific Reports | Agal et al. (2025) | ML + risk-based asset allocation | [doi.org/10.1038/s41598-025-26337-x](https://doi.org/10.1038/s41598-025-26337-x) |
+| SSRN | Jaeger & Marinelli (2022) | Network-based diversification | [papers.ssrn.com/sol3/papers.cfm?abstract_id=4068889](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4068889) |
 
 ---
 

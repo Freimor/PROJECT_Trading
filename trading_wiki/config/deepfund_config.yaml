@@ -1,0 +1,8 @@
+# DeepFund live-paper — post-training-cutoff isolation
+# Reference: https://arxiv.org/abs/2505.11065
+
+version: "1.0.0"
+training_cutoff_date: "2024-09-01"
+symbols: [BTCUSDT, ETHUSDT]
+skip_llm: false
+schedule_cron: "0 8,20 * * *"

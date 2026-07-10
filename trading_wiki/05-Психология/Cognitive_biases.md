@@ -242,16 +242,12 @@ SEC называет их **investing behaviors**, не clinical biases — но
 
 См. также: [[Academic_sources]].
 
-| Категория | Что изучать | Почему полезно | URL |
+| Категория | Ресурс | Что подтверждает | URL |
 |---|---|---|---|
-| ВШЭ (курс) | Behavioral Finance (2024/2025) | Академическая база по biases/heuristics; помогает формализовать таксономию `biases_detected` для LLM и правил reject | https://nes.hse.ru/edu/courses/902185688 |
-| MIT / A. Lo (2022) | 15.481x Adaptive Markets: Financial Market Dynamics and Human Behavior (Fall 2022) | Объясняет «режимность» рынков и адаптацию поведения — полезно для режимных фильтров и anti-overfit guardrails | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/resources/mit-economist-andrew-w-lo-on-finance-ai-and-human-behavior/ |
-| Stanford GSB (курс) | GSBGEN 646 Behavioral Economics and the Psychology of Decision Making | Heuristics/biases, framing, prospect theory, mental accounting — полезно для расширения таксономии bias и тестируемых гипотез | https://explorecourses.stanford.edu/search?view=catalog&filter-coursestatus-Active=on&page=0&catalog=&q=GSBGEN+646%3A+Behavioral+Economics+and+the+Psychology+of+Decision+Making&collapse= |
-| BIS (крипто, 2023) | The crypto ecosystem: key elements and risks | Полезно как «крипто-риски по умолчанию» для LLM промптов и risk manager (DeFi, централизация, фрагментация) | https://www.bis.org/publ/othp72.pdf |
-| ESRB (крипто, 2025) | Crypto-assets and decentralised finance | Макропруденциальный взгляд на stablecoins/CIPs/MFGs — для risk flags в crypto-flow | https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf |
-| IEEE (2025) | Evolving Portfolio Heuristics: A Self-Correcting LLM Framework for Portfolio Optimization | Пример исследовательского дизайна «LLM + самокоррекция»; можно использовать как benchmark идей, не как готовую стратегию | https://ieeexplore.ieee.org/document/11200704/ |
-| arXiv (2025) | Decision by Supervised Learning with Deep Ensembles (arXiv:2503.13544) | Устойчивость решений через ансамбли; полезно для идеи «несколько LLM/моделей → консенсус» | https://arxiv.org/abs/2503.13544 |
-| ВШЭ (ВКР, 2024) | Hedging Derivatives Under Incomplete Markets with Deep Learning (VKR 929592108) | Практика end-to-end: модель выдаёт веса портфеля → исполнимые ордера (паттерн для automation) | https://www.hse.ru/en/edu/vkr/929592108 |
+| JFE | Liu et al. (2022) — Taming the bias zoo | 156 behavioral biases → 13 meta-factors | https://doi.org/10.1016/j.jfineco.2021.06.001 |
+| Review of Behavioral Finance | MOEX herding (2023) | Стадное поведение при падениях после 02.2022 | https://doi.org/10.1108/rbf-01-2023-0014 |
+| BIS Bulletin 69 | Retail crypto losses | ~75% розницы в убытке при BTC > $20k | https://www.bis.org/publ/bisbull69.pdf |
+| MIT / A. Lo (2022) | 15.481x | Режимность рынков, anti-overfit guardrails | https://ocw.mit.edu/courses/15-481x-adaptive-markets-financial-market-dynamics-and-human-behavior-fall-2022/ |
 
 ---
 

@@ -29,13 +29,41 @@ def fetch_klines(
     interval: str = "4h",
     limit: int = 100,
     testnet: bool = False,
+    end_time_ms: int | None = None,
 ) -> list[Any]:
     _, _, base = _credentials(testnet)
     url = f"{base}/api/v3/klines"
+    params: dict[str, Any] = {"symbol": symbol, "interval": interval, "limit": limit}
+    if end_time_ms is not None:
+        params["endTime"] = end_time_ms
     with httpx.Client(timeout=30) as client:
-        resp = client.get(url, params={"symbol": symbol, "interval": interval, "limit": limit})
+        resp = client.get(url, params=params)
         resp.raise_for_status()
         return resp.json()
+
+
+def fetch_klines_history(
+    symbol: str,
+    interval: str = "4h",
+    *,
+    bars: int = 500,
+    testnet: bool = False,
+) -> list[Any]:
+    """Paginate klines backwards for backtesting (max ~1000 per request)."""
+    all_rows: list[Any] = []
+    end_ms: int | None = None
+    remaining = bars
+    while remaining > 0:
+        batch = min(remaining, 1000)
+        rows = fetch_klines(symbol, interval, limit=batch, testnet=testnet, end_time_ms=end_ms)
+        if not rows:
+            break
+        all_rows = rows + all_rows
+        end_ms = int(rows[0][0]) - 1
+        remaining -= len(rows)
+        if len(rows) < batch:
+            break
+    return all_rows[-bars:] if len(all_rows) > bars else all_rows
 
 
 def _sign(params: dict[str, Any], secret: str) -> str:

@@ -16,7 +16,7 @@ services:
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE:-Europe/Moscow}
       - TZ=${GENERIC_TIMEZONE:-Europe/Moscow}
       - DB_API_URL=http://db-api:8000
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_HOST=http://ollama:11434
     volumes:
       - n8n_data:/home/node/.n8n
       - ./trading_wiki:/data/trading_wiki:ro
@@ -55,7 +55,7 @@ services:
     environment:
       - TRADING_DB_PATH=/data/trading.db
       - WIKI_CONFIG_PATH=/data/trading_wiki
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_HOST=http://ollama:11434
       - TZ=${GENERIC_TIMEZONE:-Europe/Moscow}
       - BINANCE_TESTNET_API_KEY=${BINANCE_TESTNET_API_KEY:-}
       - BINANCE_TESTNET_API_SECRET=${BINANCE_TESTNET_API_SECRET:-}
@@ -63,6 +63,9 @@ services:
       - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
       - TINKOFF_SANDBOX_TOKEN=${TINKOFF_SANDBOX_TOKEN:-}
       - TINKOFF_TOKEN=${TINKOFF_TOKEN:-}
+      - TINVEST_USE_PROXY_GATEWAY=${TINVEST_USE_PROXY_GATEWAY:-false}
+      - TINVEST_HTTP_PROXY=${TINVEST_HTTP_PROXY:-}
+      - TINVEST_SSL_VERIFY=${TINVEST_SSL_VERIFY:-true}
       - LIVE_TRADING_ENABLED=${LIVE_TRADING_ENABLED:-false}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
@@ -82,6 +85,7 @@ services:
     volumes:
       - ./data:/data
       - ./trading_wiki:/data/trading_wiki:ro
+      - ./n8n_automation:/data/n8n_automation:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s

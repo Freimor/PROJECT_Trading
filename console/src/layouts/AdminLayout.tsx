@@ -1,11 +1,11 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import ErrorBanner from "../components/ErrorBanner";
 import StatusBar from "../components/StatusBar";
 import SystemActivityFeed from "../components/SystemActivityFeed";
 import { POLL } from "../config/polling";
 import { usePolling } from "../hooks/usePolling";
-import { apiGet, setOperatorPassword, getOperatorPassword } from "../api";
+import { apiGet } from "../api";
 import { useI18n, type Lang } from "../i18n/LanguageContext";
 import type { AutomationOverview } from "../types";
 
@@ -16,7 +16,6 @@ export type AdminLayoutContext = {
 
 export default function AdminLayout() {
   const { t, lang, setLang } = useI18n();
-  const [operatorPassword, setOperatorPasswordState] = useState(getOperatorPassword());
   const fetchOverview = useCallback(() => apiGet<AutomationOverview>("/api/automation/overview?days=7"), []);
   const { data: overview, refresh } = usePolling<AutomationOverview>(
     fetchOverview,
@@ -27,12 +26,6 @@ export default function AdminLayout() {
       staggerKey: "layout-overview",
     },
   );
-
-  const saveOperatorPassword = () => {
-    setOperatorPassword(operatorPassword);
-    setOperatorPasswordState(operatorPassword);
-    refresh();
-  };
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "nav-link active" : "nav-link";
@@ -52,17 +45,6 @@ export default function AdminLayout() {
               <option value="en">{t("lang.en")}</option>
             </select>
           </label>
-          <input
-            type="password"
-            placeholder={t("header.operatorPassword")}
-            value={operatorPassword}
-            onChange={(e) => setOperatorPasswordState(e.target.value)}
-            className="input"
-            autoComplete="current-password"
-          />
-          <button type="button" onClick={saveOperatorPassword}>
-            {t("header.savePassword")}
-          </button>
           <button type="button" onClick={refresh}>
             {t("header.refresh")}
           </button>
@@ -71,7 +53,7 @@ export default function AdminLayout() {
 
       <ErrorBanner />
 
-      <StatusBar overview={overview} />
+      <StatusBar overview={overview} onRefresh={refresh} />
 
       <nav className="main-nav">
         <NavLink to="/" end className={navClass}>
@@ -82,6 +64,9 @@ export default function AdminLayout() {
         </NavLink>
         <NavLink to="/moex" className={navClass}>
           {t("nav.moex")}
+        </NavLink>
+        <NavLink to="/news" className={navClass}>
+          {t("nav.news")}
         </NavLink>
         <NavLink to="/events" className={navClass}>
           {t("nav.events")}
@@ -94,6 +79,9 @@ export default function AdminLayout() {
         </NavLink>
         <NavLink to="/benchmark" className={navClass}>
           {t("nav.benchmark")}
+        </NavLink>
+        <NavLink to="/research" className={navClass}>
+          {t("nav.research")}
         </NavLink>
         <NavLink to="/workflows" className={navClass}>
           {t("nav.workflows")}

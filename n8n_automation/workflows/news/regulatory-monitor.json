@@ -1,0 +1,63 @@
+{
+  "id": "wfRegMon01",
+  "name": "regulatory-monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 */6 * * *" }] }
+      },
+      "id": "rm010001-0001-4000-8000-000000000001",
+      "name": "Every 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/regulatory/scan",
+        "options": { "timeout": 120000 }
+      },
+      "id": "rm010001-0001-4000-8000-000000000002",
+      "name": "Scan ESRB FSB CBR",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [{ "value1": "={{ $json.risk_level }}", "operation": "notEqual", "value2": "low" }]
+        }
+      },
+      "id": "rm010001-0001-4000-8000-000000000003",
+      "name": "Risk elevated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/notify/telegram",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { level: $json.risk_level === 'critical' ? 'ERROR' : 'WARN', message: '⚠️ Regulatory risk: ' + $json.risk_level + '\\nHits: ' + ($json.critical_hits?.length ?? 0) } }}",
+        "options": {}
+      },
+      "id": "rm010001-0001-4000-8000-000000000004",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 220]
+    }
+  ],
+  "connections": {
+    "Every 6h": { "main": [[{ "node": "Scan ESRB FSB CBR", "type": "main", "index": 0 }]] },
+    "Scan ESRB FSB CBR": { "main": [[{ "node": "Risk elevated?", "type": "main", "index": 0 }]] },
+    "Risk elevated?": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1", "errorWorkflow": "shared-global-error-handler" },
+  "tags": [{ "name": "news" }, { "name": "regulatory" }],
+  "active": false
+}

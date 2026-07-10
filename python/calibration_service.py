@@ -845,10 +845,16 @@ def _read_job(mkt: str) -> dict[str, Any]:
     return dict(raw) if isinstance(raw, dict) else {}
 
 
-def _write_job(mkt: str, **fields: Any) -> dict[str, Any]:
+def _write_job(mkt: str, *, force: bool = False, **fields: Any) -> dict[str, Any]:
     job = _read_job(mkt)
     new_state = fields.get("state", job.get("state"))
-    if job.get("state") in ("cancelled", "error", "done") and new_state in ("running", "cancelling"):
+    # Prevent a cancelled/finished worker from resurrecting itself, but allow an
+    # explicit fresh start (force=True) to overwrite a terminal state.
+    if (
+        not force
+        and job.get("state") in ("cancelled", "error", "done")
+        and new_state in ("running", "cancelling")
+    ):
         return job
     job.update(fields)
     job["market"] = mkt
@@ -908,6 +914,7 @@ def _calibration_job_worker(mkt: str, model: str | None = None) -> None:
 
         _write_job(
             mkt,
+            force=True,
             state="running",
             phase="temperature",
             started_at=_utc_now(),
@@ -1050,10 +1057,17 @@ def start_calibration_job(market: str | None = None, model: str | None = None) -
     _cancel_event(mkt).clear()
     _write_job(
         mkt,
+        force=True,
         state="running",
         phase="starting",
         started_at=_utc_now(),
         model=model,
+        temperature_index=0,
+        case_index=0,
+        current_temperature=None,
+        current_case_id=None,
+        llm_calls_done=0,
+        finished_at=None,
         message="Подготовка…",
         error=None,
         result=None,

@@ -46,6 +46,27 @@ def get_runtime_value(key: str) -> Any | None:
         conn.close()
 
 
+def get_runtime_meta(key: str) -> dict[str, Any] | None:
+    """Return runtime override value + timestamps for UI/status."""
+    _ensure_table()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT value_json, updated_at, updated_by FROM runtime_settings WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "key": key,
+            "value": json.loads(row["value_json"]),
+            "updated_at": row["updated_at"],
+            "updated_by": row["updated_by"],
+        }
+    finally:
+        conn.close()
+
+
 def set_runtime_value(key: str, value: Any, *, updated_by: str | None = None) -> None:
     _ensure_table()
     conn = get_connection()

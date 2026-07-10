@@ -4,10 +4,12 @@ const ru = {
     overview: "Обзор",
     crypto: "Crypto",
     moex: "MOEX",
+    news: "Новости",
     events: "События",
     llm: "LLM",
     paper: "Paper",
     benchmark: "Benchmark",
+    research: "Исследования",
     workflows: "n8n",
     control: "Управление",
   },
@@ -17,6 +19,7 @@ const ru = {
     expand: "Развернуть",
     all: "все",
     open: "Открыть",
+    close: "Закрыть",
     workspace: "Workspace",
     control: "Управление",
     statusOk: "OK",
@@ -26,6 +29,7 @@ const ru = {
     statusOn: "Включён",
     connected: "подключён",
     notConfigured: "не настроен",
+    saving: "Сохранение…",
   },
   overview: {
     title: "Обзор системы",
@@ -101,11 +105,15 @@ const ru = {
     noQuotes: "Нет котировок. Проверьте Binance testnet / сеть.",
     loadingMoex: "Загрузка котировок MOEX ISS…",
     strategy: "Стратегия",
+    noLlm: "без LLM",
     markerMenu: "Метки на графике",
     markersLlm: "LLM",
     markersOrders: "Ордера",
     markersNews: "Новости",
     markersFills: "Исполнения",
+    newsFor: "Новости: {{symbol}}",
+    allNews: "Все новости",
+    newsEmpty: "Нет новостей по этому активу. Загрузите ленту на странице «Новости».",
     cashRub: "рубли на счёте",
     pieces: "шт.",
     operationMode: "Режим автомата",
@@ -129,17 +137,125 @@ const ru = {
     detailSignalsOnly: "Только сигналы без ордеров (dry_run в YAML)",
     detailLive: "Боевой режим",
     passwordRequired: "Введите пароль оператора в шапке и нажмите «Сохранить»",
+    wrongOperatorPassword: "Введен неправильный пароль. Повторите еще раз.",
+    networkError: "Не удалось связаться с API. Проверьте, что db-api и console запущены.",
   },
   strategies: {
     llm_swing: {
       label: "LLM swing (4h)",
       description:
-        "Система ищет краткосрочные возможности на парах BTC/ETH: сначала технические индикаторы (RSI, тренд), затем локальная LLM проверяет идею и может одобрить или отклонить сделку. Подходит для обучения, не гарантирует прибыль.",
+        "Сигнал по индикаторам и проверка LLM на выбранных USDT-парах. Пары и риск — в «Поднастройки стратегии».",
+      detail: `Суть стратегии
+Автоматический поиск swing-сделок на крипторынке по свечам 4h. Система не покупает «на каждой свече»: сначала отбираются только интересные ситуации по индикаторам, затем локальная LLM оценивает контекст и новости.
+
+Этапы пайплайна
+1. signal — загрузка свечей 4h и расчёт RSI, MACD, EMA50/EMA200.
+2. filter — технический фильтр (см. ниже). Если ни одно правило не сработало → отказ, LLM не вызывается.
+3. llm — модель approve/reject с учётом индикаторов и новостей.
+4. guardrails — лимиты риска, kill-switch, режим dry_run/paper/live.
+5. risk / order — размер позиции и отправка ордера (в dry_run ордер не уходит).
+
+Технический фильтр — зачем он нужен
+Фильтр пропускает символ, если выполнено ХОТЯ БЫ ОДНО из условий:
+• RSI < 35 — перепроданность (потенциал отскока вверх)
+• RSI > 65 — перекупленность (потенциал разворота/шорта в логике swing)
+• MACD: histogram > 0 и MACD > signal — бычий импульс
+• close > EMA200 и EMA50 > EMA200 — восходящий тренд («золотой крест»)
+
+Если RSI между 35 и 65 (нейтральная зона), MACD слабый и нет тренда по EMA — фильтр отклоняет с no_rule_match. Это нормально: так отсекается 70–90% циклов и LLM не тратится на «шум».
+
+Важно: этап signal с decision=approve в журнале означает только «индикаторы посчитаны», а не одобрение сделки.
+
+Таймфрейм торговли и график
+Торговля всегда на 4h (crypto_config.yaml). Таймфрейм графика в воркспейсе — только для просмотра котировок, на автомат не влияет.
+
+Пары и режимы
+Список пар и пресет риска — «Поднастройки стратегии». Режимы: dry_run (только журнал), paper (демо-счёт), live (только при явном разрешении).`,
+    },
+    deepfund_paper: {
+      label: "DeepFund paper",
+      description:
+        "Параллельный paper-тест LLM на данных после training cutoff — честная оценка без подгонки под историю.",
+      detail: `Зачем (из публикации DeepFund, arXiv:2505.11065)
+Обычный бэктест и даже paper на «знакомых» данных завышают качество LLM. DeepFund предлагает изолировать период после даты обучения модели и вести отдельный live-paper журнал.
+
+Почему отдельная стратегия
+• Не смешивается с llm_swing — иначе метрики production и исследования перепутаны.
+• Workflow deepfund-live-paper по своему cron (2 раза в сутки).
+• Те же guardrails, но фокус на сравнении моделей, а не на PnL основного автомата.
+
+Когда включать
+После стабилизации llm_swing в paper; когда нужно доказать (или опровергнуть) пользу LLM на свежих данных.`,
+    },
+    crypto_scalp_hybrid: {
+      label: "Scalp hybrid 5m",
+      description:
+        "5m скальп: ~80% сделок по скрипту, ~20% пограничных — быстрая LLM (qwen2.5:3b). Только paper/dry_run.",
+      detail: `Суть
+Гибридный скальп на 5m: чёткие импульсы (momentum + volume + MACD) исполняются rules_engine без Ollama.
+
+Маршрутизация (ambiguity_score)
+• ≤ 0.35 — script path (≈80% тиков с сигналом)
+• 0.35–0.72 и попадание в 20% слот — qwen2.5:3b validate-only
+• > 0.72 — skip (слишком шумно)
+
+Почему не LLM на каждом тике
+На 9B модели ~3 мин/запрос — 5m cron физически не успевает. Быстрая 3B только на сомнительных кейсах.
+
+Риск
+Позиция 50% от swing (scale_notional_pct). retail_guard ужесточён. Live не включать до метрик paper.
+
+Конфиг: trading_wiki/config/crypto_scalp_hybrid.yaml`,
     },
     swing_signals: {
       label: "Swing + LLM (MOEX)",
       description:
-        "Торговля акциями из списка (SBER, GAZP и др.) на дневном графике: фильтр по индикаторам, затем LLM оценивает риск новости и контекст. Сделки только в часы сессии MOEX (будни).",
+        "Торговля акциями из выбранного списка на дневном графике: фильтр по индикаторам, затем LLM. Тикеры — в «Поднастройки стратегии».",
+      detail: `Суть стратегии
+Swing на акциях MOEX по дневным свечам. Фильтр по RSI/MACD/EMA, затем LLM и исполнение в часы сессии.
+
+Фильтр
+Пропуск при RSI < 40, RSI > 60, бычьем MACD или тренде по EMA200 — аналогично крипто-стратегии, пороги в securities_config.yaml.`,
+    },
+    index_dca: {
+      label: "Индекс DCA (TMOS)",
+      description: "Ежемесячная покупка ETF на индекс MOEX без LLM — пассивное накопление.",
+      detail: `Зачем (passive investing research)
+Работы о росте пассивных фондов и «mega-firms» показывают: для длинного горизонта регулярные покупки широкого индекса часто эффективнее активного тайминга.
+
+Почему без LLM
+• Меньше точек отказа (Ollama, промпт, таймаут 3 мин).
+• DCA не требует «прогноза» на каждом тике — только дисциплина и размер взноса.
+• Workflow securities-dca-sandbox — 1-е число месяца, 10:00 MSK.
+
+Когда выбирать
+Долгий горизонт, низкая вовлечённость, диверсификация по индексу вместо отдельных акций в swing.`,
+    },
+    factor_sleeve: {
+      label: "Factor sleeve (momentum)",
+      description: "Факторный рукав MOEX: momentum-ребаланс top-N без LLM.",
+      detail: `Зачем (MOEX factor literature)
+Факторная предсказуемость на российском рынке проявляется на горизонте недель/месяцев, не на intraday swing.
+
+Почему отдельно от Swing + LLM
+• LLM-swing оптимизирован под дневные сигналы и новости — смешивание с factor sleeve размывает гипотезу.
+• securities-factor-sleeve — еженедельный ребаланс по momentum (см. factor_sleeve.yaml).
+
+Когда выбирать
+Когда хотите аллокационный рукав «акции по фактору», а не точечные LLM-сделки.`,
+    },
+    bond_ladder: {
+      label: "Bond ladder (ОФЗ)",
+      description: "Лестница ОФЗ: дюрация, дрейф, алерты по шоку ставки — без LLM-торговли.",
+      detail: `Зачем (Ivashchenko & Kosowski, 2024)
+Ёмкость облигационных стратегий ограничена; рознице критичен контроль дюрации и ступеней лестницы, а не «умный» тайминг.
+
+Почему отдельный flow
+• bond-ladder-flow не отправляет рыночные ордера по сигналу LLM — только оценка и алерты.
+• Чувствительность к key rate shock вынесена в конфиг bond_ladder.yaml.
+
+Когда выбирать
+Часть портфеля в ОФЗ, снижение ставочного риска, дополнение к акциям MOEX.`,
     },
   },
   events: {
@@ -153,6 +269,11 @@ const ru = {
     symbol: "Symbol",
     openLlm: "Открыть LLM Audit",
     confidence: "Уверенность",
+    explanation: "Почему",
+    rejectCode: "Код отказа",
+    counterThesis: "Контр-тезис",
+    llmRaw: "Ответ LLM",
+    pipeline: "Цепочка пайплайна",
   },
   activity: {
     title: "Лента системы",
@@ -160,6 +281,8 @@ const ru = {
     autoScrollOff: "Автопрокрутка: выкл",
     empty: "Пока нет событий за последние 3 дня",
     records: "записей",
+    noDetail: "Нет подробностей для этого события",
+    detailError: "Не удалось загрузить детали",
   },
   header: {
     title: "Trading Console",
@@ -176,6 +299,85 @@ const ru = {
     live: "Live",
     ollama: "Ollama",
     last: "Последнее",
+  },
+  controlStrip: {
+    aria: "Панель управления системой",
+    killButton: "Экстренное отключение",
+    killActive: "Система отключена",
+    killDisableTitle: "Экстренно отключить систему?",
+    killDisableLead: "Все workflow будут остановлены. Новые сигналы и ордера не выполняются.",
+    killDisableRisk: "Используйте только при критической ситуации. Подтвердите отключение.",
+    killEnableTitle: "Включить систему?",
+    killEnableLead: "Снимает kill switch. Workflow снова могут работать по текущему режиму.",
+    killEnableRisk: "Убедитесь, что рынки и режимы настроены корректно.",
+    killConfirm: "Подтвердить",
+    killCancel: "Отмена",
+    cryptoWorkflow: "Crypto workflow",
+    moexWorkflow: "MOEX workflow",
+    workflowOff: "отключён",
+    workflowDemo: "demo",
+    workflowLive: "live",
+    uptime: "Время работы",
+  },
+  news: {
+    title: "Новости",
+    subtitle: "Signals Engine — только торгово-релевантные новости (теги + ключевые слова)",
+    empty: "Новостей пока нет — дождитесь ingest или проверьте источники.",
+    unknownSource: "Источник",
+    usedInSignal: "В сигнале",
+    ingested: "В ленте",
+    verified: "verified",
+    symbols: "Символы",
+    relatedSignals: "Связанные сигналы",
+    openEvents: "События",
+    ingestNow: "Загрузить новости",
+    ingesting: "Загрузка…",
+    ingestDone: "Загружено новых: {{count}}",
+    analyzePending: "Запустить LLM-анализ",
+    analyzing: "Анализ…",
+    analyzedCount: "Проанализировано: {{count}}",
+    noAnalysisYet: "LLM-анализ ещё не выполнен",
+    userContext: "Доп. контекст оператора",
+    userContextPlaceholder: "Ваш комментарий к новости (до использования автоматом)…",
+    userContextLocked: "Контекст зафиксирован (сигнал уже использован)",
+    saveContext: "Сохранить контекст",
+    contextSaved: "Сохранено",
+    signalPending: "Сигнал ожидает",
+    signalConsumed: "Использован автоматом",
+    sourcesTitle: "Отобранные источники",
+    sourcesHint: "Достоверность = tier + ручная оценка",
+    sourceOn: "Вкл",
+    sourceOff: "Выкл",
+    settingsTitle: "Настройки Signals Engine",
+    settingAnalysis: "LLM-анализ новостей",
+    settingOnIngest: "Анализ при ingest",
+    settingUserContext: "Учитывать контекст оператора",
+    settingMinConf: "Мин. confidence для сигнала",
+    settingBatch: "Пакет анализа за раз",
+    saveSettings: "Сохранить настройки",
+    filterTitle: "Фильтр торговой релевантности",
+    settingFilter: "Фильтровать неторговые новости",
+    filterMode: "Режим фильтра",
+    modeStrict: "Строгий — только тикеры из universe",
+    modeBalanced: "Сбалансированный (рекомендуется)",
+    modeLoose: "Мягкий — 1 ключевое слово",
+    modeHint: {
+      strict: "Проход: тег источника + тикер из включённых котировок workflow.",
+      balanced:
+        "Проход: тег + (тикер universe ИЛИ ≥2 ключевых слова со score ИЛИ слово в заголовке + конкретный тикер).",
+      loose: "Проход: тег + любой тикер или одно ключевое слово.",
+    },
+    minKeywords: "Мин. ключевых слов",
+    minScore: "Мин. score",
+    requireKeywordInTitle: "Ключевое слово в заголовке",
+    settingRequireSymbolOrKw: "Тикер ИЛИ ключевое слово",
+    keywordsInclude: "Ключевые слова (включить)",
+    keywordsExclude: "Исключить (спорт, кино…)",
+    keywordsHint: "по одному на строку",
+    reapplyFilters: "Пересчитать ленту",
+    reapplying: "Пересчёт…",
+    reapplyDone: "В ленте: {{relevant}}, скрыто: {{filtered}}",
+    filteredOut: "отфильтровано: {{count}}",
   },
   footer: {
     disclaimer: "Не инвестрекомендация. Время событий — UTC в БД, отображение локальное.",
@@ -288,6 +490,7 @@ const ru = {
     cancelCalibConfirm: "Отменить калибровку",
     calibCancelled: "Калибровка отменена, данные не сохранены",
     calibCancelling: "Отмена…",
+    calibInterrupted: "Калибровка прервана (перезапуск сервиса). Запустите заново.",
     calibBlockedBy: "Сначала завершите или отмените калибровку: {{market}}",
     stagesTitle: "Этапы тестирования",
     stagesHint: "Что проверяется на каждом шаге benchmark и калибровки.",
@@ -295,6 +498,217 @@ const ru = {
     stagesCalibration: "Калибровка LLM",
     concurrentCalibNote:
       "Одновременно можно калибровать только один рынок — второй запуск заблокирован, пока не завершится или не отменится первый. Вызовы LLM идут по очереди (3 мин таймаут на кейс). Контексты не смешиваются: каждый запрос stateless.",
+    evaluationTitle: "Оценка по моделям (workflow)",
+    evaluationHint:
+      "Строится по benchmark_cases (original_model) и разметке исходов. Позволяет сравнить, как разные LLM модели ведут себя в live workflow за последние 30 дней.",
+    evaluationEmpty: "Нет размеченных данных по моделям (сначала «Обновить outcome»).",
+    approves: "approve",
+    rejects: "reject",
+    avgReturnApprove: "avg return/approve %",
+    hostCapabilityTitle: "Возможности хоста",
+    hostCapabilitySubtitle:
+      "CPU/RAM, задержка Ollama и матрица «стратегия × модель»: можно ли уложиться в интервал (например 2 мин vs 3 мин на LLM).",
+    runHostAudit: "Проверить хост",
+    hostAuditing: "Проверка…",
+    hostAuditDone: "Аудит хоста завершён",
+    hostAuditError: "Ошибка аудита хоста",
+    hostCpu: "CPU (логич.)",
+    hostRam: "RAM",
+    hostDisk: "Диск свободно",
+    hostOllama: "Ollama",
+    hostLatency: "Задержка LLM (сред.)",
+    hostLatencyMax: "макс.",
+    hostStrategy: "Стратегия",
+    hostBudget: "Бюджет",
+    hostRequired: "Нужно",
+    hostFeasible: "Возможно",
+    hostNotFeasible: "Невозможно",
+    hostHeadroom: "Запас",
+    hostNoAudit: "Аудит хоста ещё не запускался",
+    hostLastAudit: "Последний аудит",
+    ollamaRegistryTitle: "Реестр моделей Ollama",
+    ollamaRegistrySubtitle:
+      "Нужные модели собираются из crypto/securities/scalp конфигов. При старте db-api недостающие скачиваются автоматически (bootstrap).",
+    ollamaEnsureMissing: "Скачать недостающие",
+    ollamaEnsuring: "Загрузка…",
+    ollamaEnsureError: "Ошибка ensure",
+    ollamaPullError: "Ошибка pull",
+    ollamaNeedPassword: "Нужен пароль оператора (Настройки → Operator password)",
+    ollamaMissing: "Не установлены",
+    ollamaAllPresent: "Все обязательные модели на месте",
+    ollamaModel: "Модель",
+    ollamaRole: "Роль",
+    ollamaInstalled: "OK",
+    ollamaPull: "Скачать",
+    ollamaDiskFree: "Свободно на диске",
+    ollamaExtra: "Доп. модели в Ollama",
+  },
+  workflowsPage: {
+    title: "n8n Workflows",
+    subtitle: "Включение автоматов по рынку и расписание cron",
+    subtitleTechnical: "Статус workflow в n8n. Запуск, остановка и котировки — на вкладках Crypto и MOEX.",
+    manageOnMarkets: "Запуск и остановка workflow — на вкладках Crypto и MOEX. Здесь только статус импортированных автоматов в n8n.",
+    n8nSetup: "Создайте API key в n8n (Settings → API keys) и задайте N8N_API_KEY в .env",
+    n8nError: "n8n недоступен — проверьте N8N_API_KEY",
+    statusOn: "включён",
+    statusOff: "выключен",
+    groupCrypto: "Crypto",
+    groupMoex: "MOEX",
+    groupOther: "Прочие workflow",
+    syncProfile: "Включить по профилю режима",
+    syncing: "Применяю…",
+    marketOn: "автоматы работают",
+    marketOff: "автоматы выключены",
+    modeLine: "Режим: {{mode}} ({{trading}})",
+    expectedLine: "Для режима нужны: {{names}}",
+    noExpected: "Для текущего режима workflow не требуются (например live)",
+    killTitle: "Kill switch активен",
+    killHint: "Все workflow принудительно остановлены. Снимите kill switch в верхней панели.",
+    whyOffTitle: "Почему в панели статуса «off»?",
+    whyOffHint:
+      "Workflow в n8n выключены. Нажмите «Включить по профилю режима» для нужного рынка или включите вручную. Режим Demo/Paper на вкладке Crypto/MOEX задаёт, какие workflow должны быть активны.",
+    cryptoOff: "Crypto: нет активных workflow",
+    moexOff: "MOEX: нет активных workflow",
+    operatorLead: "Для этого действия нужен пароль оператора.",
+    operatorRisk: "Изменятся активные n8n workflow или их расписание.",
+    cronTitle: "Изменить cron",
+  },
+  universe: {
+    title: "Котировки",
+    enabledCount: "Активно {{count}} из {{total}}",
+    runtime: "runtime",
+    fromYaml: "YAML по умолчанию",
+    searchPlaceholder: "Поиск тикера или пары…",
+    llmTitle: "LLM: сформировать список",
+    llmHintPlaceholder: "Подсказка для LLM (опционально): ликвидные blue-chip, без мемкоинов…",
+    llmReplace: "Заменить список",
+    llmMerge: "Добавить недостающие",
+    disableOthers: "Отключить не вошедшие в рекомендацию",
+    llmPreview: "Предпросмотр LLM",
+    llmApply: "Применить LLM",
+    llmSuggested: "Рекомендация",
+    resetYaml: "Сбросить к YAML",
+    resetConfirm: "Сбросить список котировок к значениям из YAML?",
+    newsHint: "Включённые котировки — список для LLM при каждом запуске workflow.",
+    llmRunsHint: "При запуске workflow LLM обработает каждый включённый актив.",
+  },
+  strategySubsettings: {
+    title: "Поднастройки стратегии",
+    riskTitle: "Пресет риска",
+    riskHint:
+      "Пресет управляет размером позиции и консервативностью swing-сигнала (RSI, LLM confidence). On-chain не меняется.",
+    swingSignalsTitle: "Пороги swing-сигнала",
+    rsiBand: "RSI (long / short)",
+    minConfidence: "LLM min confidence",
+    macdCross: "MACD cross",
+    required: "обязателен",
+    optional: "не обязателен",
+    onchainNote: "On-chain фильтр (hash rate) независим от пресета — макро-слой.",
+    marketCrypto: "Crypto",
+    marketMoex: "MOEX",
+    runtime: "runtime",
+    defaultPreset: "по умолчанию",
+    effectiveTitle: "Действуют сейчас: {{profile}} · {{market}}",
+    activeBadge: "активен",
+    riskPerTrade: "Риск на сделку",
+    riskPerTradeShort: "на сделку",
+    dailyLimit: "Дневной лимит",
+    dailyLimitShort: "день",
+    maxPositions: "Макс. позиций",
+    maxNotional: "Макс. доля капитала",
+    minStop: "Мин. стоп",
+    positionsShort: "поз.",
+    effective: "Сейчас",
+    applyRisk: "Применить пресет",
+    applyRiskRisk: "Изменятся лимиты риска для автоматических сделок.",
+    riskBlockedHalt: "Смена заблокирована: сработал дневной лимит убытка (halt до завтра UTC).",
+    riskBlockedPositions: "Смена заблокирована: есть открытые позиции на этом рынке.",
+    universeTitle: "Котировки (пары / тикеры)",
+  },
+  workflowPanel: {
+    title: "Режим работы",
+    strategySection: "Стратегия",
+    moreDetails: "Подробнее",
+    modeSection: "Режим",
+    start: "Запустить",
+    stop: "Остановить",
+    running: "работает",
+    stopped: "остановлен",
+    syncProfile: "Включить по режиму",
+    syncing: "Применяю…",
+    modeLine: "Режим: {{mode}} ({{trading}})",
+    offHint: "Выберите стратегию и режим, затем нажмите «Запустить».",
+    uptime: "Время работы",
+    killBlocked: "Kill switch активен — запуск заблокирован.",
+    n8nUnavailable: "n8n недоступен — проверьте N8N_API_KEY в .env",
+    pickMode: "Режим workflow (только один)",
+    notImported: "не импортирован",
+    importFromRepo: "Импортировать workflow из репозитория",
+    importing: "Импорт…",
+    importHint: "Некоторые режимы ещё не загружены в n8n. Нажмите кнопку — JSON возьмутся из n8n_automation/workflows/.",
+    importDone: "Импортировано/обновлено: {{count}} workflow",
+    importPartial: "Импорт: {{ok}} OK, ошибок: {{err}}",
+    restart: "Перезапустить (сбросить время)",
+    uptimePending: "обновляется…",
+    scheduleLabel: "Частота срабатывания",
+    scheduleApply: "Изменить частоту",
+    testRun: "Пробный запуск",
+    testRunRisk: "Запустит pipeline по всем включённым активам один раз (как тик n8n).",
+    testRunDryHint: "В dry run ордера не отправляются — выберите Demo/paper для проверки сделок.",
+    testRunDone: "Пробный запуск завершён. Сделок: {{executed}}",
+    testRunStarted: "Пробный запуск выполняется… Это может занять несколько минут (LLM по каждому активу).",
+    testRunTimeoutHint:
+      "Запрос в UI прерван по таймауту, но сервер может ещё обрабатывать активы. Проверьте ленту событий.",
+    orders7d: "Сделки за 7 дней",
+    lastSignal: "Последний сигнал",
+    hintMoexDaily: "MOEX swing по умолчанию срабатывает раз в день (18:15 в будни). Увеличьте частоту или нажмите «Пробный запуск».",
+  },
+  workflowModes: {
+    cryptoSignalDry: "Сигналы — dry run (без ордеров)",
+    cryptoSignalPaper: "Сигналы — paper / testnet",
+    cryptoMonitor: "Монитор позиций testnet",
+    moexSwingDry: "Swing — dry run",
+    moexSwingPaper: "Swing — paper / sandbox",
+    moexDca: "DCA — sandbox",
+  },
+  operationModes: {
+    dryRun: "Dry run (без ордеров)",
+    paper: "Demo / paper",
+    live: "Live",
+  },
+  research: {
+    title: "Исследования",
+    subtitle: "Мониторинг публикаций (arXiv, OpenAlex, BIS…) и NeuraTrade leaderboard Ollama",
+    papersCard: "Библиотека papers — кандидаты",
+    neuratradeCard: "NeuraTrade harness (Ollama)",
+    pending: "Ожидают review",
+    approved: "Одобрено / черновики",
+    ingest: "Собрать новые",
+    runHarness: "Запустить цикл harness",
+    candidatesTitle: "Кандидаты на добавление",
+    noCandidates: "Нет кандидатов для выбранного фильтра",
+    noLeaderboard: "Нет данных harness за 30 дней — запустите цикл",
+    neuratradeHint:
+      "Детерминированные golden-кейсы (NeuraTradeBench-style) + сравнение моделей. Артефакты → data/neuratrade/reports/",
+    recommendedModel: "Рекомендуемая модель",
+    fixturePassRate: "Точность fixtures",
+    latency: "Latency",
+    approveDraft: "Одобрить → черновик Obsidian",
+    reject: "Отклонить",
+    draft: "Черновик",
+    log: "Журнал действий",
+    model: "Модель",
+    avgScore: "Средний score",
+    runs: "Прогоны",
+    passes: "Проходы",
+    sourcesNote:
+      "Источники: arXiv, CrossRef, OpenAlex, Semantic Scholar, RSS BIS/IMF. Черновики → papers/inbox/. Финальное добавление в papers/ — вручную.",
+    filter: {
+      pending: "Pending",
+      approved: "Approved",
+      rejected: "Rejected",
+      all: "Все",
+    },
   },
 } as const;
 

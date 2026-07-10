@@ -1,0 +1,23 @@
+# Geopolitical risk overlay — commodity-linked MOEX
+# Reference: https://doi.org/10.1016/j.ejpoleco.2024.102574
+
+version: "1.0.0"
+lookback_hours: 48
+score_per_hit: 0.15
+elevated_threshold: 0.35
+critical_threshold: 0.7
+elevated_size_multiplier: 0.5
+critical_size_multiplier: 0.25
+
+commodity_linked_tickers: [LKOH, GMKN, ROSN, NVTK, SNGS, TATN]
+
+keywords:
+  - санкци
+  - sanctions
+  - geopolitical
+  - war
+  - конфликт
+  - ukraine
+  - нефть
+  - oil embargo
+  - export ban

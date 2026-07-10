@@ -1,0 +1,49 @@
+# Swing signal conservatism — tied to risk presets (conservative / balanced / aggressive)
+# On-chain filter is NOT part of this file (macro layer stays independent).
+# Applied at runtime when operator selects a risk preset in the console.
+
+version: "1.0.0"
+
+profiles:
+  conservative:
+    label_ru: "Меньше сигналов, строже LLM"
+    label_en: "Fewer signals, stricter LLM"
+    notes_ru: "~5–12% тиков проходят rule filter; min_confidence 0.78; MACD cross обязателен."
+    notes_en: "~5–12% ticks pass rule filter; min_confidence 0.78; MACD cross required."
+    rule_filter:
+      rsi_oversold: 32
+      rsi_overbought: 68
+      require_macd_cross: true
+    llm:
+      min_confidence: 0.78
+      require_counter_thesis: true
+      counter_thesis_min_chars: 20
+    retail_guard:
+      rsi_fomo_threshold: 68
+      max_extension_above_ema200_pct: 0.12
+
+  balanced:
+    label_ru: "Базовые пороги из crypto_config / securities_config"
+    label_en: "Base thresholds from market YAML"
+    notes_ru: "RSI 35/65 (crypto), LLM min_confidence из конфига. Рекомендуется для старта paper."
+    notes_en: "RSI 35/65 (crypto), LLM min_confidence from config. Recommended for paper start."
+    rule_filter: {}
+    llm: {}
+    retail_guard: {}
+
+  aggressive:
+    label_ru: "Больше кандидатов, мягче LLM"
+    label_en: "More candidates, softer LLM"
+    notes_ru: "~20–35% тиков проходят filter; min_confidence 0.65. Только после стабильной paper-статистики."
+    notes_en: "~20–35% filter pass rate; min_confidence 0.65. Use after stable paper stats."
+    rule_filter:
+      rsi_oversold: 38
+      rsi_overbought: 62
+      require_macd_cross: false
+    llm:
+      min_confidence: 0.65
+      require_counter_thesis: true
+      counter_thesis_min_chars: 10
+    retail_guard:
+      rsi_fomo_threshold: 75
+      max_extension_above_ema200_pct: 0.18

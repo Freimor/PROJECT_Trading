@@ -9,6 +9,9 @@ from zoneinfo import ZoneInfo
 from config_loader import load_config
 from effective_config import get_guardrails
 from market_llm_config import get_market_llm_config
+from risk_profile_service import apply_risk_profile_to_guardrails, get_max_open_positions
+from risk_trading_state import check_daily_loss_limit, count_open_positions
+from workflow_universe_service import enabled_symbols_for_workflow
 
 
 def _moex_session_ok(guardrails: dict[str, Any]) -> bool:
@@ -22,6 +25,55 @@ def _moex_session_ok(guardrails: dict[str, Any]) -> bool:
     return start <= now.hour < end
 
 
+def _effective_allowlist(
+    market: str,
+    symbols_cfg: dict[str, Any],
+    workflow_name: str | None,
+) -> list[str]:
+    if workflow_name:
+        try:
+            enabled = enabled_symbols_for_workflow(workflow_name)
+            if enabled:
+                return [str(s).upper() for s in enabled]
+        except ValueError:
+            pass
+
+    key = "crypto_whitelist" if market == "crypto" else "moex_whitelist"
+    return [str(s).upper() for s in symbols_cfg.get(key, [])]
+
+
+def _held_position_symbols(market: str) -> set[str]:
+    if market == "crypto":
+        from binance_client import get_account_balances
+        from risk_trading_state import _STABLE_CRYPTO
+
+        testnet = load_config("crypto_config").get("env") == "testnet"
+        held: set[str] = set()
+        for bal in get_account_balances(testnet=testnet):
+            asset = str(bal.get("asset") or "").upper()
+            if asset in _STABLE_CRYPTO:
+                continue
+            qty = float(bal.get("free", 0) or 0) + float(bal.get("locked", 0) or 0)
+            if qty > 1e-8:
+                held.add(f"{asset}USDT")
+        return held
+
+    try:
+        from bridges.tinvest_bridge import get_portfolio_snapshot
+
+        sandbox = load_config("securities_config").get("env") == "sandbox"
+        moex = get_portfolio_snapshot(sandbox=sandbox)
+        if moex.get("status") != "ok":
+            return set()
+        return {
+            str(p.get("ticker") or "").upper()
+            for p in moex.get("positions") or []
+            if float(p.get("quantity", 0) or 0) > 0
+        }
+    except Exception:
+        return set()
+
+
 def enforce_guardrails(
     *,
     market: str,
@@ -29,8 +81,10 @@ def enforce_guardrails(
     llm_decision: dict[str, Any] | None,
     env: str,
     guardrails: dict[str, Any] | None = None,
+    workflow_name: str | None = None,
 ) -> dict[str, Any]:
-    g = guardrails or get_guardrails()
+    base = guardrails or get_guardrails()
+    g = apply_risk_profile_to_guardrails(base, market)
     trading = g.get("trading", {})
     symbols = g.get("symbols", {})
     llm_cfg = get_market_llm_config(market)
@@ -41,21 +95,30 @@ def enforce_guardrails(
     if env == "live" and trading.get("live_requires_manual_flag"):
         return {"pass": False, "reject_reason": "live_requires_manual_flag"}
 
-    allowed_envs = trading.get("allowed_envs", [])
-    if env == "live" and "live" not in allowed_envs:
-        pass  # live checked separately
-    elif env in ("paper", "dry_run", "shadow") and env not in allowed_envs and "dry_run" not in allowed_envs:
-        if env not in ("testnet", "sandbox"):
-            pass
+    daily_limit = float(trading.get("daily_loss_limit_pct", 0.03))
+    daily_check = check_daily_loss_limit(market, daily_limit)
+    if not daily_check.get("ok"):
+        return {
+            "pass": False,
+            "reject_reason": daily_check.get("reject_reason"),
+            "daily_pnl_pct": daily_check.get("daily_pnl_pct"),
+        }
 
-    if symbol and market == "crypto":
-        wl = symbols.get("crypto_whitelist", [])
-        if wl and symbol not in wl:
-            return {"pass": False, "reject_reason": "symbol_not_whitelisted"}
+    max_open = get_max_open_positions(market, trading)
+    open_count = count_open_positions(market)
+    if symbol and open_count >= max_open:
+        sym = symbol.upper()
+        if sym not in _held_position_symbols(market):
+            return {
+                "pass": False,
+                "reject_reason": "max_open_positions",
+                "open_positions": open_count,
+                "max_open_positions": max_open,
+            }
 
-    if symbol and market == "securities":
-        wl = symbols.get("moex_whitelist", [])
-        if wl and symbol not in wl:
+    if symbol:
+        wl = _effective_allowlist(market, symbols, workflow_name)
+        if wl and symbol.upper() not in wl:
             return {"pass": False, "reject_reason": "symbol_not_whitelisted"}
 
     if market == "securities" and not _moex_session_ok(g):
@@ -70,6 +133,13 @@ def enforce_guardrails(
             if field in llm_decision and llm_decision[field] is not None:
                 return {"pass": False, "reject_reason": "llm_overreach"}
         conf = llm_decision.get("confidence")
+        if action == "reject":
+            reason = (
+                llm_decision.get("reject_reason")
+                or llm_decision.get("reasoning")
+                or "llm_rejected_no_reason"
+            )
+            return {"pass": False, "reject_reason": reason}
         if action == "approve":
             if conf is None or conf < llm_cfg.get("min_confidence", 0.7):
                 return {"pass": False, "reject_reason": "low_confidence"}
@@ -86,8 +156,10 @@ def position_size_dry_run(
     equity: float,
     entry_price: float,
     guardrails: dict[str, Any] | None = None,
+    market: str = "crypto",
 ) -> dict[str, Any]:
-    g = guardrails or get_guardrails()
+    base = guardrails or get_guardrails()
+    g = apply_risk_profile_to_guardrails(base, market)
     trading = g.get("trading", {})
     risk_pct = trading.get("risk_per_trade_pct", 0.01)
     min_stop = trading.get("min_stop_distance_pct", 0.015)
@@ -108,4 +180,5 @@ def position_size_dry_run(
         "stop_price": round(stop_price, 4),
         "take_profit_price": round(take_profit_price, 4),
         "notional": round(quantity * entry_price, 2),
+        "risk_profile_id": g.get("active_risk_profile_id"),
     }

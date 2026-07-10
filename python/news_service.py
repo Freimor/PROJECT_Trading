@@ -43,6 +43,7 @@ def seed_sources() -> int:
     try:
         for src in sources:
             allowed = src.get("allowed_domains", [])
+            tags = src.get("tags") or _infer_tags_from_symbols(src.get("default_symbols", []))
             cur = conn.execute("SELECT id FROM news_sources WHERE id = ?", (src["id"],))
             if cur.fetchone():
                 conn.execute(
@@ -50,14 +51,17 @@ def seed_sources() -> int:
                     UPDATE news_sources SET
                         name = ?, source_tier = ?, feed_type = ?, feed_url = ?,
                         ttl_hours = ?, symbols_filter = ?, allowed_domains = ?,
-                        fetch_interval_min = COALESCE(?, fetch_interval_min)
+                        fetch_interval_min = COALESCE(?, fetch_interval_min),
+                        tags = COALESCE(?, tags)
                     WHERE id = ?
                     """,
                     (
                         src["name"], src["source_tier"], src["feed_type"], src["feed_url"],
                         src.get("ttl_hours", 48), src["symbols_filter"],
                         json.dumps(allowed, ensure_ascii=False),
-                        src.get("fetch_interval_min"), src["id"],
+                        src.get("fetch_interval_min"),
+                        json.dumps(tags, ensure_ascii=False) if tags else None,
+                        src["id"],
                     ),
                 )
                 continue
@@ -65,14 +69,15 @@ def seed_sources() -> int:
                 """
                 INSERT INTO news_sources
                     (id, name, source_tier, feed_type, feed_url, enabled,
-                     fetch_interval_min, ttl_hours, symbols_filter, allowed_domains)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                     fetch_interval_min, ttl_hours, symbols_filter, allowed_domains, tags)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (
                     src["id"], src["name"], src["source_tier"], src["feed_type"],
                     src["feed_url"], src.get("fetch_interval_min", 15),
                     src.get("ttl_hours", 48), src["symbols_filter"],
                     json.dumps(allowed, ensure_ascii=False),
+                    json.dumps(tags, ensure_ascii=False),
                 ),
             )
             inserted += 1
@@ -80,6 +85,20 @@ def seed_sources() -> int:
     finally:
         conn.close()
     return inserted
+
+
+def _infer_tags_from_symbols(symbols: list[str]) -> list[str]:
+    tags: set[str] = set()
+    crypto = {"BTC", "ETH", "CRYPTO", "DOGE", "BNB", "SOL"}
+    moex = {"SBER", "GAZP", "LKOH", "MOEX", "GMKN", "YNDX", "TMOS"}
+    norm = {s.upper() for s in symbols}
+    if norm & crypto:
+        tags.add("crypto")
+    if norm & moex or "MOEX" in norm:
+        tags.add("moex")
+    if "RUB" in norm:
+        tags.add("macro")
+    return sorted(tags)
 
 
 def ingest_all() -> dict[str, Any]:
@@ -90,6 +109,7 @@ def ingest_all() -> dict[str, Any]:
         "inserted": 0,
         "skipped_dup": 0,
         "rejected_unverified": 0,
+        "filtered_out": 0,
         "verified": 0,
         "errors": [],
     }
@@ -99,6 +119,7 @@ def ingest_all() -> dict[str, Any]:
             try:
                 allowed = _parse_json_list(row["allowed_domains"])
                 default_symbols = _parse_json_list(row["symbols_filter"])
+                source_tags = _parse_json_list(row["tags"])
                 feed = feedparser.parse(row["feed_url"])
                 stats["fetched"] += len(feed.entries)
                 for entry in feed.entries[:40]:
@@ -114,6 +135,9 @@ def ingest_all() -> dict[str, Any]:
                         continue
 
                     summary = (entry.get("summary") or "")[:800]
+                    from signals_engine_service import extract_body_raw
+
+                    body_raw = extract_body_raw(entry, title=title, summary=summary)
                     verification = verify_article(
                         title=title,
                         link=link,
@@ -122,6 +146,17 @@ def ingest_all() -> dict[str, Any]:
                         allowed_domains=allowed,
                     )
                     matched = extract_matched_symbols(title, summary, default_symbols)
+                    from news_filter import evaluate_trade_relevance, filter_meta_json
+
+                    trade_eval = evaluate_trade_relevance(
+                        title=title,
+                        body=body_raw,
+                        matched_symbols=matched,
+                        source_tags=source_tags,
+                    )
+                    trade_relevant = 1 if trade_eval["relevant"] else 0
+                    if not trade_relevant:
+                        stats["filtered_out"] += 1
                     relevance = compute_relevance(
                         matched_symbols=matched,
                         target_symbols=None,
@@ -145,20 +180,20 @@ def ingest_all() -> dict[str, Any]:
                         """
                         INSERT INTO news_items
                             (id, published_at, source_name, source_tier, source_url,
-                             title, summary, dedup_hash, relevance_score, symbols,
+                             title, summary, body_raw, dedup_hash, relevance_score, symbols,
                              matched_symbols, verification_status, trust_score,
-                             reject_reasons, expires_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                             reject_reasons, expires_at, trade_relevant, filter_meta)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(uuid.uuid4()), published_at, row["name"], row["source_tier"],
-                            link, title, summary, dhash, relevance,
+                            link, title, summary, body_raw, dhash, relevance,
                             row["symbols_filter"],
                             json.dumps(matched, ensure_ascii=False),
                             verification["verification_status"],
                             verification["trust_score"],
                             json.dumps(verification.get("reject_reasons", []), ensure_ascii=False),
-                            expires,
+                            expires, trade_relevant, filter_meta_json(trade_eval),
                         ),
                     )
                     stats["inserted"] += 1
@@ -175,15 +210,30 @@ def ingest_all() -> dict[str, Any]:
         conn.commit()
     finally:
         conn.close()
+
+    from signals_engine_service import analyze_pending_news, get_engine_settings
+
+    if get_engine_settings()["analysis"].get("analyze_on_ingest", True):
+        stats["analysis"] = analyze_pending_news()
     return stats
 
 
 def news_context_for_symbols(symbols: list[str], limit: int = 5) -> str:
-    """Verified, symbol-relevant headlines for LLM prompt."""
-    rows = _fetch_news_for_symbols(symbols, limit=limit, llm_only=True)
-    if not rows:
-        return "none"
-    return _format_news_lines(rows)
+    """Verified, symbol-relevant signals for LLM prompt (Signals Engine)."""
+    text, _ = news_context_with_signals(symbols, limit=limit)
+    return text
+
+
+def news_context_with_signals(symbols: list[str], limit: int = 5) -> tuple[str, list[str]]:
+    from signals_engine_service import signals_context_for_symbols
+
+    text, signal_ids = signals_context_for_symbols(symbols, limit=limit)
+    if text == "none":
+        rows = _fetch_news_for_symbols(symbols, limit=limit, llm_only=True)
+        if not rows:
+            return "none", []
+        return _format_news_lines(rows), []
+    return text, signal_ids
 
 
 def _format_news_lines(rows: list[dict[str, Any]]) -> str:
@@ -215,6 +265,7 @@ def news_context_as_of(
             FROM news_items
             WHERE (published_at IS NULL OR published_at <= ?)
               AND (benchmark_retained = 1 OR expires_at IS NULL OR expires_at > ?)
+              AND trade_relevant = 1
             ORDER BY published_at DESC
             LIMIT ?
             """,
@@ -263,6 +314,7 @@ def _fetch_news_for_symbols(
                    verification_status, trust_score, matched_symbols, relevance_score
             FROM news_items
             WHERE (expires_at IS NULL OR expires_at > ?)
+              AND trade_relevant = 1
             ORDER BY published_at DESC
             LIMIT ?
             """,

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import hmac
 import os
+
+_MAX_CREDENTIAL_LEN = 1024
+_MAX_PASSWORD_LEN = 256
 
 
 def operator_password_configured() -> bool:
@@ -18,6 +22,28 @@ def operator_auth_required() -> bool:
     return operator_password_configured() or admin_key_configured()
 
 
+def decode_operator_credential(value: str | None) -> str | None:
+    """Decode operator password from header (plain or b64: prefix). Never executed as code."""
+    if value is None:
+        return None
+    raw = value.strip()
+    if not raw or len(raw) > _MAX_CREDENTIAL_LEN:
+        return None
+    if raw.startswith("b64:"):
+        try:
+            decoded = base64.b64decode(raw[4:], validate=True)
+            text = decoded.decode("utf-8")
+        except Exception:
+            return None
+    else:
+        text = raw
+    if not text or len(text) > _MAX_PASSWORD_LEN:
+        return None
+    if any(ord(ch) < 32 and ch not in ("\t",) for ch in text):
+        return None
+    return text
+
+
 def verify_operator_auth(
     *,
     password: str | None = None,
@@ -29,7 +55,9 @@ def verify_operator_auth(
     if not expected_pwd and not expected_admin:
         return True
 
-    if expected_admin and admin_key and hmac.compare_digest(admin_key, expected_admin):
+    password = decode_operator_credential(password)
+
+    if expected_admin and admin_key and hmac.compare_digest(admin_key.strip(), expected_admin):
         return True
 
     if expected_pwd and password and hmac.compare_digest(password, expected_pwd):

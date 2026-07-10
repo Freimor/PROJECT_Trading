@@ -16,12 +16,13 @@ _MARKET_LABELS = {
 }
 
 _WORKFLOW_LABELS = {
-    "crypto-signal-dry-run": "Crypto автомат",
-    "crypto-signal-paper": "Crypto автомат (paper)",
-    "crypto-paper-auto": "Crypto автомат",
-    "securities-swing-dry-run": "MOEX swing автомат",
-    "securities-swing-paper": "MOEX swing автомат (paper)",
-    "securities-dca-sandbox": "MOEX DCA sandbox",
+    "crypto-signal-dry-run": "Крипто: сигналы (без сделок)",
+    "crypto-signal-paper": "Крипто: автоторговля (демо)",
+    "crypto-monitor-testnet": "Крипто: мониторинг демо-счёта",
+    "crypto-paper-auto": "Крипто: автоторговля (демо)",
+    "securities-swing-dry-run": "MOEX: сигналы swing (без сделок)",
+    "securities-swing-paper": "MOEX: swing (paper)",
+    "securities-dca-sandbox": "MOEX: DCA (sandbox)",
     "shared-health-check": "Health-check",
 }
 
@@ -95,6 +96,9 @@ def log_system_activity(
     return activity_id
 
 
+from filter_event_details import summarize_filter_activity
+
+
 def _trade_event_message(row: dict[str, Any]) -> str | None:
     stage = row.get("stage")
     symbol = row.get("symbol") or "?"
@@ -109,10 +113,9 @@ def _trade_event_message(row: dict[str, Any]) -> str | None:
 
     if stage == "filter":
         if decision == "approve":
-            return f"Фильтр пройден {symbol} ({market})"
+            return summarize_filter_activity(row)
         if decision in ("skip", "reject"):
-            reason = row.get("reject_reason") or "не прошёл правила"
-            return f"Фильтр отклонил {symbol}: {reason}"
+            return summarize_filter_activity(row)
 
     if stage == "llm":
         if decision == "approve":
@@ -120,7 +123,19 @@ def _trade_event_message(row: dict[str, Any]) -> str | None:
             conf_s = f", confidence {conf:.0%}" if isinstance(conf, (int, float)) else ""
             return f"LLM одобрил {symbol}{conf_s}"
         if decision == "reject":
-            reason = row.get("reject_reason") or "без причины"
+            reason = row.get("reject_reason")
+            if not reason:
+                payload = row.get("payload_json")
+                if payload:
+                    try:
+                        import json
+
+                        parsed = json.loads(payload) if isinstance(payload, str) else payload
+                        if isinstance(parsed, dict):
+                            reason = parsed.get("reasoning") or parsed.get("reject_reason")
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+            reason = reason or "без причины"
             return f"LLM отклонил {symbol}: {reason}"
 
     if stage == "order" and decision in ("execute", "approve", "submitted"):
@@ -343,7 +358,8 @@ def get_activity_feed(*, limit: int = 40, days: int = 3) -> dict[str, Any]:
             for row in conn.execute(
                 """
                 SELECT id, event_at, market, env, stage, symbol, decision,
-                       reject_reason, workflow_name, confidence, notional, currency
+                       reject_reason, workflow_name, confidence, notional, currency,
+                       payload_json
                 FROM trade_events
                 WHERE event_at >= ?
                   AND stage IN ('signal', 'filter', 'llm', 'guardrails', 'order', 'fill', 'error')

@@ -1,0 +1,58 @@
+# Signals Engine — анализ новостей и генерация сигналов для автомата
+
+version: "1.0.0"
+
+filter:
+  enabled: true
+  # loose | balanced | strict
+  mode: balanced
+  active_tags: [crypto, moex, macro]
+  # balanced: минимум N ключевых слов ИЛИ тикер из universe
+  min_keywords: 2
+  min_relevance_score: 2.5
+  require_keyword_in_title: true
+  # только для mode=loose
+  require_symbol_or_keyword: true
+  symbol_match_passes: true
+  keywords_include:
+    - бирж
+    - акци
+    - облигаци
+    - дивиденд
+    - котиров
+    - индекс
+    - moex
+    - ключев
+    - ставк
+    - рубл
+    - bitcoin
+    - ethereum
+    - крипт
+    - crypto
+    - binance
+    - санкци
+    - инфляци
+  keywords_exclude:
+    - спорт
+    - футбол
+    - кино
+    - сериал
+    - театр
+    - концерт
+    - погода
+    - гороскоп
+    - рецепт
+
+analysis:
+  enabled: true
+  batch_size: 12
+  ollama_model: qwen3.5:9b
+  prompt_version: news_significance_v1
+  min_confidence: 0.45
+  min_significance_score: 0.5
+  analyze_on_ingest: true
+
+context:
+  max_signals_per_symbol: 5
+  include_user_context: true
+  include_non_significant: false

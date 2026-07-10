@@ -1,0 +1,1151 @@
+# Анализ источников в папке papers/
+# Сгенерировано: 2026-07-09
+# Критерий отбора: публикации 2021–2026, проверяемые по прямой ссылке
+
+meta:
+  generated_at: "2026-07-09"
+  updated_at: "2026-07-10"
+  age_limit_years: 5
+  cutoff_date: "2021-07-09"
+  total_works: 74
+  waves_completed: 4
+  new_works_added_wave_3_4: 17
+  credibility_policy: "Приоритет peer-reviewed, BIS/IMF/ESRB, NBER/SSRN; блоги с непроверенной доходностью — tier 5"
+  verification_method: "Прямая проверка URL/DOI через веб-поиск и fetch"
+  collection_status: "Завершён — новые peer-reviewed MOEX post-2024 и Ollama LLM papers не найдены"
+  scoring:
+    credibility: "1–10: методология, рецензирование, репутация издания/авторов"
+    citability: "low | medium | high — ожидаемая цитируемость и индексируемость"
+    practical_value: "low | medium | high — применимость в автоматизированной торговой системе"
+    bias_risk: "low | medium | high — конфликт интересов, data mining, overfitting"
+
+summary:
+  by_type:
+    peer_reviewed: 16
+    ssrn_working_paper: 14
+    arxiv_preprint: 14
+    central_bank_regulatory: 6
+    nber_working_paper: 5
+    industry_research: 2
+    professional_blog: 6
+    news_analysis: 1
+  average_credibility:
+    academic: 7.9
+    regulatory: 9.1
+    professional: 4.2
+  recommendations:
+    highest_credibility:
+      - psych-001  # JFE
+      - risk-003   # Nature Scientific Reports
+      - cb-001     # Review of Behavioral Finance
+      - reg-001    # ESRB systemic crypto report
+      - reg-003    # BIS retail crypto adoption
+      - micro-002  # NBER AI collusion
+    highest_practical_for_n8n:
+      - llm-001
+      - llm-005  # FINSABER methodology for bias-free backtest
+      - llm-007  # DeepFund live testing pattern
+      - krypto-001
+      - reg-003  # retail flow dynamics for crypto bot design
+    use_with_caution:
+      - ta-001     # StockGPT — экстремальные заявленные метрики
+      - sl-002     # Smart-Lab — нет верификации доходности
+      - sl-004
+
+folders:
+
+  "00-osnovy":
+    description: "Фундаментальные работы о пассивном инвестировании и портфельной теории"
+    works:
+      - id: osnovy-001
+        file: passive-investing-mega-firms.md
+        title: "Passive Investing and the Rise of Mega-Firms"
+        authors: ["Hao Jiang", "Dimitri Vayanos", "Lu Zheng"]
+        year: 2024
+        type: working_paper
+        source: "LSE FMG Discussion Paper 868"
+        url: "https://www.fmg.ac.uk/sites/default/files/2024-04/DP868-revised.pdf"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: high
+        citation_count_known: null
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Притоки в пассивные фонды непропорционально повышают цены крупнейших компаний индекса"
+        limitations: "Working paper; эмпирика до 2020 года"
+        verified: true
+
+      - id: osnovy-002
+        file: apollo-passive-investing.md
+        title: "Assessing the Impact of Passive Investing"
+        authors: ["Apollo Global Management Research"]
+        year: 2024
+        type: industry_research
+        url: "https://www.apolloacademy.com/wp-content/uploads/2024/11/Passive-Investing-Paper-vF-112224_STAMPED.pdf"
+        peer_reviewed: false
+        credibility_score: 6
+        citability: medium
+        practical_value: medium
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "Рост пассивного инвестирования связан с волатильностью, снижением ликвидности и концентрацией в mega-cap"
+        limitations: "Индустриальный отчёт Apollo; возможен bias в сторону активного управления"
+        verified: true
+
+      - id: osnovy-003
+        file: ml-meets-markowitz.md
+        title: "Machine Learning Meets Markowitz"
+        authors: ["NBER authors"]
+        year: 2025
+        type: nber_working_paper
+        url: "https://doi.org/10.3386/w34861"
+        doi: "10.3386/w34861"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "End-to-end ML объединяет прогноз доходностей и оптимизацию портфеля с учётом издержек"
+        limitations: "Working paper; код не приложен публично"
+        verified: true
+
+  "01-indeksy":
+    description: "Индексы, ETF, факторное и пассивное инвестирование"
+    works:
+      - id: indeksy-001
+        title: "Exchange-traded funds and the future of passive investments: bibliometric review"
+        year: 2024
+        type: peer_reviewed
+        journal: "Future Business Journal (Springer)"
+        url: "https://doi.org/10.1186/s43093-024-00306-8"
+        doi: "10.1186/s43093-024-00306-8"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: medium
+        reproducibility: high
+        key_findings: "Обзор 127 публикаций по ETF в 2022; тренды: ML, ESG-ETF, robo-advisory"
+        limitations: "Bibliometric review, не эмпирическое исследование доходности"
+        verified: true
+
+      - id: indeksy-002
+        title: "Are There Fences in the Global Factor Zoo?"
+        authors: ["Merlin Bartel", "Sebastian Stöckl", "Joshua Traut"]
+        year: 2024
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4785874"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Региональные и глобальные factor momentum сигналы превосходят локальные"
+        limitations: "SSRN preprint"
+        verified: true
+
+      - id: indeksy-003
+        title: "Passive Investing and the Rise of Mega-Firms (NBER w28253)"
+        year: 2024
+        type: nber_working_paper
+        url: "https://doi.org/10.3386/w28253"
+        note: "Обновлённая версия DP868; актуальная ревизия 2024"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        verified: true
+
+  "02-kriptovalyuta":
+    description: "Алгоритмический и ML/DRL трейдинг криптовалют"
+    works:
+      - id: krypto-001
+        title: "Automated Cryptocurrency Trading Using Ensemble DRL: Learn to Understand Candlesticks"
+        year: 2023
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4348791"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "Candlestick-изображения + DQN/PPO ensemble превосходят числовые признаки на BTC/USDT"
+        limitations: "Короткие тестовые периоды (15–30 дней); возможен overfitting"
+        verified: true
+
+      - id: krypto-002
+        title: "Optimal market-neutral multivariate pair trading on the cryptocurrency platform"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2405.15461"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "OTT-стратегия: 15.49% годовых в 2020–2022, market-neutral без шорта крипты"
+        limitations: "Период теста включает экстремальный bull/bear цикл"
+        verified: true
+
+      - id: krypto-003
+        title: "A Reflective LLM-based Agent to Guide Zero-shot Cryptocurrency Trading"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2407.09546"
+        peer_reviewed: false
+        credibility_score: 6
+        citability: medium
+        citation_count_known: null
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "CryptoTrade (GPT-4) сравним с MACD по Sharpe на BTC/ETH/SOL"
+        limitations: "Зависимость от закрытого API GPT-4; короткие тестовые окна"
+        verified: true
+
+      - id: krypto-004
+        title: "From LSTM to GPT-2: Deep Learning Architectures for Cryptocurrency Price Forecasting"
+        year: 2025
+        type: peer_reviewed
+        journal: "Symmetry (MDPI)"
+        url: "https://doi.org/10.3390/sym18010032"
+        doi: "10.3390/sym18010032"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Transformer-модели (GPT-2, Informer, TFT) превосходят LSTM и ARIMA/GARCH на BTC, ETH, XRP, XLM, SOL"
+        limitations: "Прогноз ≠ торговая стратегия; MDPI — смешанная репутация рецензирования"
+        verified: true
+
+      - id: krypto-005
+        title: "Algorithmic Trading Using Continuous Action Space DRL (TD3)"
+        year: 2022
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4276310"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "TD3 с непрерывным action space (позиция + объём) на Amazon и Bitcoin"
+        limitations: "Один актив на рынок; нет учёта проскальзывания"
+        verified: true
+
+  "03-tsennye-bumagi":
+    description: "Российский фондовый рынок, MOEX, акции"
+    works:
+      - id: cb-001
+        title: "Does Russia–Ukraine war generate herding behavior in Moscow Exchange?"
+        year: 2023
+        type: peer_reviewed
+        journal: "Review of Behavioral Finance"
+        url: "https://doi.org/10.1108/rbf-01-2023-0014"
+        doi: "10.1108/rbf-01-2023-0014"
+        peer_reviewed: true
+        credibility_score: 8
+        citability: high
+        citation_count_known: 11
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Стадное поведение на MOEX усилилось после февраля 2022, особенно при падениях"
+        limitations: "40 акций; индекс MOEX Russia заменён IMOEX"
+        verified: true
+
+      - id: cb-002
+        title: "Do ESG Factors Prove Significant Predictors of Risks in the Russian Market?"
+        year: 2024
+        type: peer_reviewed
+        journal: "Journal of Risk and Financial Management (MDPI)"
+        url: "https://doi.org/10.3390/jrfm17040172"
+        doi: "10.3390/jrfm17040172"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: medium
+        reproducibility: medium
+        key_findings: "ESG (особенно экологические инновации) влияет на beta и downside risk"
+        limitations: "Данные 2013–2021; рынок существенно изменился после 2022"
+        verified: true
+
+      - id: cb-003
+        title: "Assessment of Volatility in the Russian Stock Market"
+        year: 2024
+        type: peer_reviewed
+        journal: "Vestnik Baikal State University"
+        url: "https://doi.org/10.54861/27131211_2024_6_43"
+        doi: "10.54861/27131211_2024_6_43"
+        peer_reviewed: true
+        credibility_score: 6
+        citability: low
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: medium
+        reproducibility: medium
+        key_findings: "Высокая волатильность MOEX; низкая эффективность рынка в период июнь–ноябрь 2023"
+        limitations: "Короткий период анализа; региональный журнал"
+        verified: true
+
+      - id: cb-004
+        title: "Rouble swings to opaque trading territory after new US sanctions"
+        year: 2024
+        type: news_analysis
+        source: "Reuters"
+        url: "https://www.reuters.com/markets/currencies/rouble-swings-opaque-trading-territory-after-new-us-sanctions-2024-06-13/"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        bias_risk: low
+        methodology_quality: n_a
+        reproducibility: n_a
+        key_findings: "Санкции США 12.06.2024 остановили торги USD/EUR на MOEX; переход на OTC"
+        limitations: "Новостной материал, не академическое исследование"
+        verified: true
+
+  "04-risk-menedzhment":
+    description: "Портфельная оптимизация, VaR, управление рисками"
+    works:
+      - id: risk-001
+        title: "Risk-aware Trading Portfolio Optimization (RATS)"
+        authors: ["Marco Bianchetti et al."]
+        year: 2024
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5168638"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "RATS-алгоритм оптимизирует VaR и P&L на реальном портфеле из сотен инструментов"
+        limitations: "Промышленный контекст; детали портфеля не раскрыты"
+        verified: true
+
+      - id: risk-002
+        title: "Explainable Sentiment-Based Tail Risk Connectedness Portfolio Optimization (DRL)"
+        year: 2023
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4627988"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "A2C + industry sentiment улучшает портфель vs mean-variance"
+        limitations: "Sentiment data quality varies"
+        verified: true
+
+      - id: risk-003
+        title: "A machine learning approach to risk based asset allocation in portfolio optimization"
+        year: 2025
+        type: peer_reviewed
+        journal: "Scientific Reports (Nature Portfolio)"
+        url: "https://doi.org/10.1038/s41598-025-26337-x"
+        doi: "10.1038/s41598-025-26337-x"
+        peer_reviewed: true
+        credibility_score: 8
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "ML-модели для risk-based allocation превосходят традиционные подходы"
+        limitations: "Новая публикация; мало внешних цитирований"
+        verified: true
+
+      - id: risk-004
+        title: "Underwater: Strategic Trading and Risk Management in Bank Securities Portfolios"
+        authors: ["Andreas Fuster", "Teodora Paligorova", "James I. Vickery"]
+        year: 2024
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4991701"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Банки избегают продажи облигаций ниже балансовой стоимости в 8–9 раз чаще"
+        limitations: "Фокус на банковские портфели, не розничный трейдинг"
+        verified: true
+
+  "05-psihologiya":
+    description: "Поведенческие финансы, когнитивные искажения трейдеров"
+    works:
+      - id: psych-001
+        title: "Taming the bias zoo"
+        authors: ["Hongqi Liu", "Cameron Peng", "Wei Xiong"]
+        year: 2022
+        type: peer_reviewed
+        journal: "Journal of Financial Economics"
+        url: "https://doi.org/10.1016/j.jfineco.2021.06.001"
+        doi: "10.1016/j.jfineco.2021.06.001"
+        peer_reviewed: true
+        credibility_score: 10
+        citability: high
+        citation_count_known: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Опрос + данные: perceived information advantage и gambling preference доминируют над другими bias"
+        limitations: "Китайские розничные инвесторы; экстраполяция на другие рынки осторожно"
+        verified: true
+
+      - id: psych-002
+        title: "Taxing the Disposition Effect: Impact of Tax Awareness on Investor Behavior"
+        year: 2022
+        type: peer_reviewed
+        journal: "Journal of Financial and Quantitative Analysis"
+        url: "https://doi.org/10.1017/S0022109022000564"
+        doi: "10.1017/S0022109022000564"
+        peer_reviewed: true
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Налоговая осведомлённость снижает disposition effect на 22–47%"
+        limitations: "Экспериментальный рынок + полевые данные"
+        verified: true
+
+      - id: psych-003
+        title: "Information and context matter: debiasing the disposition effect"
+        year: 2024
+        type: peer_reviewed
+        journal: "Frontiers in Behavioral Economics"
+        url: "https://doi.org/10.3389/fbhea.2024.1345875"
+        doi: "10.3389/fbhea.2024.1345875"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: medium
+        bias_risk: low
+        methodology_quality: medium
+        reproducibility: high
+        key_findings: "Информационная интервенция снижает disposition effect на 2 недели"
+        limitations: "n=132 UK participants; эффект исчезает через 3 месяца"
+        verified: true
+
+  "06-strategii":
+    description: "Инвестиционные и торговые стратегии: momentum, value, volatility timing"
+    works:
+      - id: strat-001
+        title: "Momentum and Factor Momentum: A Re-Examination"
+        authors: ["Cheng Gao", "Sophia Zhengzi Li", "Peixuan Yuan", "Guofu Zhou"]
+        year: 2024
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5057525"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Momentum остаётся уникальным фактором; опровергает redundancy Ehsani & Linnainmaa (2022)"
+        verified: true
+
+      - id: strat-002
+        title: "A Unified Framework for Value and Momentum"
+        authors: ["Jacob Boudoukh", "Tobias J. Moskowitz", "Matthew P. Richardson", "Lei Xie"]
+        year: 2024
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4936136"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Momentum — прокси роста прибыли; growth-adjusted value объединяет value и momentum"
+        verified: true
+
+      - id: strat-003
+        title: "Momentum: Evidence and Insights 30 Years Later"
+        authors: ["Narasimhan Jegadeesh", "Sheridan Titman"]
+        year: 2023
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4602426"
+        peer_reviewed: false
+        credibility_score: 10
+        citability: high
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Обзор 30 лет momentum-литературы; пост-2000 performance в Pacific и Western markets"
+        verified: true
+
+      - id: strat-004
+        title: "Option-Based Volatility Timing"
+        authors: ["Arben Kita", "Diego Ronchetti", "Yue Zhang"]
+        year: 2023
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4391540"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        bias_risk: low
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "Volatility-managed стратегия на опционах превосходит статистические аналоги"
+        verified: true
+
+  "07-finansovye-instrumenty":
+    description: "Опционы, фьючерсы, деривативные стратегии"
+    works:
+      - id: instr-001
+        title: "Deep Learning for Options Trading: An End-To-End Approach"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2407.21791"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "LSTM end-to-end на S&P 100 опционах > rules-based стратегии; turnover regularization помогает при высоких издержках"
+        limitations: "Backtest >10 лет; возможен look-ahead в feature engineering"
+        verified: true
+
+      - id: instr-002
+        title: "Option-Based Volatility Timing"
+        year: 2023
+        type: ssrn_working_paper
+        url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4391540"
+        note: "Дубликат strat-004 — релевантен обеим папкам"
+        peer_reviewed: false
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        verified: true
+
+  "08-tehnicheskiy-analiz":
+    description: "ML/LLM прогнозирование цен, технический анализ"
+    works:
+      - id: ta-001
+        title: "StockGPT: A GenAI Model for Stock Prediction and Trading"
+        authors: ["Dat Mai"]
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2404.05101"
+        peer_reviewed: false
+        credibility_score: 5
+        citability: medium
+        practical_value: medium
+        bias_risk: high
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "Заявлено 119% годовых, Sharpe 6.5 на long-short 2001–2023"
+        limitations: "Экстремальные метрики; нет peer review; возможен data mining"
+        verified: true
+
+      - id: ta-002
+        title: "StockTime: LLM Architecture for Stock Price Prediction"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2409.08281"
+        peer_reviewed: false
+        credibility_score: 6
+        citability: low
+        citation_count_known: 1
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: medium
+        key_findings: "Специализированная LLM-архитектура для временных рядов на S&P 100"
+        verified: true
+
+      - id: ta-003
+        title: "TradExpert: Trading with Mixture of Expert LLMs"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2411.00782"
+        peer_reviewed: false
+        credibility_score: 6
+        citability: low
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: medium
+        reproducibility: low
+        key_findings: "MoE из 4 экспертных LLM + General Expert для синтеза торговых решений"
+        verified: true
+
+      - id: ta-004
+        title: "MambaLLM: Macro-Index and Micro-Stock Data Integration"
+        year: 2025
+        type: peer_reviewed
+        journal: "Mathematics (MDPI)"
+        url: "https://doi.org/10.3390/math13101599"
+        doi: "10.3390/math13101599"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: high
+        reproducibility: medium
+        key_findings: "До 28.5% снижение RMSE vs baselines на AAPL, AMZN, MSFT, TSLA, GOOGL, META"
+        verified: true
+
+      - id: ta-005
+        title: "DFT: Dual-branch Framework of Fluctuation and Trend"
+        year: 2024
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2411.06065"
+        peer_reviewed: false
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        bias_risk: medium
+        methodology_quality: high
+        reproducibility: high
+        key_findings: "Декомпозиция trend/fluctuation; код на GitHub; +300% ranking metrics"
+        limitations: "Заявленные улучшения требуют независимой проверки"
+        verified: true
+
+  "09-avtomatizaciya-llm":
+    description: "LLM-агенты и автоматизация для торговых систем (n8n/Ollama)"
+    works:
+      - id: llm-001
+        ref: krypto-003
+        title: "CryptoTrade — Reflective LLM Agent"
+        year: 2024
+        credibility_score: 6
+        practical_value: high
+        n8n_applicability: "Архитектура reflection loop применима в Ollama-flow"
+        verified: true
+
+      - id: llm-002
+        ref: ta-003
+        title: "TradExpert — MoE LLMs"
+        year: 2024
+        credibility_score: 6
+        practical_value: high
+        n8n_applicability: "Паттерн multi-expert + synthesizer для n8n sub-workflows"
+        verified: true
+
+      - id: llm-003
+        ref: krypto-001
+        title: "Ensemble DRL Candlesticks"
+        year: 2023
+        credibility_score: 7
+        practical_value: high
+        n8n_applicability: "Требует Python-ноды; не нативный LLM"
+        verified: true
+
+      - id: llm-004
+        ref: risk-001
+        title: "RATS Portfolio Optimization"
+        year: 2024
+        credibility_score: 8
+        practical_value: high
+        n8n_applicability: "Оптимизация портфеля как отдельный scheduled flow"
+        verified: true
+
+  "professional/smart-lab":
+    description: "Практический опыт трейдеров Smart-Lab.ru"
+    works:
+      - id: sl-001
+        title: "Как на самом деле используют ИИ в алготрейдинге"
+        year: 2025
+        type: professional_blog
+        url: "https://smart-lab.ru/blog/1270553.php"
+        peer_reviewed: false
+        credibility_score: 5
+        citability: low
+        practical_value: high
+        bias_risk: high
+        key_findings: "ИИ как помощник для кода и данных, не автономный грааль; RAG для опционных конструкций"
+        limitations: "Журналистский материал; анекдотические примеры"
+        verified: true
+
+      - id: sl-002
+        title: "Алготрейдинг 2024: American Whales (+75%)"
+        year: 2024
+        type: professional_blog
+        url: "https://smart-lab.ru/blog/1111301.php"
+        credibility_score: 3
+        citability: low
+        practical_value: medium
+        bias_risk: high
+        key_findings: "Заявлено +75% на портфеле US-акций"
+        limitations: "Нет независимой верификации; selection bias"
+        verified: true
+
+      - id: sl-003
+        title: "Трёхлетняя стратегия BTC, переход на ботов"
+        year: 2024
+        type: professional_blog
+        url: "https://smart-lab.ru/blog/1118040.php"
+        credibility_score: 4
+        citability: low
+        practical_value: medium
+        bias_risk: high
+        key_findings: "Гибрид spot+futures; max drawdown 20–25%; предупреждение о комиссиях"
+        limitations: "Личный опыт одного автора"
+        verified: true
+
+      - id: sl-004
+        title: "Market Crowd Hunter: итоги 2023 (+147%)"
+        year: 2023
+        type: professional_blog
+        url: "https://smart-lab.ru/blog/974974.php"
+        credibility_score: 3
+        citability: low
+        practical_value: medium
+        bias_risk: high
+        key_findings: "Контр-трендовая стратегия; max drawdown 37%"
+        limitations: "Нет аудита; стратегия против толпы — высокий риск"
+        verified: true
+
+  "professional/finam":
+    description: "Образовательные и аналитические материалы Finam.ru"
+    works:
+      - id: fn-001
+        title: "Диверсификация портфеля ценных бумаг"
+        year: 2023
+        type: educational_article
+        url: "https://www.finam.ru/publications/item/diversifikatsiya-portfelya-tsennykh-bumag-20230628-2029/"
+        credibility_score: 6
+        citability: low
+        practical_value: medium
+        bias_risk: medium
+        key_findings: "Базовые принципы диверсификации для начинающих"
+        limitations: "Промо брокерских продуктов в статье"
+        verified: true
+
+      - id: fn-002
+        title: "Грядёт бычий рынок. Alphabet"
+        year: 2023
+        type: analytical_opinion
+        url: "https://www.finam.ru/publications/item/gryadet-bychiy-rynok-alphabet-aktsii-kotorye-mozhno-derzhat-vechno-20230801-1547/"
+        credibility_score: 4
+        citability: low
+        practical_value: low
+        bias_risk: high
+        key_findings: "Мнение аналитика о бычьем рынке США и Alphabet"
+        limitations: "Не исследование; маркетинговый тон"
+        verified: true
+
+  "professional/binance":
+    description: "Binance Academy — официальные образовательные материалы"
+    works:
+      - id: bn-001
+        title: "Your Guide to Binance Trading Bots"
+        year: 2024
+        type: exchange_education
+        url: "https://academy.binance.com/en/articles/your-guide-to-binance-trading-bots"
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        bias_risk: medium
+        key_findings: "Обзор Grid, DCA, Rebalance ботов; рекомендации по мониторингу"
+        limitations: "Продвижение продуктов Binance"
+        verified: true
+
+      - id: bn-002
+        title: "What Is Algo Trading and How Does It Work?"
+        year: 2024
+        type: exchange_education
+        url: "https://academy.binance.com/en/articles/what-is-algo-trading-and-how-does-it-work"
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        bias_risk: medium
+        key_findings: "VWAP, TWAP, API-интеграция, риски overfitting"
+        limitations: "Общий обзор без эмпирики"
+        verified: true
+
+  "10-regulirovanie":
+    description: "BIS, IMF, ESRB — макропруденциальные риски крипто и стейблкоинов"
+    works:
+      - id: reg-001
+        title: "Crypto-assets and decentralised finance (ESRB Report)"
+        year: 2025
+        type: central_bank_report
+        source: "European Systemic Risk Board"
+        url: "https://www.esrb.europa.eu/pub/pdf/reports/esrb.report202510_cryptoassets.en.pdf"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        bias_risk: low
+        key_findings: "Системные риски от стейблкоинов, crypto-investment products и multi-function groups"
+        limitations: "Политико-аналитический документ, не торговая стратегия"
+        verified: true
+
+      - id: reg-002
+        title: "Understanding Stablecoins (IMF DP 25/09)"
+        year: 2025
+        type: imf_departmental_paper
+        url: "https://www.imf.org/en/-/media/files/publications/dp/2025/english/usea.pdf"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        bias_risk: low
+        key_findings: "Стейблкоины как near-money; риски run, резервов, регуляторная фрагментация"
+        verified: true
+
+      - id: reg-003
+        title: "Crypto trading and Bitcoin prices: retail adoption"
+        year: 2022
+        type: bis_working_paper
+        url: "https://www.bis.org/publ/work1049.htm"
+        authors: ["Raphael Auer", "Giulio Cornelli", "Sebastian Doerr", "Jon Frost", "Leonardo Gambacorta"]
+        peer_reviewed: false
+        credibility_score: 10
+        citability: high
+        practical_value: high
+        bias_risk: low
+        key_findings: "Рост BTC → приток розницы; крупные держатели продают; казахстанский шок как IV"
+        verified: true
+
+      - id: reg-004
+        title: "Crypto shocks and retail losses"
+        year: 2022
+        type: bis_bulletin
+        url: "https://www.bis.org/publ/bisbull69.pdf"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        key_findings: "Большинство розничных пользователей крипто-приложений в убытке к концу 2022"
+        verified: true
+
+      - id: reg-005
+        title: "ESRB Recommendation on third-country multi-issuer stablecoins"
+        year: 2025
+        type: regulatory_recommendation
+        url: "https://www.esrb.europa.eu/pub/pdf/recommendations/esrb.recommendation251020.en.pdf"
+        credibility_score: 9
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        key_findings: "Рекомендация ограничить EU third-country multi-issuer stablecoins к 2026"
+        verified: true
+
+  "11-mikrostruktura-rinka":
+    description: "Алгоритмический трейдинг, микроструктура, AI-коллюзия"
+    works:
+      - id: micro-001
+        title: "Algorithmic trading and market efficiency (NYSE Hybrid)"
+        authors: ["Darya Yuferova"]
+        year: 2024
+        type: peer_reviewed
+        journal: "Journal of Financial Markets"
+        url: "https://doi.org/10.1016/j.finmar.2024.100909"
+        doi: "10.1016/j.finmar.2024.100909"
+        peer_reviewed: true
+        credibility_score: 8
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        key_findings: "AT снижает предсказуемость order flow; past returns predictive power не меняется"
+        verified: true
+
+      - id: micro-002
+        title: "AI-Powered Trading, Algorithmic Collusion, and Price Efficiency"
+        authors: ["Winston Wei Dou", "Itay Goldstein", "Yan Ji"]
+        year: 2025
+        type: nber_working_paper
+        url: "https://doi.org/10.3386/w34054"
+        doi: "10.3386/w34054"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: medium
+        bias_risk: low
+        key_findings: "RL-агенты автономно коллюзируют без коммуникации → надконкурентные прибыли"
+        verified: true
+
+      - id: micro-003
+        title: "Algorithmic pricing and coercive equilibria"
+        year: 2025
+        type: nber_working_paper
+        url: "https://doi.org/10.3386/w34070"
+        doi: "10.3386/w34070"
+        peer_reviewed: false
+        credibility_score: 9
+        citability: high
+        practical_value: low
+        bias_risk: low
+        key_findings: "Алгоритмическая фирма может принудить соперника к надколлюзионным ценам"
+        verified: true
+
+      - id: micro-004
+        title: "The market ecosystem in the age of algorithms"
+        year: 2024
+        type: peer_reviewed
+        journal: "Journal of Economics and Finance"
+        url: "https://doi.org/10.1007/s12197-024-09702-w"
+        doi: "10.1007/s12197-024-09702-w"
+        peer_reviewed: true
+        credibility_score: 7
+        citability: medium
+        practical_value: medium
+        bias_risk: low
+        key_findings: "AT сужает спреды; retail тоже поставщики ликвидности"
+        limitations: "Данные NASDAQ Nordic 2010–2011"
+        verified: true
+
+  # --- Расширения существующих папок (новые записи) ---
+
+  "_extensions_02_kriptovalyuta":
+    works:
+      - id: krypto-006
+        title: "Crypto carry"
+        year: 2023
+        type: bis_working_paper
+        url: "https://www.bis.org/publ/work1087.htm"
+        authors: ["Maik Schmeling", "Andreas Schrimpf", "Karamfil Todorov"]
+        credibility_score: 10
+        citability: high
+        practical_value: high
+        key_findings: "Basis до 40% годовых; limits-to-arbitrage; ETF 2024 сжал carry"
+        verified: true
+
+      - id: krypto-007
+        title: "Decentralised dealers? DEX liquidity (Uniswap V3)"
+        year: 2024
+        type: bis_working_paper
+        url: "https://www.bis.org/publ/work1227.htm"
+        credibility_score: 10
+        citability: high
+        practical_value: high
+        key_findings: "Sophisticated LP доминируют на DEX; retail LP менее прибыльны"
+        verified: true
+
+  "_extensions_03_tsennye_bumagi":
+    works:
+      - id: cb-005
+        title: "Evolution of Factor Pricing Models in Russian Market"
+        authors: ["Alexander Abramov", "Maria Chernova", "Talgat Akhmetzyanov"]
+        year: 2025
+        type: peer_reviewed
+        journal: "Journal of Corporate Finance Research (HSE)"
+        url: "https://doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81"
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        key_findings: "15 factor portfolios бьют MOEX-TR; 891 акций 2007–2024"
+        verified: true
+
+      - id: cb-006
+        title: "Momentum Effect on Russian Highly Liquid Shares"
+        authors: ["Varvara Nazarova", "Sergei Leshchev"]
+        year: 2023
+        type: peer_reviewed
+        journal: "Financial Journal (HSE)"
+        url: "https://doi.org/10.31107/2075-1990-2023-1-58-73"
+        citation_count_known: 2
+        credibility_score: 7
+        citability: medium
+        practical_value: high
+        key_findings: "16 momentum стратегий положительны с комиссиями (2019–2021)"
+        limitations: "Период до 2022; 2 цитирования"
+        verified: true
+
+      - id: cb-007
+        title: "Volatility spillovers in Russian stock market 2020-2024"
+        year: 2025
+        type: peer_reviewed
+        url: "https://doi.org/10.31737/22212264_2025_2_65-84"
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        key_findings: "Секторные spillovers нелинейны при экстремальных шоках"
+        verified: true
+
+  "_extensions_08_tehnicheskiy_analiz":
+    works:
+      - id: ta-006
+        title: "Can ChatGPT Forecast Stock Price Movements?"
+        authors: ["Alejandro Lopez-Lira", "Yuehua Tang"]
+        year: 2024
+        type: working_paper
+        url: "https://www.anderson.ucla.edu/sites/default/files/document/2024-04/4.19.24%20Alejandro%20Lopez%20Lira%20ChatGPT_V3.pdf"
+        credibility_score: 9
+        citability: high
+        practical_value: high
+        key_findings: "ChatGPT sentiment out-of-sample Oct 2021–Dec 2022 предсказывает returns"
+        verified: true
+
+      - id: ta-007
+        title: "StockTwits classified sentiment and stock returns"
+        year: 2024
+        type: peer_reviewed
+        journal: "Digital Finance (Springer)"
+        url: "https://doi.org/10.1007/s42521-023-00102-z"
+        credibility_score: 8
+        citability: medium
+        practical_value: medium
+        key_findings: "Сентимент предсказывает returns только при volume events; согласуется с EMH"
+        verified: true
+
+      - id: ta-008
+        title: "Social sentiment and liquidity at SPB Exchange"
+        authors: ["Tamara Teplova", "Marina Gubareva", "Nikolay Kudriavtsev"]
+        year: 2023
+        type: peer_reviewed
+        journal: "Eurasian Economic Review"
+        url: "https://doi.org/10.1007/s40822-023-00245-9"
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        key_findings: "Российский retail sentiment влияет на US-акции в вечерней сессии SPB"
+        verified: true
+
+  "_extensions_09_avtomatizaciya_llm":
+    works:
+      - id: llm-005
+        title: "Can LLM-based Strategies Outperform the Market? (FINSABER)"
+        year: 2025
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2505.07078"
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        bias_risk: low
+        key_findings: "LLM alpha исчезает при 20-летнем bias-free бэктесте; плохой risk control"
+        verified: true
+
+      - id: llm-006
+        title: "StockBench: LLM Agents in Real-world Markets"
+        year: 2025
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2510.02209"
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        key_findings: "Большинство LLM не бьют buy-and-hold на multi-month"
+        verified: true
+
+      - id: llm-007
+        title: "DeepFund: Live Real-Time LLM Benchmarking"
+        year: 2025
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2505.11065"
+        credibility_score: 8
+        citability: low
+        practical_value: high
+        key_findings: "Live-тест: топ LLM теряют деньги; time-travel bias в backtests"
+        verified: true
+
+      - id: llm-008
+        title: "LiveTradeBench: Real-World Alpha with LLMs"
+        year: 2025
+        type: arxiv_preprint
+        url: "https://arxiv.org/abs/2511.03628"
+        credibility_score: 7
+        citability: low
+        practical_value: high
+        key_findings: "LMArena score не коррелирует с торговым результатом"
+        verified: true
+
+      - id: llm-009
+        title: "Can Large Language Models Trade? (synthetic market)"
+        authors: ["Alejandro Lopez-Lira et al."]
+        year: 2025
+        type: conference_paper
+        url: "https://www.suomenpankki.fi/globalassets/bof/en/financial-stability/events/can-large-language-models-trade-ai-agents-competing-in-stock-markets_alejandro-lopez-lira.pdf"
+        credibility_score: 8
+        citability: medium
+        practical_value: high
+        key_findings: "LLM-агенты следуют промпт-стратегиям; prompt engineering → correlated instability"
+        verified: true
+
+cross_analysis:
+  trends_2021_2026:
+    - "LLM: от оптимизма (2023–24) к скептическому консенсусу (FINSABER, DeepFund, StockBench 2025)"
+    - "Крипто: розница системно проигрывает (BIS); DeFi концентрирован у sophisticated LP"
+    - "Регуляторика: ESRB/IMF 2025 — стейблкоины как системный риск"
+    - "MOEX: факторы и momentum работают на истории; микроструктура 2024+ — пробел"
+    - "End-to-end ML портфели > predict-then-optimize (NBER w34861)"
+    - "Factor momentum и пассивные потоки — активные исследовательские темы"
+    - "AI-алготрейдинг: efficiency gains vs автономная коллюзия (NBER w34054, w34070)"
+    - "Сентимент работает условно (события, арбитражные ограничения), не unconditionally"
+  trends_document: "papers/TRENDS.md"
+
+  reliability_tiers:
+    tier_1_peer_reviewed_and_central_banks:
+      - psych-001
+      - psych-002
+      - risk-003
+      - cb-001
+      - krypto-004
+      - ta-004
+      - reg-001
+      - reg-002
+      - reg-003
+      - micro-001
+    tier_2_top_institutions:
+      - osnovy-003
+      - risk-004
+      - strat-002
+      - strat-003
+      - indeksy-003
+      - ta-006
+      - llm-005
+      - micro-002
+      - krypto-006
+      - krypto-007
+      - cb-005
+    tier_3_preprints_promising:
+      - krypto-002
+      - instr-001
+      - ta-005
+      - strat-001
+      - llm-007
+    tier_4_practical_not_academic:
+      - sl-001
+      - bn-001
+      - bn-002
+      - fn-001
+    tier_5_use_with_caution:
+      - ta-001
+      - sl-002
+      - sl-004
+      - fn-002
+
+  gaps_for_future_collection:
+    - "Peer-reviewed работы по MOEX после санкций 2024"
+    - "Репликации CryptoTrade и TradExpert на открытых LLM (Ollama)"
+    - "Исследования Tinkoff/Alor API и российского алготрейдинга"
+    - "On-chain метрики: академические работы 2024–2025"

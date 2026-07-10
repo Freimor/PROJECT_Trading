@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { apiGet, apiPost } from "../api";
+import { apiGet, apiPost, formatOperatorFacingError } from "../api";
+import OperatorConfirmModal from "../components/OperatorConfirmModal";
 import PortfolioCard from "../components/PortfolioCard";
 import { POLL } from "../config/polling";
 import { useErrorNotifications } from "../context/ErrorNotifications";
@@ -9,6 +10,10 @@ import { useI18n } from "../i18n/LanguageContext";
 export default function ControlPage() {
   const { t } = useI18n();
   const [log, setLog] = useState("");
+  const [pendingKill, setPendingKill] = useState<boolean | null>(null);
+  const [pendingResolve, setPendingResolve] = useState<{ id: string; decision: string } | null>(null);
+  const [opBusy, setOpBusy] = useState(false);
+  const [opError, setOpError] = useState<string | null>(null);
   const { report } = useErrorNotifications();
 
   const { data: control } = usePolling<{
@@ -32,18 +37,55 @@ export default function ControlPage() {
     staggerKey: "control-pending",
   });
 
-  const killSwitch = async (enabled: boolean) => {
-    if (!confirm(t("control.killConfirm", { state: enabled ? "ON" : "OFF" }))) return;
+  const applyKill = async (password: string) => {
+    if (pendingKill === null) return;
+    setOpBusy(true);
+    setOpError(null);
     report("control/kill-switch", null);
     try {
-      const r = await apiPost("/api/admin/kill-switch", {
-        enabled,
-        operator: "web:operator",
-        source: "web",
-      });
+      const r = await apiPost(
+        "/api/admin/kill-switch",
+        {
+          enabled: pendingKill,
+          operator: "web:operator",
+          source: "web",
+        },
+        { operatorPassword: password },
+      );
       setLog(JSON.stringify(r, null, 2));
+      setPendingKill(null);
     } catch (err) {
-      report("control/kill-switch", String(err));
+      const message = formatOperatorFacingError(err, t);
+      setOpError(message);
+      report("control/kill-switch", message);
+    } finally {
+      setOpBusy(false);
+    }
+  };
+
+  const applyResolve = async (password: string) => {
+    if (!pendingResolve) return;
+    setOpBusy(true);
+    setOpError(null);
+    report("control/confirm", null);
+    try {
+      await apiPost(
+        `/api/admin/confirmations/${pendingResolve.id}/resolve`,
+        {
+          decision: pendingResolve.decision,
+          operator: "web:operator",
+        },
+        { operatorPassword: password },
+      );
+      setPendingResolve(null);
+      refreshPending();
+      refreshChecklist();
+    } catch (err) {
+      const message = formatOperatorFacingError(err, t);
+      setOpError(message);
+      report("control/confirm", message);
+    } finally {
+      setOpBusy(false);
     }
   };
 
@@ -58,18 +100,9 @@ export default function ControlPage() {
     }
   };
 
-  const resolve = async (id: string, decision: string) => {
-    report("control/confirm", null);
-    try {
-      await apiPost(`/api/admin/confirmations/${id}/resolve`, {
-        decision,
-        operator: "web:operator",
-      });
-      refreshPending();
-      refreshChecklist();
-    } catch (err) {
-      report("control/confirm", String(err));
-    }
+  const resolve = (id: string, decision: string) => {
+    setOpError(null);
+    setPendingResolve({ id, decision });
   };
 
   const modeLabel = (op?: string) =>
@@ -100,10 +133,10 @@ export default function ControlPage() {
       <div className="grid cards-2">
         <PortfolioCard title={t("control.riskTitle")}>
           <div className="btn-row">
-            <button type="button" className="danger" onClick={() => killSwitch(true)}>
+            <button type="button" className="danger" onClick={() => setPendingKill(true)}>
               Kill ON
             </button>
-            <button type="button" className="primary" onClick={() => killSwitch(false)}>
+            <button type="button" className="primary" onClick={() => setPendingKill(false)}>
               Kill OFF
             </button>
             <button type="button" onClick={smoke}>
@@ -152,6 +185,28 @@ export default function ControlPage() {
           <pre>{log}</pre>
         </PortfolioCard>
       )}
+
+      <OperatorConfirmModal
+        open={pendingKill !== null}
+        title={pendingKill ? t("controlStrip.killDisableTitle") : t("controlStrip.killEnableTitle")}
+        lead={pendingKill ? t("controlStrip.killDisableLead") : t("controlStrip.killEnableLead")}
+        risk={pendingKill ? t("controlStrip.killDisableRisk") : t("controlStrip.killEnableRisk")}
+        riskTone={pendingKill ? "danger" : ""}
+        busy={opBusy}
+        error={opError}
+        onCancel={() => !opBusy && setPendingKill(null)}
+        onConfirm={applyKill}
+      />
+
+      <OperatorConfirmModal
+        open={pendingResolve !== null}
+        title={t("control.pendingTitle")}
+        lead={pendingResolve?.decision === "approved" ? "Approve" : "Reject"}
+        busy={opBusy}
+        error={opError}
+        onCancel={() => !opBusy && setPendingResolve(null)}
+        onConfirm={applyResolve}
+      />
     </div>
   );
 }

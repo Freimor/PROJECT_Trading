@@ -1,0 +1,28 @@
+# Regulatory monitor — ESRB/FSB/CBR → macro context / kill_switch
+# References: ESRB 2025, FSB P161025
+
+version: "1.0.0"
+lookback_hours: 72
+auto_kill_switch_crypto: false
+elevated_count: 5
+
+source_ids:
+  - esrb_press
+  - fsb_press
+  - cbr_press
+
+alert_keywords:
+  - stablecoin
+  - crypto-asset
+  - decentralised finance
+  - macroprudential
+  - санкци
+  - криптовалют
+
+critical_keywords:
+  - systemic risk
+  - ban crypto
+  - prohibit
+  - emergency
+  - kill switch
+  - запрет крипт

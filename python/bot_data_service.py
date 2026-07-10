@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -14,24 +15,17 @@ from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snaps
 from config_loader import load_config, wiki_root
 from strategy_service import get_active_strategy_id, get_strategy_state
 from db.connection import get_connection
-from automation_control_service import operation_mode_detail, trading_mode_to_operation
+from automation_control_service import get_market_control_state, operation_mode_detail, trading_mode_to_operation
 from effective_config import get_config_effective, get_guardrails
 from evaluation.replay import evaluation_metrics
+from runtime_settings import get_runtime_meta
 from testing_service import get_tinvest_sandbox_dashboard
 
 
 def list_news_sources() -> list[dict[str, Any]]:
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT id, name, source_tier, enabled, last_fetched_at, fetch_interval_min
-            FROM news_sources ORDER BY name
-            """
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    from signals_engine_service import list_sources_enriched
+
+    return list_sources_enriched()
 
 
 def list_recent_news(*, limit: int = 8, include_trades: bool | None = None) -> list[dict[str, Any]]:
@@ -223,6 +217,105 @@ def get_host_status() -> dict[str, Any]:
     }
 
 
+def list_signal_news_feed(
+    *,
+    limit: int = 40,
+    market: str | None = None,
+    universe_only: bool = False,
+) -> list[dict[str, Any]]:
+    """News items enriched with whether they coincided with trading signals.
+
+    If market is provided (crypto|securities), only returns items that mention
+    symbols from the currently active universe for that market.
+    When universe_only=True (without market), filters to enabled workflow symbols.
+    """
+    active_universe: set[str] | None = None
+    if market in ("crypto", "securities"):
+        try:
+            from strategy_service import symbols_for_market
+
+            active_universe = {s.upper().replace("USDT", "") for s in symbols_for_market(market)}
+        except Exception:
+            active_universe = None
+    elif universe_only:
+        try:
+            from workflow_universe_service import all_enabled_symbols
+
+            active_universe = {s.upper().replace("USDT", "") for s in all_enabled_symbols()}
+        except Exception:
+            active_universe = None
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc).isoformat()
+        news_rows = conn.execute(
+            """
+            SELECT id, title, summary, body_raw, source_name, source_tier, source_url, published_at,
+                   verification_status, trust_score, matched_symbols, relevance_score,
+                   llm_analysis_json, llm_model, llm_analyzed_at, trade_relevant, filter_meta
+            FROM news_items
+            WHERE (expires_at IS NULL OR expires_at > ?)
+              AND trade_relevant = 1
+            ORDER BY COALESCE(published_at, '') DESC
+            LIMIT ?
+            """,
+            (now, limit * 2),
+        ).fetchall()
+        event_rows = conn.execute(
+            """
+            SELECT event_at, market, symbol, stage, decision, workflow_name
+            FROM trade_events
+            WHERE stage IN ('signal', 'llm', 'guardrails')
+              AND event_at >= datetime('now', '-14 days')
+            ORDER BY event_at DESC
+            LIMIT 500
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    events = [dict(r) for r in event_rows]
+    feed: list[dict[str, Any]] = []
+    for row in news_rows:
+        item = dict(row)
+        matched_raw = item.get("matched_symbols")
+        try:
+            symbols = json.loads(matched_raw) if isinstance(matched_raw, str) else (matched_raw or [])
+        except json.JSONDecodeError:
+            symbols = []
+        symbols_norm = {str(s).upper() for s in symbols}
+        if active_universe is not None:
+            hit = False
+            for s in symbols_norm:
+                if s in active_universe or s.replace("USDT", "") in active_universe:
+                    hit = True
+                    break
+            if not hit:
+                continue
+        related: list[dict[str, Any]] = []
+        pub = item.get("published_at")
+        for ev in events:
+            sym = (ev.get("symbol") or "").upper()
+            if not sym or sym not in symbols_norm:
+                continue
+            if pub and ev.get("event_at") and str(ev["event_at"]) < str(pub):
+                continue
+            related.append(ev)
+            if len(related) >= 3:
+                break
+        item["type"] = "news"
+        item["matched_symbols_list"] = list(symbols)
+        item["signal_hits"] = len(related)
+        item["related_signals"] = related
+        item["used_in_signal"] = len(related) > 0
+        from signals_engine_service import enrich_feed_item
+
+        enrich_feed_item(item)
+        feed.append(item)
+        if len(feed) >= limit:
+            break
+    return feed
+
+
 def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     crypto_cfg = get_config_effective("crypto_config")
     sec_cfg = get_config_effective("securities_config")
@@ -238,8 +331,24 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     trading_mode = trading.get("mode", "dry_run")
     crypto_mode = str(crypto_cfg.get("mode", "dry_run"))
     sec_mode = str(sec_cfg.get("mode", "dry_run"))
+    kill_meta = get_runtime_meta("kill_switch") or {}
+    crypto_meta = get_runtime_meta("crypto_mode") or {}
+    sec_meta = get_runtime_meta("securities_mode") or {}
+    try:
+        crypto_ctrl = get_market_control_state("crypto")
+    except Exception:
+        crypto_ctrl = {"workflows": [], "operation_mode": trading_mode_to_operation(crypto_mode)}
+    try:
+        sec_ctrl = get_market_control_state("securities")
+    except Exception:
+        sec_ctrl = {"workflows": [], "operation_mode": trading_mode_to_operation(sec_mode)}
+
+    def _wf_active(ctrl: dict[str, Any]) -> bool:
+        return any(bool(w.get("active")) for w in (ctrl.get("workflows") or []))
+
     return {
         "kill_switch": bool(trading.get("kill_switch")),
+        "kill_switch_updated_at": kill_meta.get("updated_at"),
         "trading_mode": trading_mode,
         "operation_mode": trading_mode_to_operation(str(trading_mode))
         if str(trading_mode) != "mixed"
@@ -253,6 +362,11 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "mode": crypto_cfg.get("mode"),
             "operation_mode": trading_mode_to_operation(crypto_mode),
             "operation_detail": operation_mode_detail(crypto_mode),
+            "mode_updated_at": crypto_meta.get("updated_at"),
+            "workflow_started_at": crypto_ctrl.get("workflow_started_at"),
+            "workflow_pnl": crypto_ctrl.get("workflow_pnl"),
+            "workflows_active": _wf_active(crypto_ctrl),
+            "active_workflows": [w.get("name") for w in crypto_ctrl.get("workflows", []) if w.get("active")],
             "pairs": crypto_cfg.get("pairs", []),
             "active_strategy": crypto_strategy["active"],
             "strategy_label": crypto_strategy["strategy"].get("label"),
@@ -264,6 +378,11 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "mode": sec_cfg.get("mode"),
             "operation_mode": trading_mode_to_operation(sec_mode),
             "operation_detail": operation_mode_detail(sec_mode),
+            "mode_updated_at": sec_meta.get("updated_at"),
+            "workflow_started_at": sec_ctrl.get("workflow_started_at"),
+            "workflow_pnl": sec_ctrl.get("workflow_pnl"),
+            "workflows_active": _wf_active(sec_ctrl),
+            "active_workflows": [w.get("name") for w in sec_ctrl.get("workflows", []) if w.get("active")],
             "active_mode": sec_strategy["active"],
             "strategy_label": sec_strategy["strategy"].get("label"),
             "workflows": [s.get("workflow") for s in sec_strategy["strategies"]],

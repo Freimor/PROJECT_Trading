@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS news_items (
     source_url      TEXT,
     title           TEXT NOT NULL,
     summary         TEXT,
+    body_raw        TEXT,
     dedup_hash      TEXT NOT NULL,
     relevance_score REAL DEFAULT 0,
     symbols         TEXT,
@@ -118,7 +119,13 @@ CREATE TABLE IF NOT EXISTS news_items (
     reject_reasons  TEXT,
   -- JSON array
     expires_at      TEXT,
-    raw_json        TEXT
+    raw_json        TEXT,
+    benchmark_retained INTEGER NOT NULL DEFAULT 0,
+    llm_analysis_json TEXT,
+    llm_model       TEXT,
+    llm_analyzed_at TEXT,
+    trade_relevant  INTEGER NOT NULL DEFAULT 1,
+    filter_meta     TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_news_dedup ON news_items(dedup_hash);
@@ -155,7 +162,46 @@ CREATE TABLE IF NOT EXISTS news_sources (
     allowed_domains TEXT,
   -- JSON: domains allowed in article links
     last_fetched_at TEXT,
-    last_error      TEXT
+    last_error      TEXT,
+    tags            TEXT,
+    user_trust_override REAL
+);
+
+CREATE TABLE IF NOT EXISTS news_signals (
+    id                  TEXT PRIMARY KEY,
+    news_item_id        TEXT NOT NULL,
+    market              TEXT NOT NULL DEFAULT 'macro',
+    symbols             TEXT NOT NULL,
+    impact              TEXT,
+    confidence          REAL,
+    significance_score  REAL,
+    headline_ru         TEXT,
+    analysis_ru         TEXT,
+    reasoning_trace     TEXT,
+    model               TEXT,
+    status              TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'consumed', 'expired', 'rejected')),
+    consumed_by_event_id TEXT,
+    consumed_at         TEXT,
+    created_at          TEXT NOT NULL,
+    expires_at          TEXT,
+    FOREIGN KEY (news_item_id) REFERENCES news_items(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_news_signals_status
+    ON news_signals(status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_news_signals_item
+    ON news_signals(news_item_id);
+
+CREATE TABLE IF NOT EXISTS news_user_context (
+    id              TEXT PRIMARY KEY,
+    news_item_id    TEXT NOT NULL UNIQUE,
+    operator        TEXT,
+    context_text    TEXT NOT NULL DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    locked_at       TEXT
 );
 
 -- ============================================================

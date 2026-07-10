@@ -189,12 +189,15 @@ MOEX factsheet + ISS analytics endpoint.
 
 Полный свод университетских курсов и научных публикаций (2021+) — в заметке [[Academic_sources]].
 
-| Учреждение | Ресурс (2021+) | Что подтверждает для этой темы | Ссылка |
-|-----------|----------------|--------------------------------|--------|
-| ВШЭ | Manushkin — BRP 95/FE/2024 | Fama-French 5-factor на акциях MOEX, факторные премии | [wp.hse.ru/en/fe/BRP/95/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
-| NBER | Li, Ye, Zheng — w28515 (2021) | Типы заявок и микроструктура исполнения на биржах | [www.nber.org/papers/w28515](https://www.nber.org/papers/w28515) |
-| ВШЭ | Магистратура «Инвестиции на финансовых рынках» | Акции российского рынка, оценка, торговые стратегии | [www.hse.ru/ma/invest/](https://www.hse.ru/ma/invest/) |
-| ВШЭ | Financial Economics WP (2021–2025) | Эмпирические исследования российского фондового рынка | [wp.hse.ru/en/prepfr_FE](https://wp.hse.ru/en/prepfr_FE) |
+| Учреждение | Ресурс (2021+) | Что подтверждает | Ссылка |
+|-----------|----------------|------------------|--------|
+| ВШЭ / Корп. финансы | Abramov et al. (2025) | 15 factor portfolios vs MOEX-TR, 891 акций | [doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81](https://doi.org/10.17323/j.jcfr.2073-0438.19.2.2025.67-81) |
+| Financial Journal (ВШЭ) | Nazarova (2023) | Momentum на MOEX с учётом комиссий | [doi.org/10.31107/2075-1990-2023-1-58-73](https://doi.org/10.31107/2075-1990-2023-1-58-73) |
+| Economy of Region | Volatility spillovers (2025) | Секторные риски MOEX 2020–2024 | [doi.org/10.31737/22212264_2025_2_65-84](https://doi.org/10.31737/22212264_2025_2_65-84) |
+| Review of Behavioral Finance | MOEX herding (2023) | Стадность при падениях после 02.2022 | [doi.org/10.1108/rbf-01-2023-0014](https://doi.org/10.1108/rbf-01-2023-0014) |
+| Reuters | MOEX sanctions 06.2024 | OTC USD/EUR, непрозрачность цен | [reuters.com/.../rouble-swings-opaque-trading...](https://www.reuters.com/markets/currencies/rouble-swings-opaque-trading-territory-after-new-us-sanctions-2024-06-13/) |
+| ВШЭ | Manushkin — BRP 95/FE/2024 | Fama-French 5-factor на MOEX | [wp.hse.ru/en/fe/BRP/95/2024](https://wp.hse.ru/en/fe/BRP/95/2024) |
+| NBER | Li, Ye, Zheng — w28515 (2021) | Типы заявок и микроструктура | [www.nber.org/papers/w28515](https://www.nber.org/papers/w28515) |
 
 ---
 
