@@ -1,14 +1,24 @@
 import { NavLink } from "react-router-dom";
 import { NAV_GROUPS } from "../config/navigation";
+import SidebarFooterActions from "./SidebarFooterActions";
 import { useI18n } from "../i18n/LanguageContext";
 import Hint from "../ui/Hint";
 
 type Props = {
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  onRefresh: () => void;
+  onToggleFeed: () => void;
+  feedOpen: boolean;
 };
 
-export default function AppSidebar({ mobileOpen, onCloseMobile }: Props) {
+export default function AppSidebar({
+  mobileOpen,
+  onCloseMobile,
+  onRefresh,
+  onToggleFeed,
+  feedOpen,
+}: Props) {
   const { t } = useI18n();
 
   return (
@@ -59,6 +69,14 @@ export default function AppSidebar({ mobileOpen, onCloseMobile }: Props) {
             </div>
           ))}
         </nav>
+
+        <footer className="sidebar-footer">
+          <SidebarFooterActions
+            onRefresh={onRefresh}
+            onToggleFeed={onToggleFeed}
+            feedOpen={feedOpen}
+          />
+        </footer>
       </aside>
     </>
   );

@@ -64,6 +64,15 @@ def enforce_guardrails(
     if trading.get("kill_switch"):
         return {"pass": False, "reject_reason": "kill_switch_active"}
 
+    if market == "crypto":
+        try:
+            from futures_margin_monitor import is_futures_margin_halt_active
+
+            if is_futures_margin_halt_active():
+                return {"pass": False, "reject_reason": "futures_margin_halt_active"}
+        except Exception:
+            pass
+
     if env == "live" and trading.get("live_requires_manual_flag"):
         return {"pass": False, "reject_reason": "live_requires_manual_flag"}
 
@@ -86,6 +95,18 @@ def enforce_guardrails(
                 "reject_reason": "max_open_positions",
                 "open_positions": open_count,
                 "max_open_positions": max_open,
+            }
+
+    # Scalp: one managed leg per symbol — no averaging up
+    if symbol and workflow_name and "scalp" in str(workflow_name).lower():
+        sym = symbol.upper()
+        from crypto_scalp_positions import get_scalp_position
+
+        if get_scalp_position(sym, workflow_name=workflow_name, testnet=True):
+            return {
+                "pass": False,
+                "reject_reason": "scalp_position_open",
+                "symbol": sym,
             }
 
     if symbol:
@@ -129,6 +150,8 @@ def position_size_dry_run(
     entry_price: float,
     guardrails: dict[str, Any] | None = None,
     market: str = "crypto",
+    side: str = "long",
+    leverage: int = 1,
 ) -> dict[str, Any]:
     base = guardrails or get_guardrails()
     g = apply_risk_profile_to_guardrails(base, market)
@@ -136,15 +159,24 @@ def position_size_dry_run(
     risk_pct = trading.get("risk_per_trade_pct", 0.01)
     min_stop = trading.get("min_stop_distance_pct", 0.015)
     max_notional_pct = trading.get("max_notional_pct_equity", 0.05)
+    lev = max(1, int(leverage or 1))
 
     stop_distance = entry_price * min_stop
     risk_amount = equity * risk_pct
     qty_by_risk = risk_amount / stop_distance if stop_distance else 0
-    max_notional = equity * max_notional_pct
+    max_notional = equity * max_notional_pct * lev
     qty_by_notional = max_notional / entry_price if entry_price else 0
     quantity = min(qty_by_risk, qty_by_notional)
-    stop_price = entry_price * (1 - min_stop)
-    take_profit_price = entry_price * (1 + min_stop * 2)
+
+    position_side = "short" if str(side).lower() in ("short", "sell") else "long"
+    if position_side == "short":
+        stop_price = entry_price * (1 + min_stop)
+        take_profit_price = entry_price * (1 - min_stop * 2)
+        order_side = "SELL"
+    else:
+        stop_price = entry_price * (1 - min_stop)
+        take_profit_price = entry_price * (1 + min_stop * 2)
+        order_side = "BUY"
 
     return {
         "quantity": round(quantity, 8),
@@ -152,5 +184,9 @@ def position_size_dry_run(
         "stop_price": round(stop_price, 4),
         "take_profit_price": round(take_profit_price, 4),
         "notional": round(quantity * entry_price, 2),
+        "margin_notional": round(quantity * entry_price / lev, 2),
         "risk_profile_id": g.get("active_risk_profile_id"),
+        "position_side": position_side,
+        "order_side": order_side,
+        "leverage": lev,
     }

@@ -124,13 +124,30 @@ def _llm_runtime_stats(*, hours: int = 24) -> dict[str, Any]:
     }
 
 
+def _ollama_required_model_gaps(installed: list[str]) -> list[str]:
+    try:
+        from ollama_manager_service import collect_required_models, normalize_model_tag
+
+        installed_norm = {normalize_model_tag(n) for n in installed}
+        missing: list[str] = []
+        for req in collect_required_models():
+            if req.get("optional"):
+                continue
+            name = str(req.get("name") or "").strip()
+            if name and normalize_model_tag(name) not in installed_norm:
+                missing.append(name)
+        return missing
+    except Exception:
+        return []
+
+
 def get_ollama_status(*, llm_hours: int = 24) -> dict[str, Any]:
     """Health ping + trading LLM runtime stats for status bar."""
     start = datetime.now(timezone.utc)
     loaded: list[str] = []
     models: list[str] = []
     error: str | None = None
-    status = "critical"
+    status = "error"
     ping_ms: int | None = None
 
     try:
@@ -138,10 +155,17 @@ def get_ollama_status(*, llm_hours: int = 24) -> dict[str, Any]:
             resp = client.get(f"{ollama_host()}/api/tags")
             ping_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
             if resp.status_code != 200:
-                error = resp.text[:200]
+                error = resp.text[:200] or f"http_{resp.status_code}"
             else:
-                status = "ok"
                 models = [str(m.get("name")) for m in resp.json().get("models", []) if m.get("name")]
+                if not models:
+                    error = "no_models_installed"
+                else:
+                    missing = _ollama_required_model_gaps(models)
+                    if missing:
+                        error = f"missing_models:{','.join(missing[:5])}"
+                    else:
+                        status = "ok"
                 try:
                     ps = client.get(f"{ollama_host()}/api/ps", timeout=3.0)
                     if ps.status_code == 200:
@@ -154,6 +178,9 @@ def get_ollama_status(*, llm_hours: int = 24) -> dict[str, Any]:
                     loaded = []
     except httpx.HTTPError as exc:
         error = str(exc)
+
+    if error and status != "ok":
+        status = "error"
 
     runtime = _llm_runtime_stats(hours=llm_hours)
     primary = _primary_ollama_models()

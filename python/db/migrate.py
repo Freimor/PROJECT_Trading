@@ -471,6 +471,35 @@ def migrate_neuratrade_v2(conn: sqlite3.Connection) -> list[str]:
     return applied
 
 
+def migrate_workflow_reports_v1(conn: sqlite3.Connection) -> list[str]:
+    applied: list[str] = []
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_session_reports (
+            id TEXT PRIMARY KEY,
+            market TEXT NOT NULL,
+            workflow_name TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL,
+            reason TEXT,
+            report_json TEXT NOT NULL,
+            llm_narrative_json TEXT,
+            llm_model TEXT,
+            llm_latency_ms INTEGER,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workflow_session_reports_ended ON workflow_session_reports(ended_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workflow_session_reports_market ON workflow_session_reports(market, ended_at DESC)"
+    )
+    applied.append("workflow_session_reports")
+    return applied
+
+
 def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str]]:
     close = False
     if conn is None:
@@ -491,6 +520,7 @@ def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str
         papers_v2 = migrate_papers_v2(conn)
         host_cap = migrate_host_capability_v1(conn)
         neuratrade_v2 = migrate_neuratrade_v2(conn)
+        workflow_reports = migrate_workflow_reports_v1(conn)
         conn.commit()
         return {
             "news_v2": news,
@@ -505,6 +535,7 @@ def run_migrations(conn: sqlite3.Connection | None = None) -> dict[str, list[str
             "papers_v2": papers_v2,
             "host_capability_v1": host_cap,
             "neuratrade_v2": neuratrade_v2,
+            "workflow_reports_v1": workflow_reports,
         }
     finally:
         if close:

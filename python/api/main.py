@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Body, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -20,22 +20,28 @@ from operator_auth import (
     operator_password_configured,
     verify_operator_auth,
 )
-from binance_client import get_account_balances, get_open_orders, place_market_order
+from binance_client import get_account_balances, get_open_orders
+from binance_trading import get_open_position, get_trading_equity, place_market_order
+from crypto_product import get_crypto_trading_product
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot, post_dca_order
 from testing_service import get_testing_overview, get_tinvest_sandbox_dashboard
 from automation_control_service import (
     apply_market_operation_mode,
     apply_operation_mode,
     apply_trading_mode,
+    add_market_workflow,
     clear_market_mode,
     clear_trading_mode,
     get_active_market_workflow,
     get_automation_control_state,
     get_market_control_state,
     get_market_diagnostics,
+    is_multi_automation_enabled,
     normalize_trading_mode,
     operation_mode_detail,
     run_workflow_once,
+    set_multi_automation_enabled,
+    stop_single_market_workflow,
     sync_market_workflows,
     toggle_workflow_by_name,
     select_market_workflow,
@@ -177,6 +183,11 @@ from on_chain.metrics import compute_on_chain_context
 from bond_ladder_service import evaluate_bond_ladder
 from geopolitical_risk import compute_geopolitical_score, geo_adjust_notional
 from host_capability_service import get_last_host_audit, run_host_capability_audit
+from workflow_report_service import (
+    finalize_workflow_session,
+    get_workflow_report,
+    list_workflow_reports,
+)
 from trading_agents.orchestrator import run_trading_agents
 from charts_service import get_chart_candles, get_chart_indicators, get_chart_markers, list_symbols_for_market
 from llm_audit_service import get_llm_decision, list_llm_decisions
@@ -218,26 +229,27 @@ async def lifespan(_: FastAPI):
     except Exception as exc:
         log_system_activity(f"News bootstrap: {exc}", category="news", level="warn")
     try:
-        from automation_control_service import sync_market_workflows
+        from automation_control_service import reset_workflows_on_boot
 
         for market in ("crypto", "securities"):
-            result = sync_market_workflows(market)
-            activated = [w["name"] for w in result.get("workflows", []) if w.get("action") == "activated"]
-            if activated:
+            result = reset_workflows_on_boot(market)
+            deactivated = [
+                w["name"] for w in result.get("workflows", []) if w.get("action") == "deactivated"
+            ]
+            if deactivated:
                 log_system_activity(
-                    f"Синхронизация n8n ({market}): включены {', '.join(activated)}",
+                    f"Старт: выключены workflow ({market}): {', '.join(deactivated)}",
                     category="control",
                     level="info",
                 )
-            missing = result.get("missing") or []
-            if missing:
+            if result.get("status") == "error":
                 log_system_activity(
-                    f"n8n: не найдены workflow {missing} — импортируйте JSON",
+                    f"Сброс workflow при старте ({market}): {result.get('message')}",
                     category="control",
                     level="warn",
                 )
     except Exception as exc:
-        log_system_activity(f"Workflow sync при старте: {exc}", category="control", level="warn")
+        log_system_activity(f"Сброс workflow при старте: {exc}", category="control", level="warn")
     try:
         from ollama_manager_service import bootstrap_ollama_models_background
 
@@ -325,6 +337,8 @@ class BinanceOrderRequest(BaseModel):
     testnet: bool = True
     request_id: str | None = None
     env: Literal["paper", "live"] = "paper"
+    reduce_only: bool = False
+    product: Literal["auto", "spot", "usdt_futures"] = "auto"
 
 
 class SecuritiesSwingRequest(BaseModel):
@@ -513,6 +527,65 @@ class WorkflowUniverseLlmRequest(BaseModel):
 class WorkflowSelectRequest(BaseModel):
     workflow_name: str
     trading_mode: Literal["dry_run", "paper", "live"] | None = None
+    session_volume_mode: Literal["stablecoin", "existing_holdings"] | None = None
+    session_capital: float | None = Field(None, gt=0, le=100_000_000)
+    use_existing_holdings: bool = False
+    existing_holdings_unit: Literal["percent", "absolute"] = "percent"
+    existing_holdings_use_pct: float = Field(0, ge=0, le=100)
+    existing_holdings_use_qty: float | None = Field(None, gt=0)
+    liquidate_on_stop: bool = False
+    liquidate_on_margin_call: bool | None = None
+    additive: bool = False
+    operator: str = "web:operator"
+
+
+class MultiAutomationRequest(BaseModel):
+    enabled: bool
+    operator: str = "web:operator"
+
+
+class WorkflowStopOneRequest(BaseModel):
+    workflow_name: str
+    operator: str = "web:operator"
+
+
+class CryptoQuoteAssetRequest(BaseModel):
+    quote_asset: str
+    operator: str = "web:operator"
+
+
+class CryptoTradingProductRequest(BaseModel):
+    market_type: Literal["spot", "usdt_futures"]
+    allow_short: bool = False
+    leverage: int = Field(3, ge=1, le=20)
+    margin_mode: Literal["isolated", "cross"] = "isolated"
+    operator: str = "web:operator"
+
+
+class ScalpScanSettingsPatch(BaseModel):
+    top_n: int | None = Field(None, ge=1, le=10)
+    min_score: float | None = Field(None, ge=0.1, le=0.95)
+    atr_pct_min: float | None = Field(None, ge=0.2, le=1.5)
+    atr_pct_max: float | None = Field(None, ge=0.5, le=5.0)
+    atr_pct_sweet_min: float | None = Field(None, ge=0.2, le=2.0)
+    atr_pct_sweet_max: float | None = Field(None, ge=0.3, le=3.0)
+    volume_ratio_min: float | None = Field(None, ge=0.5, le=3.0)
+    momentum_min_pct: float | None = Field(None, ge=0.02, le=1.0)
+    max_pair_correlation: float | None = Field(None, ge=0.5, le=0.99)
+    rescan_interval_hours: int | None = Field(None, ge=1, le=24)
+    rescan_during_session: bool | None = None
+    operator: str = "web:operator"
+
+
+class ScalpScanRunRequest(BaseModel):
+    workflow_name: str = "crypto-scalp-hybrid-paper"
+    settings: ScalpScanSettingsPatch | None = None
+
+
+class ScalpScanApplyRequest(BaseModel):
+    workflow_name: str = "crypto-scalp-hybrid-paper"
+    symbols: list[str]
+    scan_id: str | None = None
     operator: str = "web:operator"
 
 
@@ -897,13 +970,81 @@ def strategy_risk_profile_reset(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/crypto/workflow-settings")
+def crypto_workflow_settings_get() -> dict[str, Any]:
+    from crypto_workflow_settings_service import get_crypto_workflow_settings
+
+    return {"status": "ok", **get_crypto_workflow_settings()}
+
+
+@app.post("/api/crypto/workflow-settings/quote-asset")
+def crypto_workflow_settings_set_quote(
+    body: CryptoQuoteAssetRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_workflow_settings_service import set_crypto_quote_asset
+
+    try:
+        return set_crypto_quote_asset(body.quote_asset, operator=body.operator)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crypto/workflow-settings/quote-asset/reset")
+def crypto_workflow_settings_reset_quote(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_workflow_settings_service import reset_crypto_quote_asset
+
+    return reset_crypto_quote_asset(operator="web:operator")
+
+
+@app.post("/api/crypto/workflow-settings/trading-product")
+def crypto_workflow_settings_set_trading_product(
+    body: CryptoTradingProductRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_workflow_settings_service import set_crypto_trading_product
+
+    try:
+        return set_crypto_trading_product(
+            market_type=body.market_type,
+            allow_short=body.allow_short,
+            leverage=body.leverage,
+            margin_mode=body.margin_mode,
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crypto/workflow-settings/trading-product/reset")
+def crypto_workflow_settings_reset_trading_product(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_workflow_settings_service import reset_crypto_trading_product
+
+    return reset_crypto_trading_product(operator="web:operator")
+
+
 # --- Crypto pipeline (этап 2) ---
 
 @app.post("/api/crypto/signal")
 def crypto_signal(body: CryptoSignalRequest) -> dict[str, Any]:
+    from workflow_session_config_service import resolve_workflow_equity
+
+    effective_equity = resolve_workflow_equity("crypto", default=body.equity)
     return run_crypto_signal(
         symbol=body.symbol, env=body.env,
-        skip_llm=body.skip_llm, equity=body.equity,
+        skip_llm=body.skip_llm, equity=effective_equity,
     )
 
 
@@ -920,13 +1061,138 @@ def crypto_scalp_signal(
         if env == "dry_run"
         else str(scalp_cfg.get("paper", {}).get("workflow_name", "crypto-scalp-hybrid-paper"))
     )
+    from crypto_scalp_pipeline import _scalp_llm_enabled
+    from workflow_session_config_service import resolve_workflow_equity
+
+    effective_equity = resolve_workflow_equity("crypto", default=equity)
     return run_crypto_scalp_signal(
         symbol=symbol,
         env=env,
         workflow_name=wf,
-        skip_llm=skip_llm,
-        equity=equity,
+        skip_llm=skip_llm or not _scalp_llm_enabled(scalp_cfg),
+        equity=effective_equity,
     )
+
+
+@app.get("/api/crypto/scalp/universe-scan/candidates")
+def crypto_scalp_universe_scan_candidates(testnet: bool = True) -> dict[str, Any]:
+    from crypto_scalp_universe_scan import get_scan_candidate_info
+
+    return {"status": "ok", **get_scan_candidate_info(testnet=testnet)}
+
+
+@app.get("/api/crypto/scalp/universe-scan/progress")
+def crypto_scalp_universe_scan_progress() -> dict[str, Any]:
+    from crypto_scalp_universe_scan import get_scalp_scan_progress
+
+    return {"status": "ok", **get_scalp_scan_progress()}
+
+
+@app.get("/api/crypto/scalp/universe-scan/settings")
+def crypto_scalp_scan_settings_get() -> dict[str, Any]:
+    from crypto_scalp_scan_settings_service import get_effective_scan_settings
+
+    return {"status": "ok", **get_effective_scan_settings()}
+
+
+@app.post("/api/crypto/scalp/universe-scan/settings")
+def crypto_scalp_scan_settings_set(
+    body: ScalpScanSettingsPatch,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_scalp_scan_settings_service import set_scan_settings
+
+    patch = body.model_dump(exclude={"operator"}, exclude_none=True)
+    try:
+        return {"status": "ok", **set_scan_settings(patch, operator=body.operator)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crypto/scalp/universe-scan/settings/reset")
+def crypto_scalp_scan_settings_reset(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_scalp_scan_settings_service import reset_scan_settings
+
+    return {"status": "ok", **reset_scan_settings(operator="web:operator")}
+
+
+@app.get("/api/crypto/scalp/universe-scan")
+def crypto_scalp_universe_scan_preview(
+    workflow_name: str = "crypto-scalp-hybrid-paper",
+    apply: bool = False,
+    top_n: int | None = None,
+) -> dict[str, Any]:
+    from crypto_scalp_universe_scan import (
+        apply_scalp_universe_scan,
+        get_last_scan,
+        scan_scalp_universe,
+    )
+
+    scan = scan_scalp_universe(workflow_name, top_n=top_n, testnet=True)
+    if apply and scan.get("status") == "ok" and scan.get("selected_symbols"):
+        applied = apply_scalp_universe_scan(workflow_name, scan, operator="api")
+        return {**scan, "apply": applied}
+    last = get_last_scan(workflow_name)
+    if last:
+        scan["last_saved"] = last
+    return scan
+
+
+@app.post("/api/crypto/scalp/universe-scan/run")
+def crypto_scalp_universe_scan_run(body: ScalpScanRunRequest) -> dict[str, Any]:
+    from crypto_scalp_universe_scan import scan_scalp_universe
+
+    overrides = None
+    if body.settings:
+        overrides = body.settings.model_dump(exclude={"operator"}, exclude_none=True)
+    return scan_scalp_universe(
+        body.workflow_name.strip(),
+        testnet=True,
+        config_overrides=overrides,
+    )
+
+
+@app.post("/api/crypto/scalp/universe-scan/apply")
+def crypto_scalp_universe_scan_apply(
+    body: ScalpScanApplyRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_scalp_universe_scan import apply_user_selected_symbols, get_last_scan
+
+    wf = body.workflow_name.strip()
+    last = get_last_scan(wf)
+    try:
+        return apply_user_selected_symbols(
+            wf,
+            body.symbols,
+            scan_result=last,
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/crypto/scalp/universe-scan/last")
+def crypto_scalp_universe_scan_last(workflow_name: str = "crypto-scalp-hybrid-paper") -> dict[str, Any]:
+    from crypto_scalp_universe_scan import get_last_scan
+    from runtime_settings import get_runtime_meta
+
+    key = f"crypto_scalp_last_scan:{workflow_name.strip()}"
+    last = get_last_scan(workflow_name)
+    meta = get_runtime_meta(key)
+    return {
+        "status": "ok",
+        "last_scan": last,
+        "updated_at": meta.get("updated_at") if meta else None,
+    }
 
 
 @app.get("/api/crypto/pairs")
@@ -981,20 +1247,42 @@ def binance_order(body: BinanceOrderRequest) -> dict[str, Any]:
     guardrails = get_guardrails()
     if guardrails.get("trading", {}).get("kill_switch"):
         return {"status": "halted", "reject_reason": "kill_switch_active"}
+    try:
+        from futures_margin_monitor import ensure_futures_margin_ok
+
+        margin_block = ensure_futures_margin_ok(testnet=body.testnet)
+        if margin_block:
+            return {"status": "halted", **margin_block}
+    except Exception:
+        pass
     if body.env == "live" and guardrails.get("trading", {}).get("live_requires_manual_flag"):
         live_flag = os.environ.get("LIVE_TRADING_ENABLED", "false").lower() == "true"
         if not live_flag:
             return {"status": "blocked", "reject_reason": "live_requires_manual_flag"}
 
     rid = body.request_id or str(uuid.uuid4())
+    crypto_cfg = get_config_effective("crypto_config")
+    if body.product != "auto":
+        crypto_cfg = {
+            **crypto_cfg,
+            "trading_product": {
+                **(crypto_cfg.get("trading_product") or {}),
+                "market_type": body.product if body.product != "auto" else "spot",
+            },
+        }
     result = place_market_order(
-        symbol=body.symbol, side=body.side, quantity=body.quantity,
-        testnet=body.testnet, request_id=rid,
+        symbol=body.symbol,
+        side=body.side,
+        quantity=body.quantity,
+        testnet=body.testnet,
+        request_id=rid,
+        reduce_only=body.reduce_only,
+        cfg=crypto_cfg,
     )
     log_event(
         market="crypto", env="paper" if body.testnet else "live",
         stage="order", symbol=body.symbol,
-        decision="submitted" if result.get("orderId") and result.get("http_status") == 200 else "error",
+        decision="execute" if result.get("orderId") and result.get("http_status") == 200 else "error",
         request_id=rid, payload=result,
         workflow_name="crypto-execute-testnet",
     )
@@ -1008,7 +1296,19 @@ def binance_open_orders(symbol: str | None = None, testnet: bool = True) -> list
 
 @app.get("/api/binance/balances")
 def binance_balances(testnet: bool = True, top: int = 12) -> dict[str, Any]:
-    """Wallet summary — non-zero balances, numeric amounts (not raw Binance array)."""
+    """Wallet summary — spot balances or futures USDT margin when configured."""
+    crypto_cfg = get_config_effective("crypto_config")
+    product = get_crypto_trading_product(cfg=crypto_cfg)
+    if product.get("is_futures"):
+        usdt = get_trading_equity(testnet=testnet, cfg=crypto_cfg)
+        return {
+            "status": "ok",
+            "testnet": testnet,
+            "product": product.get("market_type"),
+            "usdt_balance": usdt,
+            "balances": [{"asset": "USDT", "free": usdt, "locked": 0.0}],
+        }
+
     raw = get_account_balances(testnet=testnet)
     if not raw:
         return {
@@ -1042,6 +1342,59 @@ def binance_balances(testnet: bool = True, top: int = 12) -> dict[str, Any]:
         "balances": parsed[:limit],
         "total_assets": len(parsed),
     }
+
+
+@app.get("/api/crypto/trading-product")
+def crypto_trading_product() -> dict[str, Any]:
+    """Effective spot vs USDT-M futures settings from crypto_config."""
+    crypto_cfg = get_config_effective("crypto_config")
+    product = get_crypto_trading_product(cfg=crypto_cfg)
+    return {"status": "ok", **product}
+
+
+@app.get("/api/binance/futures/positions")
+def binance_futures_positions(
+    symbol: str | None = None,
+    testnet: bool = True,
+) -> dict[str, Any]:
+    """Open USDT-M futures positions (requires futures API keys)."""
+    from binance_futures_client import get_futures_positions
+
+    rows = get_futures_positions(testnet=testnet, symbol=symbol)
+    return {"status": "ok", "testnet": testnet, "positions": rows, "count": len(rows)}
+
+
+@app.post("/api/crypto/futures/margin-scan")
+def crypto_futures_margin_scan(
+    auto_stop: bool = True,
+    testnet: bool | None = None,
+) -> dict[str, Any]:
+    """Detect futures liquidations / critical margin; stop crypto automation on margin call."""
+    from futures_margin_monitor import scan_futures_margin_risk
+
+    return scan_futures_margin_risk(testnet=testnet, auto_stop=auto_stop)
+
+
+@app.get("/api/crypto/futures/margin-halt")
+def crypto_futures_margin_halt_status() -> dict[str, Any]:
+    from futures_margin_monitor import get_futures_margin_halt, is_futures_margin_halt_active
+
+    return {
+        "status": "ok",
+        "active": is_futures_margin_halt_active(),
+        "halt": get_futures_margin_halt(),
+    }
+
+
+@app.post("/api/crypto/futures/margin-halt/reset")
+def crypto_futures_margin_halt_reset(
+    x_operator_password: str | None = Header(default=None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(default=None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from futures_margin_monitor import clear_futures_margin_halt
+
+    return clear_futures_margin_halt(operator="web:operator")
 
 
 # --- Securities (этапы 5, 7) ---
@@ -1796,6 +2149,49 @@ def daily_report() -> dict[str, Any]:
     return {"path": str(path), "funnel": funnel, "metrics": metrics}
 
 
+@app.get("/api/workflow/reports")
+def workflow_reports_list(market: str | None = None, limit: int = 20) -> dict[str, Any]:
+    items = list_workflow_reports(market=market, limit=limit)
+    return {"items": items, "count": len(items)}
+
+
+@app.get("/api/workflow/reports/{report_id}")
+def workflow_report_get(report_id: str) -> dict[str, Any]:
+    row = get_workflow_report(report_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="report_not_found")
+    return row
+
+
+@app.post("/api/workflow/reports/finalize")
+def workflow_report_finalize(
+    market: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    """Manual finalize (testing) — normally called automatically on workflow stop."""
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    from automation_control_service import get_market_control_state
+
+    ctrl = get_market_control_state(market)
+    started_at = ctrl.get("workflow_started_at")
+    workflow_name = ctrl.get("active_workflow")
+    if not started_at or not workflow_name:
+        raise HTTPException(status_code=400, detail="no_active_workflow_session")
+    result = finalize_workflow_session(
+        market,
+        started_at=started_at,
+        workflow_name=workflow_name,
+        reason="manual",
+        operator="web:operator",
+    )
+    if not result:
+        raise HTTPException(status_code=500, detail="finalize_failed")
+    return result
+
+
 # --- Live checklist (этап 8) ---
 
 @app.get("/api/live/checklist")
@@ -2016,6 +2412,22 @@ def automation_control_market(market: str) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post("/api/automation/control/{market}/multi-automation")
+def automation_multi_automation(
+    market: str,
+    body: MultiAutomationRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    if market not in ("crypto", "securities"):
+        raise HTTPException(status_code=404, detail="unknown market")
+    try:
+        return set_multi_automation_enabled(market, body.enabled, operator=body.operator)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/api/n8n/workflows/import")
 def n8n_import_workflows(
     market: str = "all",
@@ -2060,10 +2472,22 @@ def n8n_select_workflow(
     if market not in ("crypto", "securities"):
         raise HTTPException(status_code=404, detail="unknown market")
     try:
-        return start_market_workflow(
+        margin_call = body.liquidate_on_margin_call
+        if margin_call is None and body.liquidate_on_stop:
+            margin_call = True
+        runner = add_market_workflow if body.additive else start_market_workflow
+        return runner(
             market,
             body.workflow_name.strip(),
             trading_mode=body.trading_mode,
+            session_capital=body.session_capital,
+            session_volume_mode=body.session_volume_mode,
+            use_existing_holdings=body.use_existing_holdings,
+            existing_holdings_unit=body.existing_holdings_unit,
+            existing_holdings_use_pct=body.existing_holdings_use_pct,
+            existing_holdings_use_qty=body.existing_holdings_use_qty,
+            liquidate_on_stop=body.liquidate_on_stop,
+            liquidate_on_margin_call=margin_call,
             operator=body.operator,
         )
     except ValueError as exc:
@@ -2075,6 +2499,7 @@ def n8n_select_workflow(
 @app.post("/api/n8n/workflows/stop")
 def n8n_stop_workflows(
     market: str,
+    body: WorkflowStopOneRequest | None = Body(default=None),
     x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> dict[str, Any]:
@@ -2082,6 +2507,12 @@ def n8n_stop_workflows(
     if market not in ("crypto", "securities"):
         raise HTTPException(status_code=404, detail="unknown market")
     try:
+        if body and body.workflow_name.strip():
+            return stop_single_market_workflow(
+                market,
+                body.workflow_name.strip(),
+                operator=body.operator,
+            )
         return stop_market_workflows(market)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -316,6 +316,15 @@ def list_signal_news_feed(
     return feed
 
 
+def _scalp_scan_progress() -> dict[str, Any]:
+    try:
+        from crypto_scalp_universe_scan import get_scalp_scan_progress
+
+        return get_scalp_scan_progress()
+    except Exception:
+        return {"in_progress": False}
+
+
 def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     crypto_cfg = get_config_effective("crypto_config")
     sec_cfg = get_config_effective("securities_config")
@@ -393,6 +402,7 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "funnel_signal": funnel.get("securities", {}).get("signal"),
         },
         "ollama": get_ollama_status(),
+        "scalp_pair_scan": _scalp_scan_progress(),
         "dry_run_signals_7d": digest.get("dry_run_signals", 0),
         "last_event": get_system_status().get("last_event"),
     }

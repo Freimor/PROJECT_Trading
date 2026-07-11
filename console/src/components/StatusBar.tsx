@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { apiPost, formatOperatorFacingError } from "../api";
 import OperatorConfirmModal from "./OperatorConfirmModal";
 import { OllamaStatusMetrics } from "./OllamaStatusMetrics";
+import { ollamaStripClass } from "../utils/ollamaHealth";
 import { WorkflowSessionMetrics } from "./WorkflowSessionMetrics";
 import { useErrorNotifications } from "../context/ErrorNotifications";
 import { useI18n } from "../i18n/LanguageContext";
@@ -106,13 +107,11 @@ export default function StatusBar({ overview, onRefresh }: Props) {
             <div className="control-strip-wf-body">
               <span className="control-strip-wf-title">{t("controlStrip.cryptoWorkflow")}</span>
               <span className="control-strip-wf-mode">{workflowLabel(cryptoState, t)}</span>
-              <span className="control-strip-wf-uptime">
-                {t("controlStrip.uptime")}:{" "}
-                {formatUptime(
-                  overview?.crypto?.workflow_started_at ?? overview?.crypto?.mode_updated_at,
-                  t,
-                )}
-              </span>
+              {cryptoState !== "off" ? (
+                <span className="control-strip-wf-uptime">
+                  {t("controlStrip.uptime")}: {formatUptime(overview?.crypto?.workflow_started_at, t)}
+                </span>
+              ) : null}
             </div>
             {cryptoState !== "off" ? (
               <WorkflowSessionMetrics session={overview?.crypto?.workflow_session} t={t} />
@@ -125,13 +124,11 @@ export default function StatusBar({ overview, onRefresh }: Props) {
             <div className="control-strip-wf-body">
               <span className="control-strip-wf-title">{t("controlStrip.moexWorkflow")}</span>
               <span className="control-strip-wf-mode">{workflowLabel(moexState, t)}</span>
-              <span className="control-strip-wf-uptime">
-                {t("controlStrip.uptime")}:{" "}
-                {formatUptime(
-                  overview?.securities?.workflow_started_at ?? overview?.securities?.mode_updated_at,
-                  t,
-                )}
-              </span>
+              {moexState !== "off" ? (
+                <span className="control-strip-wf-uptime">
+                  {t("controlStrip.uptime")}: {formatUptime(overview?.securities?.workflow_started_at, t)}
+                </span>
+              ) : null}
             </div>
             {moexState !== "off" ? (
               <WorkflowSessionMetrics session={overview?.securities?.workflow_session} t={t} />
@@ -139,8 +136,14 @@ export default function StatusBar({ overview, onRefresh }: Props) {
           </Link>
         </Hint>
 
-        <Hint label={t("controlStrip.ollamaHint")}>
-          <div className={`control-strip-ollama ${ollama?.status === "ok" ? "ok" : "warn"}`}>
+        <Hint
+          label={
+            ollama?.error
+              ? `${t("controlStrip.ollamaHint")} — ${ollama.error}`
+              : t("controlStrip.ollamaHint")
+          }
+        >
+          <div className={`control-strip-ollama ${ollamaStripClass(ollama)}`}>
             <div className="control-strip-wf-body">
               <span className="control-strip-wf-title">Ollama</span>
               <span className="control-strip-wf-mode">{t("controlStrip.ollamaRole")}</span>

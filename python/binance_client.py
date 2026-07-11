@@ -44,6 +44,17 @@ def fetch_klines(
         return resp.json()
 
 
+@lru_cache(maxsize=4)
+def list_spot_exchange_symbols(testnet: bool) -> tuple[dict[str, Any], ...]:
+    """All SPOT symbols from Binance exchangeInfo (cached per env)."""
+    _, _, base = _credentials(testnet)
+    with httpx.Client(timeout=120) as client:
+        resp = client.get(f"{base}/api/v3/exchangeInfo")
+        resp.raise_for_status()
+        rows = resp.json().get("symbols") or []
+    return tuple(dict(r) for r in rows if isinstance(r, dict))
+
+
 def fetch_klines_history(
     symbol: str,
     interval: str = "4h",

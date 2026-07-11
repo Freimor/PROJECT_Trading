@@ -60,6 +60,15 @@ export function WorkflowSessionMetrics({
   if (session.pnl_source === "session_trades") {
     midParts.push(t("controlStrip.sessionPnlTrades"));
   }
+  if (session.session_capital != null && session.session_capital > 0) {
+    const cur = session.currency === "RUB" ? "₽" : session.currency === "USDT" ? "USDT" : "";
+    midParts.push(
+      t("controlStrip.sessionCapital", {
+        amount: Math.round(session.session_capital),
+        currency: cur,
+      }),
+    );
+  }
   if (pct) midParts.push(pct);
   if (ordersOk > 0 || ordersFailed > 0) {
     midParts.push(

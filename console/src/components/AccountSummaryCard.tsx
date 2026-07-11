@@ -7,6 +7,8 @@ import { formatMoexPosition } from "../utils/moex";
 
 export type AccountMetric = {
   currency?: string;
+  fiat_currency?: string;
+  portfolio_total?: boolean;
   current?: number | null;
   status?: string;
   change_pct?: number | null;
@@ -34,10 +36,13 @@ type Props = {
 
 const PERIODS: PerformancePeriod[] = ["all", "1m", "1w", "1d", "2h"];
 
-function fmtValue(value: number | null | undefined, currency: string): string {
+function fmtValue(value: number | null | undefined, currency: string, fiatCurrency?: string): string {
   if (value == null || Number.isNaN(value)) return "—";
-  const suffix = currency === "RUB" ? " ₽" : currency === "USDT" ? " USDT" : ` ${currency}`;
-  return `${value.toLocaleString("ru-RU", { maximumFractionDigits: currency === "RUB" ? 0 : 2 })}${suffix}`;
+  const display = fiatCurrency || currency;
+  const suffix =
+    display === "RUB" ? " ₽" : display === "USD" ? " USD" : display === "USDT" ? " USDT" : ` ${display}`;
+  const digits = display === "RUB" ? 0 : 2;
+  return `${value.toLocaleString("ru-RU", { maximumFractionDigits: digits })}${suffix}`;
 }
 
 function balanceClass(direction?: string): string {
@@ -107,8 +112,11 @@ export default function AccountSummaryCard({
           </div>
           <div className="account-primary">
             <strong className={balanceClass(metric.direction)}>
-              {fmtValue(metric.current, metric.currency ?? "")}
+              {fmtValue(metric.current, metric.currency ?? "", metric.fiat_currency)}
             </strong>
+            {metric.portfolio_total ? (
+              <span className="muted small account-portfolio-hint">{t("overview.portfolioTotal")}</span>
+            ) : null}
             {metric.change_pct != null && (
               <span className={`perf-inline perf-${metric.direction ?? "flat"}`}>
                 {metric.change_pct > 0 ? "+" : ""}

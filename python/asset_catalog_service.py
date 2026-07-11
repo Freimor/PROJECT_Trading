@@ -58,6 +58,11 @@ def _securities_catalog() -> list[str]:
     return sorted(s for s in symbols if s)
 
 
+def crypto_scan_candidates() -> list[str]:
+    """USDT pairs eligible for scalp universe pre-scan."""
+    return _crypto_catalog()
+
+
 def search_assets(market: Market, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
     q = query.strip().upper()
     if not q:

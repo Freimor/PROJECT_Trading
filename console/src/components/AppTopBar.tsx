@@ -1,16 +1,13 @@
-import { Button, ListBox, ListBoxItem, Popover, Select, SelectValue } from "react-aria-components";
-import { useI18n, type Lang } from "../i18n/LanguageContext";
+import { Button } from "react-aria-components";
+import { useI18n } from "../i18n/LanguageContext";
 import Hint from "../ui/Hint";
 
 type Props = {
-  onRefresh: () => void;
   onToggleNav: () => void;
-  onToggleFeed: () => void;
-  feedOpen: boolean;
 };
 
-export default function AppTopBar({ onRefresh, onToggleNav, onToggleFeed, feedOpen }: Props) {
-  const { t, lang, setLang } = useI18n();
+export default function AppTopBar({ onToggleNav }: Props) {
+  const { t } = useI18n();
 
   return (
     <header className="app-topbar">
@@ -25,41 +22,6 @@ export default function AppTopBar({ onRefresh, onToggleNav, onToggleFeed, feedOp
                 strokeLinecap="round"
               />
             </svg>
-          </Button>
-        </Hint>
-      </div>
-
-      <div className="topbar-actions">
-        <Hint label={feedOpen ? t("shell.feedClose") : t("shell.feedOpen")}>
-          <Button
-            className={`topbar-btn ${feedOpen ? "active" : ""}`}
-            onPress={onToggleFeed}
-          >
-            {t("shell.feedToggle")}
-          </Button>
-        </Hint>
-
-        <Select
-          className="lang-picker"
-          aria-label={t("header.language")}
-          selectedKey={lang}
-          onSelectionChange={(key) => setLang(key as Lang)}
-        >
-          <Button className="lang-picker-trigger">
-            <SelectValue />
-            <span aria-hidden>▾</span>
-          </Button>
-          <Popover className="lang-picker-popover">
-            <ListBox>
-              <ListBoxItem id="ru">{t("lang.ru")}</ListBoxItem>
-              <ListBoxItem id="en">{t("lang.en")}</ListBoxItem>
-            </ListBox>
-          </Popover>
-        </Select>
-
-        <Hint label={t("header.refreshHint")}>
-          <Button className="topbar-btn primary" onPress={onRefresh}>
-            {t("header.refresh")}
           </Button>
         </Hint>
       </div>

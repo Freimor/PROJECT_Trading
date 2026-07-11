@@ -1,6 +1,15 @@
 import PortfolioCard from "./PortfolioCard";
+import { useI18n } from "../i18n/LanguageContext";
 
 type FunnelStage = { passed?: number; total?: number };
+
+export type TradingProductBadge = {
+  market_type?: string;
+  is_futures?: boolean;
+  allow_short?: boolean;
+  leverage?: number;
+  margin_mode?: string;
+};
 
 type Props = {
   title: string;
@@ -11,6 +20,7 @@ type Props = {
   llmEval?: { count?: number; approve_rate?: number; avg_latency_ms?: number };
   ollama?: { status?: string; latency_ms?: number };
   connectionWarning?: string;
+  tradingProduct?: TradingProductBadge | null;
 };
 
 function stageLine(label: string, stage?: FunnelStage) {
@@ -26,6 +36,24 @@ function stageLine(label: string, stage?: FunnelStage) {
   );
 }
 
+function TradingProductPill({ product }: { product: TradingProductBadge }) {
+  const { t } = useI18n();
+  const isFutures = Boolean(product.is_futures);
+  const parts: string[] = [
+    isFutures ? t("strategySubsettings.productFutures") : t("strategySubsettings.productSpot"),
+  ];
+  if (isFutures) {
+    parts.push(`${product.leverage ?? 1}x`);
+    parts.push(product.margin_mode === "cross" ? "Cross" : "Isolated");
+  }
+  if (product.allow_short) parts.push("Short");
+  return (
+    <span className={`automation-product-pill ${isFutures ? "futures" : "spot"}`}>
+      {parts.join(" · ")}
+    </span>
+  );
+}
+
 export default function AutomationPanel({
   title,
   mode,
@@ -35,6 +63,7 @@ export default function AutomationPanel({
   llmEval,
   ollama,
   connectionWarning,
+  tradingProduct,
 }: Props) {
   const nested = funnel?.funnel as Record<string, FunnelStage> | undefined;
   const stages = nested ?? funnel;
@@ -43,8 +72,10 @@ export default function AutomationPanel({
     <PortfolioCard
       title={title}
       subtitle={[env, mode].filter(Boolean).join(" · ") || undefined}
-      titleExtra={connectionWarning ? <span className="status-warn">⚠</span> : undefined}
+      headBadge={tradingProduct ? <TradingProductPill product={tradingProduct} /> : undefined}
+      collapsible={false}
     >
+      {connectionWarning ? <p className="warn small">{connectionWarning}</p> : null}
       {workflow && (
         <div className="metric-row compact muted">
           <span className="small">n8n</span>

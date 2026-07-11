@@ -16,6 +16,18 @@
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "http://db-api:8000/api/crypto/futures/margin-scan?auto_stop=true&testnet=true",
+        "options": {}
+      },
+      "id": "c4020001-0001-4000-8000-000000000010",
+      "name": "Futures Margin Scan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
         "url": "http://db-api:8000/api/binance/open-orders?testnet=true",
         "options": {}
       },
@@ -23,7 +35,7 @@
       "name": "Open Orders",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [240, 300]
+      "position": [480, 300]
     },
     {
       "parameters": {
@@ -34,17 +46,17 @@
       "name": "Balances",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 300]
+      "position": [720, 300]
     },
     {
       "parameters": {
-        "jsCode": "const orders = $('Open Orders').first().json;\nconst balances = $('Balances').first().json;\nconst openCount = Array.isArray(orders) ? orders.length : 0;\nconst alert = openCount > 2 ? 'WARN: many open orders' : 'ok';\nreturn [{ json: { open_orders: openCount, alert, balances_sample: Array.isArray(balances) ? balances.slice(0,5) : [] } }];"
+        "jsCode": "const margin = $('Futures Margin Scan').first().json;\nconst orders = $('Open Orders').first().json;\nconst balances = $('Balances').first().json;\nconst openCount = Array.isArray(orders) ? orders.length : 0;\nconst marginAlert = margin?.status === 'halted' ? 'HALT: futures margin call' : 'ok';\nconst alert = openCount > 2 ? 'WARN: many open orders' : marginAlert;\nreturn [{ json: { margin_scan: margin, open_orders: openCount, alert, balances_sample: Array.isArray(balances) ? balances.slice(0,5) : [] } }];"
       },
       "id": "c4020001-0001-4000-8000-000000000004",
       "name": "Summarize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 300]
+      "position": [960, 300]
     },
     {
       "parameters": {
@@ -52,18 +64,19 @@
         "url": "http://db-api:8000/api/events",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { market: 'crypto', env: 'paper', stage: 'reconcile', decision: 'approve', workflow_name: 'crypto-monitor-testnet', payload: $json } }}",
+        "jsonBody": "={{ { market: 'crypto', env: 'paper', stage: 'reconcile', decision: $json.alert.startsWith('HALT') ? 'halt' : 'approve', reject_reason: $json.alert.startsWith('HALT') ? 'futures_margin_call' : null, workflow_name: 'crypto-monitor-testnet', payload: $json } }}",
         "options": {}
       },
       "id": "c4020001-0001-4000-8000-000000000005",
       "name": "Log Reconcile",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [960, 300]
+      "position": [1200, 300]
     }
   ],
   "connections": {
-    "Every 15 minutes": { "main": [[{ "node": "Open Orders", "type": "main", "index": 0 }]] },
+    "Every 15 minutes": { "main": [[{ "node": "Futures Margin Scan", "type": "main", "index": 0 }]] },
+    "Futures Margin Scan": { "main": [[{ "node": "Open Orders", "type": "main", "index": 0 }]] },
     "Open Orders": { "main": [[{ "node": "Balances", "type": "main", "index": 0 }]] },
     "Balances": { "main": [[{ "node": "Summarize", "type": "main", "index": 0 }]] },
     "Summarize": { "main": [[{ "node": "Log Reconcile", "type": "main", "index": 0 }]] }

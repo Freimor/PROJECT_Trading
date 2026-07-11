@@ -14,6 +14,7 @@ import PriceChartWithMarkers from "../components/PriceChartWithMarkers";
 import { POLL } from "../config/polling";
 import { useI18n } from "../i18n/LanguageContext";
 import type { AdminLayoutContext } from "../layouts/AdminLayout";
+import { useAutoChartLayout } from "../hooks/useAutoChartLayout";
 import { usePolling } from "../hooks/usePolling";
 import { formatMoexPosition } from "../utils/moex";
 import type { Candle, ChartIndicators, ChartMarker, StrategyState } from "../types";
@@ -27,6 +28,7 @@ const INTERVALS = ["1h", "4h", "1d"];
 export default function MoexWorkspacePage() {
   const { t } = useI18n();
   const { overview } = useOutletContext<AdminLayoutContext>();
+  const chartAreaRef = useRef<HTMLDivElement>(null);
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [symbol, setSymbol] = useState("SBER");
   const [interval, setInterval] = useState("1d");
@@ -144,6 +146,8 @@ export default function MoexWorkspacePage() {
   const strategyLabel = strategy?.strategy?.id
     ? t(`strategies.${strategy.strategy.id}.label` as "strategies.swing_signals.label")
     : "";
+  const panelCount = strategy?.strategy?.chart_overlays?.panels?.length ?? 0;
+  const { chartHeight, panelHeight, needsScroll } = useAutoChartLayout(chartAreaRef, panelCount);
 
   return (
     <div className="page workspace">
@@ -193,19 +197,29 @@ export default function MoexWorkspacePage() {
               <ChartMarkerMenu filters={markerFilters} onChange={setMarkerFilters} />
             </div>
             {candleData?.candles?.length ? (
-              <PriceChartWithMarkers
-                candles={candleData.candles}
-                markers={filteredMarkers}
-                symbol={symbol}
-                interval={chartInterval}
-                overlays={strategy?.strategy?.chart_overlays}
-                indicators={
-                  indicatorData?.series
-                    ? { series: indicatorData.series, levels: indicatorData.levels ?? {} }
-                    : undefined
-                }
-                onMarkerClick={setSelected}
-              />
+              <div
+                ref={chartAreaRef}
+                className={`workspace-chart-slot${needsScroll ? " workspace-chart-slot--scroll" : ""}`}
+              >
+                <div className="workspace-chart-area">
+                  <PriceChartWithMarkers
+                    key={`${symbol}-${chartInterval}-${chartHeight}-${panelHeight}-${panelCount}`}
+                    candles={candleData.candles}
+                    markers={filteredMarkers}
+                    symbol={symbol}
+                    interval={chartInterval}
+                    height={chartHeight}
+                    panelHeight={panelHeight}
+                    overlays={strategy?.strategy?.chart_overlays}
+                    indicators={
+                      indicatorData?.series
+                        ? { series: indicatorData.series, levels: indicatorData.levels ?? {} }
+                        : undefined
+                    }
+                    onMarkerClick={setSelected}
+                  />
+                </div>
+              </div>
             ) : (
               !candlesLoading && <p className="muted">{t("workspace.noQuotes")}</p>
             )}

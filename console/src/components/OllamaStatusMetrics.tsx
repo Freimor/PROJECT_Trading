@@ -1,4 +1,5 @@
 import type { OllamaStatus } from "../types";
+import { isOllamaHealthy } from "../utils/ollamaHealth";
 
 type TFn = (k: string, vars?: Record<string, string | number>) => string;
 
@@ -9,16 +10,18 @@ function formatLatency(ms: number | null | undefined): string | null {
   return `${Math.round(ms)}ms`;
 }
 
-function statusLabel(status: string | undefined, t: TFn): string {
-  if (status === "ok") return t("controlStrip.ollamaOnline");
-  if (status === "critical" || status === "error") return t("controlStrip.ollamaOffline");
-  return status ?? "—";
+function statusLabel(ollama: OllamaStatus, t: TFn): string {
+  if (isOllamaHealthy(ollama)) return t("controlStrip.ollamaOnline");
+  if (ollama.status === "critical" || ollama.status === "error" || ollama.error) {
+    return t("controlStrip.ollamaOffline");
+  }
+  return ollama.status ?? "—";
 }
 
 export function OllamaStatusMetrics({ ollama, t }: { ollama?: OllamaStatus | null; t: TFn }) {
   if (!ollama) return null;
 
-  const online = ollama.status === "ok";
+  const online = isOllamaHealthy(ollama);
   const ping = formatLatency(ollama.ping_ms ?? ollama.latency_ms);
   const avg = formatLatency(ollama.avg_latency_ms);
   const calls = ollama.llm_calls ?? 0;
@@ -53,7 +56,7 @@ export function OllamaStatusMetrics({ ollama, t }: { ollama?: OllamaStatus | nul
   return (
     <div className="control-strip-wf-metrics control-strip-ollama-metrics" aria-label={t("controlStrip.ollamaMetrics")}>
       <div className={`control-strip-wf-pnl-primary ${online ? "pnl-up" : "pnl-down"}`}>
-        {statusLabel(ollama.status, t)}
+        {statusLabel(ollama, t)}
         {ping ? ` · ${t("controlStrip.ollamaPing", { v: ping })}` : ""}
       </div>
       <div className="control-strip-wf-pnl-sub">{midParts.length ? midParts.join(" · ") : "—"}</div>

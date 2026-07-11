@@ -54,15 +54,13 @@ export default function AdminLayout() {
         <AppSidebar
           mobileOpen={mobileNavOpen}
           onCloseMobile={() => setMobileNavOpen(false)}
+          onRefresh={refresh}
+          onToggleFeed={toggleFeed}
+          feedOpen={feedOpen}
         />
 
         <div className="app-main-column">
-          <AppTopBar
-            onRefresh={refresh}
-            onToggleNav={() => setMobileNavOpen((v) => !v)}
-            onToggleFeed={toggleFeed}
-            feedOpen={feedOpen}
-          />
+          <AppTopBar onToggleNav={() => setMobileNavOpen((v) => !v)} />
 
           <ErrorBanner />
           <StatusBar overview={overview} onRefresh={refresh} />

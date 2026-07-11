@@ -19,6 +19,7 @@ _WORKFLOW_LABELS = {
     "crypto-signal-dry-run": "Крипто: сигналы (без сделок)",
     "crypto-signal-paper": "Крипто: автоторговля (демо)",
     "crypto-monitor-testnet": "Крипто: мониторинг демо-счёта",
+    "futures-margin-monitor": "Крипто: мониторинг margin call (futures)",
     "crypto-paper-auto": "Крипто: автоторговля (демо)",
     "crypto-scalp-auto": "Крипто: scalp hybrid (paper)",
     "crypto-scalp-hybrid-paper": "Крипто: scalp hybrid (paper)",

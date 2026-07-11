@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiGet, apiPost, formatOperatorFacingError } from "../api";
+import ScalpPairPickerPanel from "./ScalpPairPickerPanel";
 import { POLL } from "../config/polling";
 import { usePolling } from "../hooks/usePolling";
 import { useI18n } from "../i18n/LanguageContext";
@@ -93,6 +94,7 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
   );
 
   const locked = state?.can_change === false;
+  const isScalp = workflow.toLowerCase().includes("scalp");
 
   const blockHint =
     locked && state?.change_blocked_reason === "workflow_active"
@@ -272,6 +274,13 @@ export default function WorkflowUniversePanel({ workflow, market, onChange, comp
           </li>
         ))}
       </ul>
+
+      {isScalp ? (
+        <details className="universe-scalp-picker-details" open>
+          <summary className="muted small">{t("universe.scalpPickerTitle")}</summary>
+          <ScalpPairPickerPanel workflow={workflow} locked={locked} onApplied={() => void load()} />
+        </details>
+      ) : null}
 
       <div className="workflow-universe-llm">
         <details className="universe-llm-details" open={!compact}>

@@ -20,6 +20,7 @@ type Props = {
   candles: Candle[];
   markers: ChartMarker[];
   height?: number;
+  panelHeight?: number;
   interval?: string;
   symbol?: string;
   overlays?: ChartOverlays;
@@ -38,7 +39,7 @@ type OverlayBox = {
   marker: ChartMarker;
 };
 
-const PANEL_HEIGHT = 96;
+const DEFAULT_PANEL_HEIGHT = 96;
 
 const OVERLAY_COLORS: Record<string, string> = {
   ema50: "#f0a030",
@@ -238,6 +239,7 @@ export default function PriceChartWithMarkers({
   candles,
   markers,
   height = 420,
+  panelHeight = DEFAULT_PANEL_HEIGHT,
   interval,
   symbol,
   overlays,
@@ -364,7 +366,7 @@ export default function PriceChartWithMarkers({
       const el = panelContainerRefs.current[i];
       if (!el) continue;
       const panelChart = createChart(el, {
-        ...chartBaseOptions(PANEL_HEIGHT, interval),
+        ...chartBaseOptions(panelHeight, interval),
         timeScale: {
           ...timeScaleOptions(interval),
           visible: i === panels.length - 1,
@@ -434,7 +436,7 @@ export default function PriceChartWithMarkers({
     const onResize = () => {
       for (let i = 0; i < subCharts.length; i++) {
         const el = panelContainerRefs.current[i];
-        if (el) subCharts[i].applyOptions({ width: el.clientWidth });
+        if (el) subCharts[i].applyOptions({ width: el.clientWidth, height: panelHeight });
       }
     };
     onResize();
@@ -446,7 +448,7 @@ export default function PriceChartWithMarkers({
       for (const chart of subCharts) chart.remove();
       panelChartsRef.current = [];
     };
-  }, [panels, indicators, interval]);
+  }, [panels, indicators, interval, panelHeight]);
 
   useEffect(() => {
     fitKeyRef.current = "";
@@ -532,7 +534,7 @@ export default function PriceChartWithMarkers({
           ))}
         </div>
       ) : null}
-      <div ref={mainContainerRef} className="price-chart" />
+      <div ref={mainContainerRef} className="price-chart" style={{ height }} />
       {panels.map((panel, index) => (
         <div key={panel.id} className="chart-indicator-panel">
           <span className="chart-panel-label">{panel.id.toUpperCase()}</span>
@@ -541,6 +543,7 @@ export default function PriceChartWithMarkers({
               panelContainerRefs.current[index] = el;
             }}
             className="price-chart price-chart-panel"
+            style={{ height: panelHeight }}
           />
         </div>
       ))}

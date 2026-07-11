@@ -1,14 +1,15 @@
-"""Crypto scalp hybrid pipeline — 80% script / 20% LLM on 5m."""
+"""Crypto scalp pipeline — 5m rules_engine; optional LLM on borderline setups."""
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any
 
-from binance_client import fetch_klines
+from binance_trading import fetch_market_klines
 from config_loader import load_config
 from crypto_pipeline import _llm_mode, _llm_reject_reason, _synthetic_approve
-from effective_config import get_guardrails
+from crypto_product import get_crypto_trading_product, order_side_for_entry
+from effective_config import get_config_effective, get_guardrails
 from event_log import log_event, log_llm_decision
 from filter_event_details import filter_log_payload
 from guardrails import enforce_guardrails, position_size_dry_run
@@ -17,6 +18,7 @@ from llm_client import validate_signal
 from news_service import news_context_with_signals
 from on_chain.metrics import apply_on_chain_gate
 from retail_guard import check_retail_guard
+from scalp_direction import resolve_scalp_direction
 from signals_engine_service import consume_signals
 from utils import inputs_hash
 
@@ -161,10 +163,18 @@ def scalp_rule_filter(
     }
 
 
+def _scalp_llm_enabled(cfg: dict[str, Any]) -> bool:
+    if cfg.get("llm_enabled") is False:
+        return False
+    return int(cfg.get("llm_sample_pct", 0)) > 0
+
+
 def _llm_sample_selected(symbol: str, bar_ts: int, sample_pct: int) -> bool:
+    if sample_pct <= 0:
+        return False
     digest = hashlib.sha256(f"{symbol}:{bar_ts}".encode()).hexdigest()
     bucket = int(digest[:8], 16) % 100
-    return bucket < max(1, min(sample_pct, 100))
+    return bucket < min(sample_pct, 100)
 
 
 def _hybrid_path(
@@ -173,12 +183,13 @@ def _hybrid_path(
     clear_max: float,
     border_max: float,
     llm_sampled: bool,
+    llm_enabled: bool,
 ) -> str:
     if ambiguity <= clear_max:
         return "script"
     if ambiguity > border_max:
         return "skip"
-    return "llm" if llm_sampled else "script"
+    return "llm" if (llm_enabled and llm_sampled) else "script"
 
 
 def run_crypto_scalp_signal(
@@ -190,7 +201,8 @@ def run_crypto_scalp_signal(
     equity: float = 10000.0,
 ) -> dict[str, Any]:
     cfg = _scalp_cfg()
-    crypto_cfg = load_config("crypto_config")
+    crypto_cfg = get_config_effective("crypto_config")
+    product = get_crypto_trading_product(cfg=crypto_cfg)
     guardrails = get_guardrails()
     llm_mode = _llm_mode()
     testnet = crypto_cfg.get("env") == "testnet" or env == "paper"
@@ -199,9 +211,12 @@ def run_crypto_scalp_signal(
     amb_cfg = cfg.get("ambiguity", {})
     clear_max = float(amb_cfg.get("clear_max", 0.35))
     border_max = float(amb_cfg.get("border_max", 0.72))
-    sample_pct = int(cfg.get("llm_sample_pct", 20))
+    sample_pct = int(cfg.get("llm_sample_pct", 0))
+    llm_on = _scalp_llm_enabled(cfg) and not skip_llm and llm_mode != "disabled"
 
-    raw_klines = fetch_klines(symbol, timeframe, limit=120, testnet=testnet)
+    raw_klines = fetch_market_klines(
+        symbol, timeframe, limit=120, testnet=testnet, cfg=crypto_cfg
+    )
     candles = parse_binance_klines(raw_klines)
     indicators = compute_indicators(candles)
     extras = _compute_scalp_extras(candles, cfg.get("scalp_rules", {}))
@@ -227,26 +242,39 @@ def run_crypto_scalp_signal(
     )
 
     filtered = scalp_rule_filter(merged, extras, cfg)
-    llm_sampled = _llm_sample_selected(symbol, bar_ts, sample_pct)
+    allow_short = bool(product.get("allow_short")) and bool(product.get("is_futures"))
+    direction = resolve_scalp_direction(
+        merged,
+        extras,
+        cfg.get("scalp_rules", {}),
+        allow_short=allow_short,
+        bullish_filter=filtered,
+    )
+    llm_sampled = _llm_sample_selected(symbol, bar_ts, sample_pct) if llm_on else False
     path = _hybrid_path(
         float(filtered.get("ambiguity_score", 1)),
         clear_max=clear_max,
         border_max=border_max,
         llm_sampled=llm_sampled,
+        llm_enabled=llm_on,
     )
 
     filter_payload = filter_log_payload(filtered)
     filter_payload.update(
         {
             "hybrid_path": path,
+            "llm_enabled": llm_on,
             "llm_sample_pct": sample_pct,
             "llm_sampled": llm_sampled,
             "ambiguity_score": filtered.get("ambiguity_score"),
             "timeframe": timeframe,
+            "direction": direction,
+            "allow_short": allow_short,
+            "market_type": product.get("market_type"),
         }
     )
 
-    if not filtered.get("proceed"):
+    if not direction:
         log_event(
             market="crypto",
             env=env,
@@ -292,7 +320,7 @@ def run_crypto_scalp_signal(
     )
 
     retail_cfg = {**crypto_cfg.get("retail_guard", {}), **cfg.get("retail_guard", {})}
-    if retail_cfg.get("enabled", True):
+    if direction == "long" and retail_cfg.get("enabled", True):
         retail = check_retail_guard(indicators=merged, candles=candles)
         if not retail.get("pass"):
             log_event(
@@ -310,7 +338,7 @@ def run_crypto_scalp_signal(
 
     on_chain = apply_on_chain_gate(
         cfg.get("on_chain"),
-        side="BUY",
+        side=order_side_for_entry(direction),
         default_mode="advisory",
     )
     if not on_chain.get("skipped") and not on_chain.get("pass"):
@@ -334,7 +362,7 @@ def run_crypto_scalp_signal(
     fast_model = str(cfg.get("ollama_model_fast", "qwen2.5:3b"))
     llm_result: dict[str, Any]
 
-    if path == "script" or skip_llm or llm_mode == "disabled":
+    if path != "llm" or not llm_on:
         llm_result = {
             **_synthetic_approve(filtered.get("rule_name")),
             "hybrid_path": "script",
@@ -353,6 +381,7 @@ def run_crypto_scalp_signal(
             confidence=1.0,
             payload={
                 "hybrid_path": "script",
+                "llm_enabled": llm_on,
                 "ambiguity_score": filtered.get("ambiguity_score"),
                 "llm_skipped": True,
             },
@@ -446,6 +475,8 @@ def run_crypto_scalp_signal(
         entry_price=merged["close"],
         guardrails=guardrails,
         market="crypto",
+        side=direction,
+        leverage=int(product.get("leverage") or 1),
     )
     sizing["quantity"] = round(float(sizing.get("quantity", 0)) * risk_scale, 8)
     sizing["notional"] = round(float(sizing.get("notional", 0)) * risk_scale, 2)
@@ -491,6 +522,11 @@ def run_crypto_scalp_signal(
         "symbol": symbol,
         "inputs_hash": ih,
         "hybrid_path": llm_result.get("hybrid_path"),
+        "direction": direction,
+        "position_side": direction,
+        "side": sizing.get("order_side"),
+        "market_type": product.get("market_type"),
+        "leverage": product.get("leverage"),
         "sizing": sizing,
         "llm": llm_result,
     }

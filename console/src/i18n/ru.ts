@@ -100,6 +100,7 @@ const ru = {
     lastEvent: "Последнее событие",
     since: "с",
     periodAll: "Всё время",
+    portfolioTotal: "все активы",
     period1m: "1 месяц",
     period1w: "Неделя",
     period1d: "1 день",
@@ -138,6 +139,10 @@ const ru = {
     strategy: "Стратегия",
     noLlm: "без LLM",
     markerMenu: "Метки на графике",
+    chartHeight: "Высота свечей",
+    panelHeight: "Высота RSI/MACD",
+    sideWidth: "Ширина боковой панели",
+    layoutReset: "Сбросить размеры",
     markersLlm: "LLM",
     markersOrders: "Ордера",
     markersNews: "Новости",
@@ -219,22 +224,21 @@ const ru = {
 После стабилизации llm_swing в paper; когда нужно доказать (или опровергнуть) пользу LLM на свежих данных.`,
     },
     crypto_scalp_hybrid: {
-      label: "Scalp hybrid 5m",
+      label: "Scalp 5m (rules)",
       description:
-        "5m скальп: ~80% сделок по скрипту, ~20% пограничных — быстрая LLM (qwen2.5:3b). Только paper/dry_run.",
+        "5m скальп только по правилам: momentum, RSI, volume, MACD. Без Ollama. Только paper/dry_run.",
       detail: `Суть
-Гибридный скальп на 5m: чёткие импульсы (momentum + volume + MACD) исполняются rules_engine без Ollama.
+Скальп на 5m без LLM — все решения через rules_engine (momentum + RSI + volume + MACD + trend).
 
 Маршрутизация (ambiguity_score)
-• ≤ 0.35 — script path (≈80% тиков с сигналом)
-• 0.35–0.72 и попадание в 20% слот — qwen2.5:3b validate-only
+• ≤ 0.72 и ≥2 правил — script path (ордер при paper)
 • > 0.72 — skip (слишком шумно)
 
-Почему не LLM на каждом тике
-На 9B модели ~3 мин/запрос — 5m cron физически не успевает. Быстрая 3B только на сомнительных кейсах.
+LLM
+Отключён (llm_enabled: false в crypto_scalp_hybrid.yaml). Включить после настройки GPU: llm_enabled: true, llm_sample_pct: 20.
 
 Риск
-Позиция 50% от swing (scale_notional_pct). retail_guard ужесточён. Live не включать до метрик paper.
+Позиция 50% от swing. retail_guard ужесточён.
 
 Конфиг: trading_wiki/config/crypto_scalp_hybrid.yaml`,
     },
@@ -390,8 +394,12 @@ Swing на акциях MOEX по дневным свечам. Фильтр по
     uptime: "Работает",
     uptimeHours: "{{h}} ч {{m}} мин",
     uptimeMinutes: "{{m}} мин",
+    scalpScanInProgress: "Идёт скан валютных пар",
+    scalpScanProgress: "Скан пар {{done}}/{{total}}",
+    scalpScanHint: "Подбор пар для scalp — vol/ATR по ликвидным рынкам",
     sessionMetrics: "Показатели сессии автомата",
     sessionPnlTrades: "по сделкам",
+    sessionCapital: "бюджет {{amount}} {{currency}}",
     agoSeconds: "{{s}} с назад",
     agoMinutes: "{{m}} мин назад",
     agoHours: "{{h}} ч назад",
@@ -778,6 +786,77 @@ Swing на акциях MOEX по дневным свечам. Фильтр по
     llmRunsHint: "При запуске workflow LLM обработает каждый включённый актив.",
     blockedWorkflow:
       "Смена котировок заблокирована: работает автомат {{workflow}}. Остановите workflow, затем измените список.",
+    scalpPickerTitle: "Подобрать подходящие валютные пары",
+    scalpPickerHint:
+      "Перед стартом scalp запустите скан и примените выбор. Волатильность оценивается по самой ликвидной паре (USDT/USDC/BTC…), а торговля идёт в выбранном стейблкоине — при «продать активы» всё конвертируется в него.",
+    scalpFeeHint: "Ориентир round-trip комиссий: ~{{fee}}% (мин. ATR% не ниже этого порога).",
+    scalpParamLegend:
+      "Шкала под каждым полем: минимум — максимум; зелёная метка — рекомендуемое значение из конфига; синяя точка — ваше текущее значение.",
+    scalpParamRange: "Допустимо {{min}} … {{max}} · рекомендуем {{rec}}",
+    scalpRecommendedShort: "рек.",
+    scalpScoreCol: "Итог. балл",
+    scalpScoreHint:
+      "Итоговый балл (0–1) — сумма по волатильности ATR, объёму, импульсу цены, RSI и тренду. Чем выше, тем лучше пара для scalp.",
+    scalpMetricAtr: "ATR, %",
+    scalpMetricVol: "Объём, ×",
+    scalpMetricData: "Данные",
+    scalpRunScan: "Запустить скан",
+    scalpRunScanBusy: "Сканирование…",
+    scalpScanInProgress: "Идёт скан",
+    scalpScanProgress: "{{done}}/{{total}}",
+    scalpScanPool: "Скан {{count}} активов из каталога → торговля в {{quote}}",
+    scalpScanPoolCombined:
+      "Скан {{count}} активов (каталог {{catalog}} + биржа {{exchange}}, лимит {{max}}) → торговля {{quote}}",
+    scalpScanPoolDetail:
+      "Vol/ATR берётся с лучшей пары (USDT, USDC, BTC, ETH…). Это не «20 USDT-пар» — кандидаты могут включать все SPOT-базы с биржи.",
+    scalpApplySelection: "Применить выбор ({{count}})",
+    scalpApplyRisk: "Включатся только отмеченные пары; остальные кандидаты скана будут отключены в котировках.",
+    scalpApplyDone: "Применено пар: {{count}}",
+    scalpScanDone: "Скан завершён, строк в таблице: {{count}}",
+    scalpScannedAt: "Последний скан",
+    scalpEligibleCount: "Подходят {{count}} из {{total}}",
+    scalpScore: "Скор",
+    scalpStatus: "Статус",
+    scalpEligible: "Подходит",
+    scalpRescanDuringSession: "Пересканировать во время сессии (по интервалу из конфига)",
+    symbol: "Пара",
+    scalpParam: {
+      top_n: "Сколько пар взять в работу",
+      min_score: "Мин. итоговый балл пары",
+      atr_pct_min: "Мин. волатильность (ATR), %",
+      atr_pct_max: "Макс. волатильность (ATR), %",
+      atr_pct_sweet_min: "Оптимальный ATR, % (нижняя граница)",
+      atr_pct_sweet_max: "Оптимальный ATR, % (верхняя граница)",
+      volume_ratio_min: "Мин. всплеск объёма (× к среднему)",
+      momentum_min_pct: "Мин. импульс цены, %",
+      max_pair_correlation: "Макс. корреляция между парами",
+    },
+    scalpParamDesc: {
+      top_n: "Сколько лучших пар автоматически отметить после скана (можно изменить вручную).",
+      min_score:
+        "Порог итогового балла 0–1. Ниже — пара не попадёт в авто-выбор. Балл складывается из ATR (35%), объёма (25%), импульса (20%), RSI (10%) и тренда (10%).",
+      atr_pct_min:
+        "Средний ход свечи 5m в % от цены. Должен быть выше комиссий (~0,20%), иначе сделка не окупит вход+выход.",
+      atr_pct_max: "Отсечь слишком «рваные» пары с экстремальной волатильностью.",
+      atr_pct_sweet_min: "Начало «комфортной» зоны волатильности для scalp.",
+      atr_pct_sweet_max: "Конец «комфортной» зоны; внутри неё ATR даёт максимальный вклад в балл.",
+      volume_ratio_min: "Текущий объём ÷ средний за 20 свечей. 1,0 = как обычно; 1,5 = всплеск на 50%.",
+      momentum_min_pct: "Изменение цены за последние 3 свечи 5m, %. Фильтр «мертвых» пар без движения.",
+      max_pair_correlation:
+        "0–1: насколько похожи движения пар. Ниже — разнообразнее портфель (меньше все падают/растут вместе).",
+    },
+    scalpReject: {
+      atr_too_low: "ATR ниже порога",
+      atr_too_high: "ATR слишком высокий",
+      volume_too_low: "Низкий объём",
+      insufficient_bars: "Мало свечей",
+      atr_unavailable: "ATR недоступен",
+      volume_low: "Низкий объём",
+      momentum_low: "Слабый momentum",
+      score_low: "Балл ниже порога",
+      rsi_extreme: "RSI в экстремуме",
+      fetch_error: "Ошибка данных",
+    },
   },
   strategySubsettings: {
     title: "Поднастройки стратегии",
@@ -810,8 +889,68 @@ Swing на акциях MOEX по дневным свечам. Фильтр по
     applyRisk: "Применить пресет",
     applyRiskRisk: "Изменятся лимиты риска для автоматических сделок.",
     riskBlockedHalt: "Смена заблокирована: сработал дневной лимит убытка (halt до завтра UTC).",
+    riskBlockedMarginCall: "Смена заблокирована: margin call на futures — автомат crypto остановлен.",
     riskBlockedPositions: "Смена заблокирована: есть открытые позиции на этом рынке.",
     universeTitle: "Котировки (пары / тикеры)",
+    quoteAssetTitle: "Стейблкоин (quote)",
+    quoteAssetLabel: "Стейблкоин для пар и бюджета сессии",
+    quoteAssetHint:
+      "Бюджет сессии, ликвидация и расчёт размера позиции используют этот актив. Пары в universe должны совпадать по суффиксу (BTCUSDT → BTCUSDC). На testnet обычно доступен только USDT.",
+    applyQuoteAsset: "Применить стейблкоин",
+    applyQuoteAssetRisk: "Изменится quote-актив для crypto workflow и новых сессий.",
+    tradingProductTitle: "Тип рынка (Spot / Futures)",
+    tradingProductHint:
+      "Scalp 5m использует эту настройку для свечей, ордеров и long/short. LLM Swing пока только spot. Futures testnet: testnet.binancefuture.com.",
+    marketTypeSpot: "Spot (только long)",
+    marketTypeFutures: "USDT-M Futures (маржа)",
+    allowShort: "Разрешить short (только futures)",
+    leverage: "Плечо",
+    marginMode: "Тип маржи",
+    marginIsolated: "Isolated",
+    marginCross: "Cross",
+    applyTradingProduct: "Применить тип рынка",
+    applyTradingProductRisk:
+      "Scalp-ордера и sizing пойдут на spot или futures API. При смене режима проверьте открытые позиции.",
+    resetTradingProduct: "Сбросить к YAML",
+    resetTradingProductRisk: "Убирает runtime-override; снова действуют значения из crypto_config.yaml.",
+    productSpot: "Spot",
+    productFutures: "Futures",
+    confirmMarketType: "Подтверждение типа рынка",
+    confirmMarketTypeApply: "Подтвердить и применить",
+    marketTypePasswordHint: "Смена Spot ↔ Futures требует пароля оператора.",
+    applyTradingProductFuturesDanger:
+      "FUTURES / МАРЖИНАЛЬНАЯ ТОРГОВЛЯ — ВЫСОКИЙ РИСК: позиции с плечом могут быть ликвидированы быстро, убыток может превысить запланированный стоп, начисляется funding. Сначала testnet. Не включайте live futures без понимания механики.",
+    switchToSpotWarning:
+      "При переходе на Spot открытые futures-позиции сами не закроются — проверьте счёт на бирже вручную.",
+    leverageHint:
+      "Плечо умножает и прибыль, и убыток относительно маржи. При 3x движение цены −1% ≈ −3% по марже. Система ограничивает размер через риск-правила, но риск ликвидации растёт с плечом.",
+    marginIsolatedHint:
+      "Isolated (изолированная): маржа только под эту пару. При ликвидации теряется маржа позиции — остальной баланс не подключается.",
+    marginCrossHint:
+      "Cross (кросс): на все позиции идёт весь futures-кошелёк. Убыток по одной сделке может затянуть весь баланс и другие символы.",
+    applyFuturesParams: "Применить плечо и маржу",
+  },
+  workflowReport: {
+    title: "Отчёт по сессии workflow",
+    close: "Закрыть",
+    lastReport: "Последний отчёт",
+    none: "Сохранённых отчётов пока нет",
+    llmSummary: "Анализ LLM",
+    rating: "Оценка успешности",
+    statistics: "Статистика пайплайна",
+    signals: "Сигналов",
+    filter: "Фильтр ok/skip/reject",
+    llm: "LLM ok/reject",
+    orders: "Ордера ok/fail",
+    sessionPnl: "PnL по сделкам",
+    accountActions: "Действия на счёте",
+    noTrades: "Исполненных сделок за сессию не было",
+    time: "Время",
+    side: "Сторона",
+    symbol: "Инструмент",
+    qty: "Кол-во",
+    notional: "Сумма",
+    rejectReasons: "Причины отказов",
   },
   workflowPanel: {
     title: "Режим работы",
@@ -850,6 +989,44 @@ Swing на акциях MOEX по дневным свечам. Фильтр по
     orders7d: "Сделки за 7 дней",
     lastSignal: "Последний сигнал",
     hintMoexDaily: "MOEX swing по умолчанию срабатывает раз в день (18:15 в будни). Увеличьте частоту или нажмите «Пробный запуск».",
+    sessionCapitalLabel: "Бюджет в стейблкоине / фиате",
+    sessionCapitalHint:
+      "Сумма {{currency}} для покупки сессионных активов и расчёта размера позиций (не весь баланс кошелька).",
+    sessionCapitalActive: "Бюджет сессии: {{amount}} {{currency}}",
+    sessionCapitalInvalid: "Укажите положительную сумму бюджета",
+    sessionVolumeModeLabel: "Сессионный объём",
+    sessionVolumeStablecoin: "Сумма в стейблкоине / фиате на покупки",
+    sessionVolumeExisting: "Доля уже имеющихся активов по тем же парам",
+    holdingsUnitLabel: "Задать долю как",
+    holdingsUnitPercent: "Процент от снимка на старте",
+    holdingsUnitAbsolute: "Абсолютное количество (base asset)",
+    existingHoldingsPctLabel: "Доля активов (%)",
+    existingHoldingsPctHint:
+      "Если пара уже в портфеле — в сессию входит только эта доля (входы, выходы, ликвидация).",
+    existingHoldingsPctInvalid: "Укажите процент от 1 до 100",
+    existingHoldingsQtyLabel: "Количество base asset на пару",
+    existingHoldingsQtyHint:
+      "Абсолютный объём монеты на каждую пару из universe (не больше баланса на старте).",
+    existingHoldingsQtyInvalid: "Укажите положительное количество",
+    existingHoldingsActive: "До-сессионные активы: {{pct}}% от снимка",
+    existingHoldingsQtyActive: "До-сессионные активы: {{qty}} (abs) на пару",
+    liquidateOnStopLabel: "Закрыть позиции в стейблкоин при Stop и margin call",
+    liquidateOnStopHint:
+      "При Stop — MARKET SELL управляемого объёма spot в {{currency}}. Неиспользованная доля остаётся в портфеле.",
+    liquidateOnStopHintFutures:
+      "При Stop или margin call — закрытие futures-позиций (reduceOnly) и возврат маржи в {{currency}}. При margin call закрываются все открытые futures-позиции.",
+    liquidateOnStopActive: "Ликвидация в {{currency}} при Stop / margin call: включена",
+    liquidateFuturesNote: "futures: reduceOnly",
+    multiAutomationTitle: "Несколько автоматов",
+    multiAutomationLabel: "Разрешить несколько автоматов на одном рынке",
+    multiAutomationHint:
+      "Можно запустить до {{max}} primary workflow одновременно (например scalp + swing). Общий бюджет сессии и guardrails пока общие.",
+    addWorkflow: "Добавить автомат",
+    stopOne: "Stop",
+    preScanUniverseLabel: "Подобрать пары перед стартом (vol / volume)",
+    preScanUniverseHint:
+      "Сканирует каталог USDT-пар, включает top-N по ATR, объёму и momentum; перескан каждые 2ч в сессии.",
+    preScanActive: "Pre-scan пары: {{pairs}}",
   },
   workflowModes: {
     cryptoSignalDry: "Сигналы — dry run (без ордеров)",

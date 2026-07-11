@@ -102,6 +102,7 @@ const en: TranslationTree = {
     lastEvent: "Last event",
     since: "since",
     periodAll: "All time",
+    portfolioTotal: "all assets",
     period1m: "1 month",
     period1w: "1 week",
     period1d: "1 day",
@@ -140,6 +141,10 @@ const en: TranslationTree = {
     strategy: "Strategy",
     noLlm: "no LLM",
     markerMenu: "Chart markers",
+    chartHeight: "Chart height",
+    panelHeight: "RSI/MACD height",
+    sideWidth: "Side panel width",
+    layoutReset: "Reset layout",
     markersLlm: "LLM",
     markersOrders: "Orders",
     markersNews: "News",
@@ -221,16 +226,17 @@ When to enable
 After llm_swing is stable in paper; when you need evidence on fresh data.`,
     },
     crypto_scalp_hybrid: {
-      label: "Scalp hybrid 5m",
+      label: "Scalp 5m (rules)",
       description:
-        "5m scalp: ~80% script trades, ~20% borderline via fast LLM (qwen2.5:3b). Paper/dry_run only.",
+        "5m scalp: rules only (momentum, RSI, volume, MACD). No Ollama. Paper/dry_run only.",
       detail: `Overview
-5m hybrid scalp: clear impulses execute via rules_engine; borderline cases hit fast LLM in ~20% slots.
+5m scalp without LLM — rules_engine only (momentum + RSI + volume + MACD + trend).
 
 Routing (ambiguity_score)
-• ≤ 0.35 — script
-• 0.35–0.72 + sample slot — qwen2.5:3b validate-only
-• > 0.72 — skip
+• ≤ 0.72 and ≥2 rules — script path
+• > 0.72 — skip (too noisy)
+
+LLM disabled (llm_enabled: false). Re-enable after GPU: llm_enabled: true, llm_sample_pct: 20.
 
 Config: trading_wiki/config/crypto_scalp_hybrid.yaml`,
     },
@@ -367,8 +373,12 @@ Bond capacity is limited; retail should manage duration and ladder rungs, not LL
     uptime: "Running",
     uptimeHours: "{{h}}h {{m}}m",
     uptimeMinutes: "{{m}}m",
+    scalpScanInProgress: "Scanning currency pairs",
+    scalpScanProgress: "Pair scan {{done}}/{{total}}",
+    scalpScanHint: "Scalp pair picker — volatility scan in progress",
     sessionMetrics: "Automation session metrics",
     sessionPnlTrades: "session trades",
+    sessionCapital: "budget {{amount}} {{currency}}",
     agoSeconds: "{{s}}s ago",
     agoMinutes: "{{m}}m ago",
     agoHours: "{{h}}h ago",
@@ -755,6 +765,76 @@ Bond capacity is limited; retail should manage duration and ladder rungs, not LL
     llmRunsHint: "On each run the workflow runs LLM for every enabled symbol.",
     blockedWorkflow:
       "Quote list is locked while automation is running ({{workflow}}). Stop the workflow before editing.",
+    scalpPickerTitle: "Pick suitable currency pairs",
+    scalpPickerHint:
+      "Before scalp start, run scan and apply. Volatility uses the most liquid market (USDT/USDC/BTC…); trading uses your stablecoin — liquidate converts everything to it.",
+    scalpFeeHint: "Round-trip fee guide: ~{{fee}}% (ATR% min cannot go below this).",
+    scalpParamLegend:
+      "Scale under each field: min — max; green tick = recommended from config; blue dot = your current value.",
+    scalpParamRange: "Allowed {{min}} … {{max}} · recommended {{rec}}",
+    scalpRecommendedShort: "rec.",
+    scalpScoreCol: "Total score",
+    scalpScoreHint:
+      "Total score (0–1) combines ATR volatility, volume, price momentum, RSI and trend. Higher is better for scalp.",
+    scalpMetricAtr: "ATR, %",
+    scalpMetricVol: "Volume, ×",
+    scalpMetricData: "Data from",
+    scalpRunScan: "Run scan",
+    scalpRunScanBusy: "Scanning…",
+    scalpScanInProgress: "Scanning",
+    scalpScanProgress: "{{done}}/{{total}}",
+    scalpScanPool: "Scan {{count}} catalog assets → trade as {{quote}} pairs",
+    scalpScanPoolCombined:
+      "Scan {{count}} assets (catalog {{catalog}} + exchange {{exchange}}, cap {{max}}) → trade {{quote}}",
+    scalpScanPoolDetail:
+      "Vol/ATR uses the best market (USDT, USDC, BTC, ETH…). Candidates are not limited to 20 USDT pairs — exchange SPOT bases can be included.",
+    scalpApplySelection: "Apply selection ({{count}})",
+    scalpApplyRisk: "Only checked pairs will be enabled; other scan candidates will be disabled in quotes.",
+    scalpApplyDone: "Applied {{count}} pair(s)",
+    scalpScanDone: "Scan done, {{count}} row(s) in table",
+    scalpScannedAt: "Last scan",
+    scalpEligibleCount: "{{count}} eligible of {{total}}",
+    scalpScore: "Score",
+    scalpStatus: "Status",
+    scalpEligible: "Eligible",
+    scalpRescanDuringSession: "Rescan during session (per config interval)",
+    symbol: "Pair",
+    scalpParam: {
+      top_n: "Pairs to trade (count)",
+      min_score: "Min total pair score",
+      atr_pct_min: "Min volatility (ATR), %",
+      atr_pct_max: "Max volatility (ATR), %",
+      atr_pct_sweet_min: "Optimal ATR, % (lower bound)",
+      atr_pct_sweet_max: "Optimal ATR, % (upper bound)",
+      volume_ratio_min: "Min volume spike (× vs average)",
+      momentum_min_pct: "Min price momentum, %",
+      max_pair_correlation: "Max correlation between pairs",
+    },
+    scalpParamDesc: {
+      top_n: "How many top pairs to auto-check after scan (you can change manually).",
+      min_score:
+        "Total score threshold 0–1. Below = excluded from auto-pick. Score = ATR (35%) + volume (25%) + momentum (20%) + RSI (10%) + trend (10%).",
+      atr_pct_min:
+        "Average 5m candle range as % of price. Must exceed fees (~0.20%) or round-trip is unprofitable.",
+      atr_pct_max: "Filter out extremely choppy pairs.",
+      atr_pct_sweet_min: "Start of the “comfort” volatility zone for scalp.",
+      atr_pct_sweet_max: "End of comfort zone; ATR contributes most inside it.",
+      volume_ratio_min: "Current volume ÷ 20-bar average. 1.0 = normal; 1.5 = 50% spike.",
+      momentum_min_pct: "Price change over last 3×5m candles, %. Filters flat pairs.",
+      max_pair_correlation: "0–1 similarity of price moves. Lower = more diversified basket.",
+    },
+    scalpReject: {
+      atr_too_low: "ATR below threshold",
+      atr_too_high: "ATR too high",
+      volume_too_low: "Low volume",
+      insufficient_bars: "Insufficient bars",
+      atr_unavailable: "ATR unavailable",
+      volume_low: "Low volume",
+      momentum_low: "Weak momentum",
+      score_low: "Low score",
+      rsi_extreme: "RSI extreme",
+      fetch_error: "Data error",
+    },
   },
   strategySubsettings: {
     title: "Strategy sub-settings",
@@ -787,8 +867,68 @@ Bond capacity is limited; retail should manage duration and ladder rungs, not LL
     applyRisk: "Apply preset",
     applyRiskRisk: "Risk limits for automated trades will change.",
     riskBlockedHalt: "Change blocked: daily loss halt active until tomorrow (UTC).",
+    riskBlockedMarginCall: "Change blocked: futures margin call — crypto automation stopped.",
     riskBlockedPositions: "Change blocked: open positions on this market.",
     universeTitle: "Quotes (pairs / tickers)",
+    quoteAssetTitle: "Quote stablecoin",
+    quoteAssetLabel: "Stablecoin for pairs and session budget",
+    quoteAssetHint:
+      "Session budget, liquidation, and sizing use this asset. Universe pairs should use the same suffix (BTCUSDT → BTCUSDC). Testnet usually supports USDT only.",
+    applyQuoteAsset: "Apply stablecoin",
+    applyQuoteAssetRisk: "Changes the crypto workflow quote asset for new sessions.",
+    tradingProductTitle: "Market type (Spot / Futures)",
+    tradingProductHint:
+      "Scalp 5m uses this setting for klines, orders, and long/short. LLM Swing stays spot-only for now. Futures testnet: testnet.binancefuture.com.",
+    marketTypeSpot: "Spot (long only)",
+    marketTypeFutures: "USDT-M Futures (margin)",
+    allowShort: "Allow short (futures only)",
+    leverage: "Leverage",
+    marginMode: "Margin mode",
+    marginIsolated: "Isolated",
+    marginCross: "Cross",
+    applyTradingProduct: "Apply market type",
+    applyTradingProductRisk:
+      "Scalp orders and sizing will route to spot or futures API. Open positions may need manual review when switching.",
+    resetTradingProduct: "Reset to YAML default",
+    resetTradingProductRisk: "Clears runtime override; crypto_config.yaml defaults apply again.",
+    productSpot: "Spot",
+    productFutures: "Futures",
+    confirmMarketType: "Confirm market type",
+    confirmMarketTypeApply: "Confirm and apply",
+    marketTypePasswordHint: "Changing Spot ↔ Futures requires operator password confirmation.",
+    applyTradingProductFuturesDanger:
+      "FUTURES / MARGIN TRADING IS HIGH RISK: leveraged positions can be liquidated quickly, losses may exceed your planned stop, and funding fees apply. Use testnet first. Do not enable live futures until you fully understand the mechanics.",
+    switchToSpotWarning:
+      "Switching to Spot does not auto-close open futures positions — check the exchange account manually.",
+    leverageHint:
+      "Leverage multiplies both profit and loss relative to margin. At 3x, a −1% move in price ≈ −3% on margin. The system caps size via risk rules, but liquidation risk rises with leverage.",
+    marginIsolatedHint:
+      "Isolated: margin is allocated per symbol only. If liquidated, the loss is limited to that position's margin — other balances are not used to save it.",
+    marginCrossHint:
+      "Cross: entire futures wallet backs all positions. One bad trade can draw on the full balance and affect other symbols.",
+    applyFuturesParams: "Apply leverage & margin",
+  },
+  workflowReport: {
+    title: "Workflow session report",
+    close: "Close",
+    lastReport: "Last report",
+    none: "No saved reports yet",
+    llmSummary: "LLM analysis",
+    rating: "Success rating",
+    statistics: "Pipeline statistics",
+    signals: "Signals",
+    filter: "Filter ok/skip/reject",
+    llm: "LLM ok/reject",
+    orders: "Orders ok/fail",
+    sessionPnl: "Session trade PnL",
+    accountActions: "Account actions",
+    noTrades: "No executed trades in this session",
+    time: "Time",
+    side: "Side",
+    symbol: "Symbol",
+    qty: "Qty",
+    notional: "Notional",
+    rejectReasons: "Reject reasons",
   },
   workflowPanel: {
     title: "Operating mode",
@@ -827,6 +967,44 @@ Bond capacity is limited; retail should manage duration and ladder rungs, not LL
     orders7d: "Trades (7 days)",
     lastSignal: "Last signal",
     hintMoexDaily: "MOEX swing defaults to once daily (weekdays 18:15 MSK). Increase frequency or use Test run.",
+    sessionCapitalLabel: "Budget in stablecoin / fiat",
+    sessionCapitalHint:
+      "Amount of {{currency}} for session buys and position sizing (not the full wallet balance).",
+    sessionCapitalActive: "Session budget: {{amount}} {{currency}}",
+    sessionCapitalInvalid: "Enter a positive budget amount",
+    sessionVolumeModeLabel: "Session volume",
+    sessionVolumeStablecoin: "Stablecoin / fiat amount for buys",
+    sessionVolumeExisting: "Share of existing holdings on the same pairs",
+    holdingsUnitLabel: "Specify share as",
+    holdingsUnitPercent: "Percent of baseline at start",
+    holdingsUnitAbsolute: "Absolute quantity (base asset per pair)",
+    existingHoldingsPctLabel: "Holdings share (%)",
+    existingHoldingsPctHint:
+      "If the pair is already in the wallet, only this share is managed (entries, exits, liquidation).",
+    existingHoldingsPctInvalid: "Enter a percentage from 1 to 100",
+    existingHoldingsQtyLabel: "Base asset quantity per pair",
+    existingHoldingsQtyHint:
+      "Absolute coin amount for each universe pair (capped by wallet at session start).",
+    existingHoldingsQtyInvalid: "Enter a positive quantity",
+    existingHoldingsActive: "Pre-session holdings: {{pct}}% of baseline",
+    existingHoldingsQtyActive: "Pre-session holdings: {{qty}} (abs) per pair",
+    liquidateOnStopLabel: "Close to stablecoin on Stop and margin call",
+    liquidateOnStopHint:
+      "On Stop — MARKET SELL managed spot qty to {{currency}}. Unused share stays in the portfolio.",
+    liquidateOnStopHintFutures:
+      "On Stop or margin call — close futures (reduceOnly), margin returns to {{currency}}. Margin call closes all futures positions.",
+    liquidateOnStopActive: "Liquidate to {{currency}} on Stop / margin call: enabled",
+    liquidateFuturesNote: "futures: reduceOnly",
+    multiAutomationTitle: "Multiple automations",
+    multiAutomationLabel: "Allow multiple automations on one market",
+    multiAutomationHint:
+      "Run up to {{max}} primary workflows at once (e.g. scalp + swing). Session budget and guardrails are still shared.",
+    addWorkflow: "Add automation",
+    stopOne: "Stop",
+    preScanUniverseLabel: "Scan pairs before start (vol / volume)",
+    preScanUniverseHint:
+      "Scans USDT catalog, enables top-N by ATR, volume and momentum; re-scan every 2h during session.",
+    preScanActive: "Pre-scan pairs: {{pairs}}",
   },
   workflowModes: {
     cryptoSignalDry: "Signals — dry run (no orders)",

@@ -231,6 +231,32 @@ def _crypto_catalog() -> dict[str, dict[str, Any]]:
     scalp_pairs = list(scalp_cfg.get("pairs", pairs))
     scalp_wf = str(scalp_cfg.get("paper", {}).get("workflow_name", "crypto-scalp-hybrid-paper"))
     scalp_symbols = symbols_for_workflow(scalp_wf) or scalp_pairs
+    scalp_llm = bool(scalp_cfg.get("llm_enabled", False)) and int(scalp_cfg.get("llm_sample_pct", 0)) > 0
+    if scalp_llm:
+        scalp_desc_ru = (
+            f"5m скальп: ~{100 - int(scalp_cfg.get('llm_sample_pct', 20))}% сделок по скрипту, "
+            f"~{scalp_cfg.get('llm_sample_pct', 20)}% пограничных — быстрая LLM "
+            f"({scalp_cfg.get('ollama_model_fast', 'qwen3.5:4b')}). Пары: "
+            f"{_symbols_label(scalp_symbols, market='crypto')}."
+        )
+        scalp_desc_en = (
+            f"5m scalp: mostly script; ~{scalp_cfg.get('llm_sample_pct', 20)}% borderline via fast LLM "
+            f"({scalp_cfg.get('ollama_model_fast', 'qwen3.5:4b')})."
+        )
+        scalp_rationale_ru = (
+            "Гибрид: чёткие импульсы — rules_engine, сомнительные (ambiguity 0.35–0.72) — LLM в выборочных слотах."
+        )
+        scalp_rationale_en = "Hybrid: clear impulses to script; borderline cases hit fast LLM in sampled slots."
+    else:
+        scalp_desc_ru = (
+            f"5m скальп только по правилам (momentum, RSI, volume, MACD). Без Ollama. Пары: "
+            f"{_symbols_label(scalp_symbols, market='crypto')}."
+        )
+        scalp_desc_en = "5m scalp: rules_engine only (momentum, RSI, volume, MACD). No Ollama."
+        scalp_rationale_ru = (
+            "LLM отключён (llm_enabled: false): быстрые тики 5m, решения только rules_engine + guardrails."
+        )
+        scalp_rationale_en = "LLM disabled: 5m ticks use rules_engine and guardrails only."
     return {
         "llm_swing": {
             "id": "llm_swing",
@@ -291,29 +317,17 @@ def _crypto_catalog() -> dict[str, dict[str, Any]]:
         },
         "crypto_scalp_hybrid": {
             "id": "crypto_scalp_hybrid",
-            "label": "Scalp hybrid 5m",
-            "description": (
-                f"5m скальп: ~80% сделок по скрипту, ~{scalp_cfg.get('llm_sample_pct', 20)}% пограничных — "
-                f"быстрая LLM ({scalp_cfg.get('ollama_model_fast', 'qwen3.5:4b')}). Пары: "
-                f"{_symbols_label(scalp_symbols, market='crypto')}."
-            ),
-            "description_en": (
-                f"5m scalp: ~80% script trades, ~{scalp_cfg.get('llm_sample_pct', 20)}% borderline via fast LLM "
-                f"({scalp_cfg.get('ollama_model_fast', 'qwen3.5:4b')})."
-            ),
-            "rationale_ru": (
-                "LLM на каждом 5m тике не тянет железо (~3 мин на 9B). Гибрид: чёткие импульсы — rules_engine, "
-                "сомнительные (ambiguity 0.35–0.72) — только в 20% слотов qwen3.5:4b (think=false). validate_only + retail_guard."
-            ),
-            "rationale_en": (
-                "LLM every 5m bar is too slow on 9B. Hybrid routes clear impulses to script; borderline cases hit fast LLM in 20% slots."
-            ),
+            "label": "Scalp 5m" if not scalp_llm else "Scalp hybrid 5m",
+            "description": scalp_desc_ru,
+            "description_en": scalp_desc_en,
+            "rationale_ru": scalp_rationale_ru,
+            "rationale_en": scalp_rationale_en,
             "paper_ref": "https://arxiv.org/abs/2505.07078",
             "workflow": scalp_wf,
             "symbols": scalp_symbols,
             "chart_default": scalp_symbols[0] if scalp_symbols else "BTCUSDT",
             "chart_interval": str(scalp_cfg.get("timeframe", "5m")),
-            "uses_llm": True,
+            "uses_llm": scalp_llm,
             "kind": "trading",
             "chart_overlays": {
                 "price": ["ema50"],

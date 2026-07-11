@@ -15,6 +15,8 @@ type Props = {
   status?: TileStatus;
   /** @deprecated use status */
   subtitle?: string;
+  /** Badge/pill next to title (e.g. Spot / Futures). */
+  headBadge?: ReactNode;
   collapsible?: boolean;
   defaultCollapsed?: boolean;
   footer?: ReactNode;
@@ -30,6 +32,7 @@ export default function PortfolioCard({
   tileId,
   status,
   subtitle,
+  headBadge,
   collapsible = true,
   defaultCollapsed = false,
   footer,
@@ -79,6 +82,7 @@ export default function PortfolioCard({
         }
       >
         <span className="tile-title">{title}</span>
+        {headBadge ? <span className="tile-head-badge">{headBadge}</span> : null}
         {resolvedStatus &&
           (showDot ? (
             <StatusDot

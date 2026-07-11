@@ -59,7 +59,7 @@ def log_event(
     finally:
         conn.close()
 
-    if stage == "order" and decision in ("approve", "submitted"):
+    if stage == "order" and decision in ("approve", "execute", "submitted"):
         try:
             from news_alert_service import maybe_trade_alert
 

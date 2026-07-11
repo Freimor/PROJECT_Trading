@@ -6,8 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from binance_client import get_account_balances
-from bridges.tinvest_bridge import get_portfolio_snapshot
+from workflow_pnl_service import crypto_portfolio_total_usdt, moex_portfolio_total_rub
 from db.connection import get_connection
 from db.migrate import run_migrations
 
@@ -33,27 +32,13 @@ def _pct_change(current: float | None, base: float | None) -> float | None:
     return round((current - base) / base * 100, 2)
 
 
-def _usdt_total(testnet: bool) -> tuple[float | None, str]:
-    raw = get_account_balances(testnet=testnet)
-    if not raw:
-        return None, "empty"
-    for row in raw:
-        if row.get("asset") == "USDT":
-            free = float(row.get("free", 0) or 0)
-            locked = float(row.get("locked", 0) or 0)
-            return free + locked, "ok"
-    return 0.0, "ok"
+def _crypto_total(testnet: bool) -> tuple[float | None, str]:
+    """All assets marked to USDT (≈ USD)."""
+    return crypto_portfolio_total_usdt(testnet=testnet)
 
 
 def _moex_total(sandbox: bool) -> tuple[float | None, str]:
-    moex = get_portfolio_snapshot(sandbox=sandbox)
-    status = str(moex.get("status", "error"))
-    if status != "ok":
-        return None, status
-    total = moex.get("total_amount")
-    if total is None:
-        return None, status
-    return float(total), "ok"
+    return moex_portfolio_total_rub(sandbox=sandbox)
 
 
 def _value_from_snapshot(snap: dict[str, Any], key: str) -> float | None:
@@ -165,6 +150,8 @@ def _metric_block(
 
     return {
         "currency": currency,
+        "fiat_currency": "USD" if currency == "USDT" else currency,
+        "portfolio_total": True,
         "current": current,
         "status": status,
         "baseline": baseline,
@@ -179,9 +166,9 @@ def get_portfolio_performance(*, period: str = "all") -> dict[str, Any]:
     run_migrations()
     period = period if period in ("all", *PERIOD_HOURS.keys()) else "all"
 
-    demo_usdt, demo_usdt_status = _usdt_total(testnet=True)
+    demo_usdt, demo_usdt_status = _crypto_total(testnet=True)
     demo_rub, demo_rub_status = _moex_total(sandbox=True)
-    live_usdt, live_usdt_status = _usdt_total(testnet=False)
+    live_usdt, live_usdt_status = _crypto_total(testnet=False)
     live_rub, live_rub_status = _moex_total(sandbox=False)
 
     conn = get_connection()

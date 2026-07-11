@@ -131,6 +131,22 @@ export type WorkflowPnl = {
   currency?: string;
 };
 
+export type WorkflowSessionConfig = {
+  session_capital?: number | null;
+  session_volume_mode?: "stablecoin" | "existing_holdings";
+  use_existing_holdings?: boolean;
+  existing_holdings_unit?: "percent" | "absolute";
+  existing_holdings_use_pct?: number;
+  existing_holdings_use_qty?: number | null;
+  liquidate_on_stop?: boolean;
+  liquidate_on_margin_call?: boolean;
+  universe_scan_selected?: string[];
+  quote_asset?: string;
+  holdings_baseline?: Record<string, number>;
+  baseline_captured_at?: string;
+  workflow_name?: string;
+};
+
 export type WorkflowSessionStats = {
   status?: string;
   signals?: number;
@@ -144,6 +160,7 @@ export type WorkflowSessionStats = {
   currency?: string;
   invested_notional?: number | null;
   pnl_source?: string;
+  session_capital?: number | null;
   last_event_at?: string | null;
   last_event_ago_sec?: number | null;
   last_event_symbol?: string | null;
@@ -173,6 +190,15 @@ export type OllamaStatus = {
   error?: string | null;
 };
 
+export type ScalpPairScanProgress = {
+  in_progress?: boolean;
+  workflow_name?: string;
+  total?: number;
+  done?: number;
+  current_base?: string;
+  started_at?: string;
+};
+
 export type AutomationOverview = {
   kill_switch: boolean;
   kill_switch_updated_at?: string;
@@ -181,6 +207,7 @@ export type AutomationOverview = {
   operation_detail?: string;
   live_flag: boolean;
   ollama?: OllamaStatus;
+  scalp_pair_scan?: ScalpPairScanProgress;
   last_event?: {
     event_at?: string;
     workflow_name?: string;
@@ -198,6 +225,7 @@ export type AutomationOverview = {
     workflow_started_at?: string | null;
     workflow_pnl?: WorkflowPnl | null;
     workflow_session?: WorkflowSessionStats | null;
+    workflow_session_config?: WorkflowSessionConfig | null;
     workflows_active?: boolean;
     active_workflows?: string[];
     pairs?: string[];
@@ -215,6 +243,7 @@ export type AutomationOverview = {
     workflow_started_at?: string | null;
     workflow_pnl?: WorkflowPnl | null;
     workflow_session?: WorkflowSessionStats | null;
+    workflow_session_config?: WorkflowSessionConfig | null;
     workflows_active?: boolean;
     active_workflows?: string[];
     active_mode?: string;
@@ -224,4 +253,50 @@ export type AutomationOverview = {
     funnel_signal?: { passed?: number; total?: number };
   };
   dry_run_signals_7d?: number;
+};
+
+export type WorkflowSessionReport = {
+  id?: string;
+  report_id?: string;
+  market?: string;
+  workflow_name?: string;
+  started_at?: string;
+  ended_at?: string;
+  reason?: string;
+  llm_model?: string | null;
+  llm_latency_ms?: number | null;
+  llm_narrative?: {
+    headline?: string;
+    success_rating?: string;
+    reject_analysis?: string;
+    risk_notes?: string;
+    recommendations?: string[];
+    success_factors?: string[];
+    failure_factors?: string[];
+    source?: string;
+  };
+  report?: {
+    duration_sec?: number;
+    statistics?: {
+      signals?: number;
+      filter_approve?: number;
+      filter_skip?: number;
+      filter_reject?: number;
+      llm_approve?: number;
+      llm_reject?: number;
+      orders_ok?: number;
+      orders_failed?: number;
+      reject_reasons?: Array<{ reject_reason?: string; cnt?: number }>;
+    };
+    session_stats?: WorkflowSessionStats;
+    account_actions?: Array<{
+      event_at?: string;
+      symbol?: string;
+      side?: string;
+      quantity?: number | string;
+      notional?: number | string;
+      currency?: string;
+    }>;
+    llm_narrative?: WorkflowSessionReport["llm_narrative"];
+  };
 };

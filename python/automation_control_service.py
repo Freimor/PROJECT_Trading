@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
@@ -13,6 +15,8 @@ from runtime_settings import delete_runtime_value, get_runtime_meta, get_runtime
 
 VALID_MODES = ("dry_run", "paper", "shadow", "live")
 OPERATION_MODES = ("demo", "live")
+
+logger = logging.getLogger(__name__)
 
 # UI-facing modes: demo = testnet/sandbox trading; live = real money.
 # dry_run/shadow remain internal (CI, signal-only); selecting Demo always uses paper.
@@ -74,9 +78,73 @@ WORKFLOW_STARTED_KEY = {
     "securities": "securities_workflow_started_at",
 }
 
+MULTI_AUTOMATION_KEY = {
+    "crypto": "crypto_multi_automation",
+    "securities": "securities_multi_automation",
+}
+
+ACTIVE_WORKFLOWS_KEY = {
+    "crypto": "crypto_active_workflows",
+    "securities": "securities_active_workflows",
+}
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _multi_automation_yaml(market: str) -> dict[str, Any]:
+    cfg = get_config_effective(MARKET_CONFIG[market])
+    return dict(cfg.get("multi_automation") or {})
+
+
+def is_multi_automation_enabled(market: str) -> bool:
+    if market not in MARKET_CONFIG:
+        return False
+    runtime = get_runtime_value(MULTI_AUTOMATION_KEY[market])
+    if runtime is not None:
+        return bool(runtime)
+    return bool(_multi_automation_yaml(market).get("enabled", False))
+
+
+def set_multi_automation_enabled(market: str, enabled: bool, *, operator: str) -> dict[str, Any]:
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    set_runtime_value(MULTI_AUTOMATION_KEY[market], bool(enabled), updated_by=operator)
+    log_system_activity(
+        f"{'Crypto' if market == 'crypto' else 'MOEX'}: режим нескольких автоматов "
+        f"{'включён' if enabled else 'выключен'}",
+        category=market,
+        level="info",
+        payload={"market": market, "enabled": enabled, "operator": operator},
+    )
+    return {"status": "ok", "market": market, "multi_automation_enabled": bool(enabled)}
+
+
+def _multi_automation_max_primary(market: str) -> int:
+    return max(1, int(_multi_automation_yaml(market).get("max_concurrent_primary", 2)))
+
+
+def get_active_market_workflows(market: str) -> list[str]:
+    """Active primary (exclusive) workflows for the market."""
+    if market not in MARKET_CONFIG:
+        return []
+    stored = get_runtime_value(ACTIVE_WORKFLOWS_KEY[market])
+    if isinstance(stored, list) and stored:
+        exclusive = MARKET_EXCLUSIVE_WORKFLOWS.get(market, frozenset())
+        return [str(n) for n in stored if str(n) in exclusive]
+
+    single = get_active_market_workflow(market)
+    return [single] if single else []
+
+
+def _set_active_market_workflows(market: str, names: list[str], *, operator: str) -> None:
+    exclusive = MARKET_EXCLUSIVE_WORKFLOWS.get(market, frozenset())
+    cleaned = sorted({str(n) for n in names if str(n) in exclusive})
+    if cleaned:
+        set_runtime_value(ACTIVE_WORKFLOWS_KEY[market], cleaned, updated_by=operator)
+    else:
+        delete_runtime_value(ACTIVE_WORKFLOWS_KEY[market])
 
 
 def get_active_market_workflow(market: str) -> str | None:
@@ -109,9 +177,105 @@ def get_active_market_workflow(market: str) -> str | None:
     return None
 
 
-def _mark_workflow_started(market: str, *, operator: str) -> str:
+def _archive_workflow_session(
+    market: str,
+    *,
+    reason: str = "stop",
+    operator: str = "system",
+    started_at: str | None = None,
+    workflow_name: str | None = None,
+) -> dict[str, Any] | None:
+    started_at = started_at or _workflow_started_at(market)
+    workflow_name = workflow_name or get_active_market_workflow(market)
+    if not started_at or not workflow_name:
+        return None
+    try:
+        from workflow_report_service import finalize_workflow_session
+
+        return finalize_workflow_session(
+            market,
+            started_at=started_at,
+            workflow_name=workflow_name,
+            reason=reason,
+            operator=operator,
+        )
+    except Exception as exc:
+        log_system_activity(
+            f"{'Crypto' if market == 'crypto' else 'MOEX'}: ошибка отчёта сессии — {exc}",
+            category=market,
+            level="warn",
+            payload={"market": market, "error": str(exc)[:300]},
+        )
+        return {"status": "error", "message": str(exc)[:300]}
+
+
+def _maybe_liquidate_session(
+    market: str,
+    *,
+    workflow_name: str | None = None,
+    operator: str = "web:operator",
+    reason: str = "stop",
+) -> dict[str, Any] | None:
+    try:
+        from workflow_session_config_service import liquidate_session_holdings
+
+        result = liquidate_session_holdings(
+            market,
+            workflow_name=workflow_name,
+            operator=operator,
+            reason="margin_call" if reason == "margin_call" else "stop",
+            close_all_futures=reason == "margin_call",
+        )
+        if result.get("status") == "skipped":
+            return None
+        return result
+    except Exception as exc:
+        logger.exception("session_liquidation_failed market=%s", market)
+        return {"status": "error", "message": str(exc)[:300]}
+
+
+def _mark_workflow_started(
+    market: str,
+    *,
+    operator: str,
+    session_capital: float | None = None,
+    session_volume_mode: str | None = None,
+    workflow_name: str | None = None,
+    use_existing_holdings: bool = False,
+    existing_holdings_unit: str = "percent",
+    existing_holdings_use_pct: float = 0,
+    existing_holdings_use_qty: float | None = None,
+    liquidate_on_stop: bool = False,
+    liquidate_on_margin_call: bool | None = None,
+) -> str:
     ts = _utc_now()
     set_runtime_value(WORKFLOW_STARTED_KEY[market], ts, updated_by=operator)
+    try:
+        from workflow_session_config_service import set_workflow_session_config
+
+        should_set = (
+            session_capital is not None
+            or session_volume_mode == "existing_holdings"
+            or use_existing_holdings
+            or liquidate_on_stop
+            or liquidate_on_margin_call is not None
+        )
+        if should_set:
+            set_workflow_session_config(
+                market,
+                session_capital=session_capital,
+                session_volume_mode=session_volume_mode,
+                use_existing_holdings=use_existing_holdings,
+                existing_holdings_unit=existing_holdings_unit,
+                existing_holdings_use_pct=float(existing_holdings_use_pct or 0),
+                existing_holdings_use_qty=existing_holdings_use_qty,
+                liquidate_on_stop=liquidate_on_stop,
+                liquidate_on_margin_call=liquidate_on_margin_call,
+                workflow_name=workflow_name,
+                operator=operator,
+            )
+    except Exception:
+        logger.exception("workflow_session_config_set_failed market=%s", market)
     try:
         from workflow_pnl_service import capture_workflow_baseline
 
@@ -162,6 +326,9 @@ def _backfill_workflow_started_at(market: str) -> str | None:
 def _workflow_started_at(market: str) -> str | None:
     active = get_active_market_workflow(market)
     if not active:
+        meta = get_runtime_meta(WORKFLOW_STARTED_KEY[market]) or {}
+        if meta.get("value"):
+            delete_runtime_value(WORKFLOW_STARTED_KEY[market])
         return None
     meta = get_runtime_meta(WORKFLOW_STARTED_KEY[market]) or {}
     val = meta.get("value")
@@ -172,6 +339,12 @@ def _workflow_started_at(market: str) -> str | None:
 
 def _clear_workflow_started(market: str) -> None:
     delete_runtime_value(WORKFLOW_STARTED_KEY[market])
+    try:
+        from workflow_session_config_service import clear_workflow_session_config
+
+        clear_workflow_session_config(market)
+    except Exception:
+        pass
     try:
         from workflow_pnl_service import clear_workflow_baseline
 
@@ -345,6 +518,13 @@ def get_config_effective(name: str) -> dict[str, Any]:
         cfg["trading"] = trading
     elif name in ("crypto_config", "securities_config"):
         cfg["mode"] = get_effective_market_mode(name)
+        if name == "crypto_config":
+            try:
+                from crypto_quote import get_crypto_quote_asset
+
+                cfg["quote_asset"] = get_crypto_quote_asset()
+            except Exception:
+                pass
     return cfg
 
 
@@ -420,8 +600,9 @@ def _apply_exclusive_workflow_selection(
     workflow_name: str,
     *,
     by_name: dict[str, dict[str, Any]] | None = None,
+    additive: bool = False,
 ) -> list[dict[str, Any]]:
-    """Activate one primary workflow; deactivate other exclusive workflows for the market."""
+    """Activate workflow; deactivate other exclusive workflows unless additive/multi mode."""
     allowed = MARKET_WORKFLOW_SET.get(market, frozenset())
     exclusive = MARKET_EXCLUSIVE_WORKFLOWS.get(market, frozenset())
     concurrent = MARKET_CONCURRENT_WORKFLOWS.get(market, frozenset())
@@ -432,6 +613,7 @@ def _apply_exclusive_workflow_selection(
     if workflow_name not in by_name:
         raise ValueError(f"missing_in_n8n: {workflow_name}")
 
+    keep_others = additive or is_multi_automation_enabled(market)
     results: list[dict[str, Any]] = []
     for name in sorted(allowed):
         wf = by_name.get(name)
@@ -442,7 +624,7 @@ def _apply_exclusive_workflow_selection(
             if not wf.get("active"):
                 activate_workflow(wid)
                 results.append({"name": name, "action": "activated", "id": wid})
-        elif name in exclusive and wf.get("active"):
+        elif name in exclusive and wf.get("active") and not keep_others:
             deactivate_workflow(wid)
             results.append({"name": name, "action": "deactivated", "id": wid})
         elif name in concurrent:
@@ -542,6 +724,14 @@ def start_market_workflow(
     workflow_name: str,
     *,
     trading_mode: str | None = None,
+    session_capital: float | None = None,
+    session_volume_mode: str | None = None,
+    use_existing_holdings: bool = False,
+    existing_holdings_unit: str = "percent",
+    existing_holdings_use_pct: float = 0,
+    existing_holdings_use_qty: float | None = None,
+    liquidate_on_stop: bool = False,
+    liquidate_on_margin_call: bool | None = None,
     operator: str = "web:operator",
 ) -> dict[str, Any]:
     """Set market trading mode (optional) and activate exactly one workflow."""
@@ -549,17 +739,53 @@ def start_market_workflow(
     if trading_mode:
         normalized = _validate_mode(trading_mode)
         mode_result = set_market_mode(market, normalized, operator=operator)
-    wf_result = select_market_workflow(market, workflow_name, operator=operator)
+    margin_call = liquidate_on_margin_call
+    if margin_call is None and liquidate_on_stop:
+        margin_call = True
+    wf_result = select_market_workflow(
+        market,
+        workflow_name,
+        operator=operator,
+        session_capital=session_capital,
+        session_volume_mode=session_volume_mode,
+        use_existing_holdings=use_existing_holdings,
+        existing_holdings_unit=existing_holdings_unit,
+        existing_holdings_use_pct=existing_holdings_use_pct,
+        existing_holdings_use_qty=existing_holdings_use_qty,
+        liquidate_on_stop=liquidate_on_stop,
+        liquidate_on_margin_call=margin_call,
+    )
     if mode_result:
         wf_result["trading_mode"] = mode_result["trading_mode"]
         wf_result["operation_mode"] = mode_result["operation_mode"]
     return wf_result
 
 
+def _exclusive_workflows_active(market: str) -> list[str]:
+    exclusive = MARKET_EXCLUSIVE_WORKFLOWS.get(market, frozenset())
+    out: list[str] = []
+    for wf in list_workflows():
+        name = str(wf.get("name") or "")
+        if wf.get("active") and name in exclusive:
+            out.append(name)
+    return sorted(out)
+
+
 def select_market_workflow(
-    market: str, workflow_name: str, *, operator: str = "web:operator"
+    market: str,
+    workflow_name: str,
+    *,
+    operator: str = "web:operator",
+    session_capital: float | None = None,
+    session_volume_mode: str | None = None,
+    use_existing_holdings: bool = False,
+    existing_holdings_unit: str = "percent",
+    existing_holdings_use_pct: float = 0,
+    existing_holdings_use_qty: float | None = None,
+    liquidate_on_stop: bool = False,
+    liquidate_on_margin_call: bool | None = None,
 ) -> dict[str, Any]:
-    """Activate one primary workflow; deactivate other exclusive workflows (keep concurrent)."""
+    """Activate primary workflow; in multi mode keeps other primaries running."""
     if market not in MARKET_CONFIG:
         raise ValueError(f"unknown_market: {market}")
     allowed = MARKET_WORKFLOW_SET.get(market, frozenset())
@@ -570,7 +796,33 @@ def select_market_workflow(
     if workflow_name not in by_name:
         raise ValueError(f"missing_in_n8n: {workflow_name}")
 
-    results = _apply_exclusive_workflow_selection(market, workflow_name, by_name=by_name)
+    multi = is_multi_automation_enabled(market)
+    prev_started = _workflow_started_at(market)
+    prev_workflow = get_active_market_workflow(market)
+    session_report = None
+    liquidation: dict[str, Any] | None = None
+
+    if multi:
+        active = get_active_market_workflows(market) or _exclusive_workflows_active(market)
+        if workflow_name not in active and len(active) >= _multi_automation_max_primary(market):
+            raise ValueError(
+                f"multi_automation_max_primary:{_multi_automation_max_primary(market)}"
+            )
+    elif prev_started and prev_workflow and prev_workflow != workflow_name:
+        liquidation = _maybe_liquidate_session(
+            market, workflow_name=prev_workflow, operator=operator
+        )
+        session_report = _archive_workflow_session(
+            market,
+            reason="switch",
+            operator=operator,
+            started_at=prev_started,
+            workflow_name=prev_workflow,
+        )
+
+    results = _apply_exclusive_workflow_selection(
+        market, workflow_name, by_name=by_name, additive=multi
+    )
 
     log_system_activity(
         f"{'Crypto' if market == 'crypto' else 'MOEX'}: запущен workflow {workflow_name}",
@@ -578,17 +830,150 @@ def select_market_workflow(
         level="info",
         payload={"market": market, "workflow": workflow_name},
     )
-    started_at = _mark_workflow_started(market, operator=operator)
+    started_at = _mark_workflow_started(
+        market,
+        operator=operator,
+        session_capital=session_capital,
+        session_volume_mode=session_volume_mode,
+        workflow_name=workflow_name,
+        use_existing_holdings=use_existing_holdings,
+        existing_holdings_unit=existing_holdings_unit,
+        existing_holdings_use_pct=existing_holdings_use_pct,
+        existing_holdings_use_qty=existing_holdings_use_qty,
+        liquidate_on_stop=liquidate_on_stop,
+        liquidate_on_margin_call=liquidate_on_margin_call,
+    )
     config_name = MARKET_CONFIG[market]
     mode = str(get_config_effective(config_name).get("mode", "dry_run"))
     concurrent = _concurrent_workflows_for_mode(market, mode)
+    active_exclusive = _exclusive_workflows_active(market)
+    _set_active_market_workflows(market, active_exclusive, operator=operator)
+    session_config: dict[str, Any] | None = None
+    try:
+        from workflow_session_config_service import get_workflow_session_config
+
+        cfg = get_workflow_session_config(market)
+        if cfg:
+            session_config = cfg
+    except Exception:
+        session_config = None
     return {
         "status": "ok",
         "market": market,
         "selected": workflow_name,
         "workflow_started_at": started_at,
+        "workflow_session_config": session_config,
         "workflows": results,
-        "active_workflows": [workflow_name, *sorted(concurrent)],
+        "active_workflows": [*active_exclusive, *sorted(concurrent)],
+        "multi_automation_enabled": multi,
+        "session_report": session_report,
+        "liquidation": liquidation,
+    }
+
+
+def add_market_workflow(
+    market: str,
+    workflow_name: str,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Start a workflow alongside others (multi-automation must be enabled)."""
+    if not is_multi_automation_enabled(market):
+        raise ValueError("multi_automation_disabled")
+    return select_market_workflow(market, workflow_name, **kwargs)
+
+
+def stop_single_market_workflow(
+    market: str,
+    workflow_name: str,
+    *,
+    operator: str = "web:operator",
+) -> dict[str, Any]:
+    """Stop one workflow without stopping others on the same market."""
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    allowed = MARKET_WORKFLOW_SET.get(market, frozenset())
+    if workflow_name not in allowed:
+        raise ValueError(f"unknown_workflow: {workflow_name}")
+
+    by_name = {str(w.get("name")): w for w in list_workflows()}
+    wf = by_name.get(workflow_name)
+    results: list[dict[str, Any]] = []
+    if wf and wf.get("active"):
+        deactivate_workflow(str(wf["id"]))
+        results.append({"name": workflow_name, "action": "deactivated", "id": wf.get("id")})
+
+    started_at = _workflow_started_at(market)
+    liquidation = _maybe_liquidate_session(
+        market, workflow_name=workflow_name, operator=operator, reason="stop"
+    )
+    session_report = _archive_workflow_session(
+        market,
+        reason="stop",
+        operator=operator,
+        started_at=started_at,
+        workflow_name=workflow_name,
+    )
+    remaining = _exclusive_workflows_active(market)
+    _set_active_market_workflows(market, remaining, operator=operator)
+    if not remaining:
+        _clear_workflow_started(market)
+
+    log_system_activity(
+        f"{'Crypto' if market == 'crypto' else 'MOEX'}: остановлен workflow {workflow_name}",
+        category=market,
+        level="warn",
+        payload={"market": market, "workflow": workflow_name, "remaining": remaining},
+    )
+    return {
+        "status": "ok",
+        "market": market,
+        "stopped": workflow_name,
+        "workflows": results,
+        "active_workflows": remaining,
+        "session_report": session_report,
+        "liquidation": liquidation,
+    }
+
+
+def reset_workflows_on_boot(market: str) -> dict[str, Any]:
+    """Deactivate all market workflows after container start (no liquidation / session archive)."""
+    if market not in MARKET_CONFIG:
+        raise ValueError(f"unknown_market: {market}")
+    allowed = MARKET_WORKFLOW_SET.get(market, frozenset())
+    results: list[dict[str, Any]] = []
+    try:
+        by_name = {str(w.get("name")): w for w in list_workflows()}
+    except Exception as exc:
+        logger.warning("boot_workflow_reset_failed market=%s err=%s", market, exc)
+        return {"status": "error", "market": market, "message": str(exc), "workflows": []}
+
+    for name in sorted(allowed):
+        wf = by_name.get(name)
+        if not wf or not wf.get("active"):
+            continue
+        try:
+            deactivate_workflow(str(wf["id"]))
+            results.append({"name": name, "action": "deactivated", "id": wf.get("id")})
+        except Exception as exc:
+            logger.warning("boot_deactivate_failed workflow=%s err=%s", name, exc)
+            results.append({"name": name, "action": "error", "message": str(exc)})
+
+    _clear_workflow_started(market)
+    if results:
+        log_system_activity(
+            f"{'Crypto' if market == 'crypto' else 'MOEX'}: автоматы выключены при старте контейнера",
+            category="control",
+            level="info",
+            payload={
+                "market": market,
+                "deactivated": [r["name"] for r in results if r.get("action") == "deactivated"],
+            },
+        )
+    return {
+        "status": "ok",
+        "market": market,
+        "workflows": results,
+        "active_workflows": [],
     }
 
 
@@ -599,6 +984,8 @@ def stop_market_workflows(market: str) -> dict[str, Any]:
     allowed = MARKET_WORKFLOW_SET.get(market, frozenset())
     workflows = list_workflows()
     by_name = {str(w.get("name")): w for w in workflows}
+    started_at = _workflow_started_at(market)
+    workflow_name = get_active_market_workflow(market)
     results: list[dict[str, Any]] = []
     for name in sorted(allowed):
         wf = by_name.get(name)
@@ -613,8 +1000,24 @@ def stop_market_workflows(market: str) -> dict[str, Any]:
         level="warn",
         payload={"market": market},
     )
+    liquidation = _maybe_liquidate_session(
+        market, workflow_name=workflow_name, operator="web:operator"
+    )
+    session_report = _archive_workflow_session(
+        market,
+        reason="stop",
+        started_at=started_at,
+        workflow_name=workflow_name,
+    )
     _clear_workflow_started(market)
-    return {"status": "ok", "market": market, "workflows": results, "active_workflows": []}
+    return {
+        "status": "ok",
+        "market": market,
+        "workflows": results,
+        "active_workflows": [],
+        "session_report": session_report,
+        "liquidation": liquidation,
+    }
 
 
 def set_market_mode(
@@ -752,7 +1155,28 @@ def get_market_control_state(market: str) -> dict[str, Any]:
                 workflow_pnl=workflow_pnl,
             )
         except Exception:
+            logger.exception("workflow_session_stats_failed market=%s", market)
             workflow_session = None
+
+    workflow_session_config: dict[str, Any] | None = None
+    if active_wf:
+        try:
+            from workflow_session_config_service import get_workflow_session_config
+
+            cfg = get_workflow_session_config(market)
+            if cfg:
+                workflow_session_config = cfg
+        except Exception:
+            workflow_session_config = None
+
+    crypto_workflow_settings: dict[str, Any] | None = None
+    if market == "crypto":
+        try:
+            from crypto_workflow_settings_service import get_crypto_workflow_settings
+
+            crypto_workflow_settings = get_crypto_workflow_settings()
+        except Exception:
+            crypto_workflow_settings = None
 
     return {
         "market": market,
@@ -767,6 +1191,11 @@ def get_market_control_state(market: str) -> dict[str, Any]:
         "workflow_started_at": started_at,
         "workflow_pnl": workflow_pnl,
         "workflow_session": workflow_session,
+        "workflow_session_config": workflow_session_config,
+        "crypto_workflow_settings": crypto_workflow_settings,
+        "multi_automation_enabled": is_multi_automation_enabled(market),
+        "multi_automation_max_primary": _multi_automation_max_primary(market),
+        "active_workflows_primary": get_active_market_workflows(market),
         "workflows": workflows,
         "n8n": {"status": n8n_status, "message": n8n_message},
     }
@@ -1049,9 +1478,14 @@ def run_workflow_once(
 ) -> dict[str, Any]:
     """Manual one-shot: run paper/dry pipeline for each enabled symbol (like n8n tick)."""
     from crypto_pipeline import run_crypto_signal
-    from paper_trading_service import run_crypto_paper_trade, run_crypto_scalp_paper_trade, run_securities_swing_paper
+    from paper_trading_service import (
+        run_crypto_paper_trade,
+        run_crypto_scalp_paper_trade,
+        run_securities_swing_paper,
+    )
     from crypto_scalp_pipeline import run_crypto_scalp_signal
     from securities_pipeline import run_securities_dca_dry_run, run_securities_swing_dry_run
+    from workflow_session_config_service import resolve_workflow_equity
     from workflow_universe_service import enabled_symbols_for_workflow
 
     if market not in MARKET_CONFIG:
@@ -1059,11 +1493,20 @@ def run_workflow_once(
     if workflow_name not in MARKET_WORKFLOW_SET.get(market, frozenset()):
         raise ValueError(f"unknown_workflow: {workflow_name}")
 
+    if market == "crypto" and "scalp" in workflow_name.lower():
+        try:
+            from crypto_scalp_universe_scan import maybe_rescan_scalp_universe
+
+            maybe_rescan_scalp_universe(workflow_name, operator=operator, testnet=True)
+        except Exception:
+            logger.exception("scalp_universe_rescan_failed workflow=%s", workflow_name)
+
     symbols = enabled_symbols_for_workflow(workflow_name)
     if not symbols:
         return {"status": "error", "message": "empty_universe", "workflow": workflow_name}
 
     results: list[dict[str, Any]] = []
+    crypto_equity = resolve_workflow_equity("crypto") if market == "crypto" else None
     for sym in symbols:
         try:
             if workflow_name == "crypto-signal-paper":
@@ -1074,6 +1517,7 @@ def run_workflow_once(
                         symbol=sym,
                         env="dry_run",
                         workflow_name=workflow_name,
+                        equity=crypto_equity or resolve_workflow_equity("crypto"),
                     )
                 )
             elif workflow_name == "crypto-scalp-hybrid-paper":
@@ -1084,6 +1528,7 @@ def run_workflow_once(
                         symbol=sym,
                         env="dry_run",
                         workflow_name=workflow_name,
+                        equity=crypto_equity or resolve_workflow_equity("crypto"),
                     )
                 )
             elif workflow_name == "securities-swing-paper":

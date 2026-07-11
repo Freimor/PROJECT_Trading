@@ -15,6 +15,7 @@ import WalletCard from "../components/WalletCard";
 import { POLL } from "../config/polling";
 import { useI18n } from "../i18n/LanguageContext";
 import type { AdminLayoutContext } from "../layouts/AdminLayout";
+import { useAutoChartLayout } from "../hooks/useAutoChartLayout";
 import { usePolling } from "../hooks/usePolling";
 import type { BalancesResponse } from "../utils/balances";
 import type { Candle, ChartIndicators, ChartMarker, StrategyState, TradeEvent } from "../types";
@@ -52,6 +53,7 @@ function chartLimitForInterval(tf: string): number {
 export default function CryptoWorkspacePage() {
   const { t } = useI18n();
   const { overview } = useOutletContext<AdminLayoutContext>();
+  const chartAreaRef = useRef<HTMLDivElement>(null);
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [interval, setChartInterval] = useState(readStoredInterval);
@@ -77,14 +79,23 @@ export default function CryptoWorkspacePage() {
     apiGet<StrategyState>("/api/strategies/crypto").then(applyStrategy).catch(() => {});
   }, [applyStrategy]);
 
+  const pairsFetcher = useCallback(() => apiGet<string[]>("/api/crypto/pairs"), []);
+  const { data: pairList, refresh: refreshPairs } = usePolling(pairsFetcher, POLL.OPS, true, {
+    staggerKey: "crypto-workspace-pairs",
+  });
+
   const refreshStrategy = useCallback(() => {
     apiGet<StrategyState>("/api/strategies/crypto").then(applyStrategy).catch(() => {});
-  }, [applyStrategy]);
+    refreshPairs();
+  }, [applyStrategy, refreshPairs]);
 
   const symbols = useMemo(() => {
-    if (strategy?.strategy?.symbols?.length) return strategy.strategy.symbols;
+    const fromStrategy = strategy?.strategy?.symbols ?? [];
+    const fromPairs = pairList ?? [];
+    const merged = [...new Set([...fromStrategy, ...fromPairs])];
+    if (merged.length) return merged;
     return ["BTCUSDT", "ETHUSDT"];
-  }, [strategy]);
+  }, [strategy, pairList]);
 
   const workflow = strategy?.strategy?.workflow ?? "crypto-signal-dry-run";
   const strategyLabel = strategy?.strategy?.id
@@ -169,6 +180,22 @@ export default function CryptoWorkspacePage() {
     { staggerKey: "crypto-equity" },
   );
 
+  const { data: cryptoWorkflowSettings, refresh: refreshWorkflowSettings } = usePolling<{
+    status?: string;
+    trading_product?: {
+      market_type?: string;
+      is_futures?: boolean;
+      allow_short?: boolean;
+      leverage?: number;
+      margin_mode?: string;
+    };
+  }>(
+    () => apiGet("/api/crypto/workflow-settings"),
+    POLL.OPS,
+    true,
+    { staggerKey: "crypto-workflow-settings" },
+  );
+
   const filteredMarkers = useMemo(
     () => filterChartMarkers(markerData?.markers ?? [], markerFilters),
     [markerData?.markers, markerFilters],
@@ -194,6 +221,8 @@ export default function CryptoWorkspacePage() {
 
   const base = symbol.replace("USDT", "");
   const candleCount = candleData?.count ?? candleData?.candles?.length ?? 0;
+  const panelCount = strategy?.strategy?.chart_overlays?.panels?.length ?? 0;
+  const { chartHeight, panelHeight, needsScroll } = useAutoChartLayout(chartAreaRef, panelCount);
 
   return (
     <div className="page workspace">
@@ -257,20 +286,29 @@ export default function CryptoWorkspacePage() {
             {candlesLoading ? (
               <p className="muted chart-loading">{t("common.loading")} ({interval})</p>
             ) : candleData?.candles?.length ? (
-              <PriceChartWithMarkers
-                key={`${symbol}-${interval}`}
-                candles={candleData.candles}
-                markers={filteredMarkers}
-                symbol={symbol}
-                interval={interval}
-                overlays={strategy?.strategy?.chart_overlays}
-                indicators={
-                  indicatorData?.series
-                    ? { series: indicatorData.series, levels: indicatorData.levels ?? {} }
-                    : undefined
-                }
-                onMarkerClick={setSelected}
-              />
+              <div
+                ref={chartAreaRef}
+                className={`workspace-chart-slot${needsScroll ? " workspace-chart-slot--scroll" : ""}`}
+              >
+                <div className="workspace-chart-area">
+                  <PriceChartWithMarkers
+                    key={`${symbol}-${interval}-${chartHeight}-${panelHeight}-${panelCount}`}
+                    candles={candleData.candles}
+                    markers={filteredMarkers}
+                    symbol={symbol}
+                    interval={interval}
+                    height={chartHeight}
+                    panelHeight={panelHeight}
+                    overlays={strategy?.strategy?.chart_overlays}
+                    indicators={
+                      indicatorData?.series
+                        ? { series: indicatorData.series, levels: indicatorData.levels ?? {} }
+                        : undefined
+                    }
+                    onMarkerClick={setSelected}
+                  />
+                </div>
+              </div>
             ) : (
               !candlesLoading && (
                 <p className="muted">{candlesError ? String(candlesError) : t("workspace.noQuotes")}</p>
@@ -286,6 +324,7 @@ export default function CryptoWorkspacePage() {
             market="crypto"
             killSwitch={Boolean(overview?.kill_switch)}
             onStrategyChange={applyStrategy}
+            onSettingsChange={() => void refreshWorkflowSettings()}
           />
 
           <AutomationPanel
@@ -296,6 +335,7 @@ export default function CryptoWorkspacePage() {
             funnel={dash?.funnel}
             llmEval={dash?.llm_eval}
             ollama={dash?.ollama}
+            tradingProduct={cryptoWorkflowSettings?.trading_product}
           />
 
           <WalletCard data={balances} loading={balancesLoading} highlightAssets={["USDT", base, "BTC", "ETH"]} />

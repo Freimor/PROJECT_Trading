@@ -9,6 +9,35 @@ mode: paper  # dry_run | paper | shadow | live
 # Активная стратегия: llm_swing | dca_btc (можно переключить в web-console)
 active_strategy: llm_swing
 
+# Quote stablecoin for pairs and session budget (runtime override in console)
+quote_asset: USDT
+allowed_quote_assets: [USDT, USDC, FDUSD]
+
+# Spot vs USDT-M futures (short requires usdt_futures + allow_short)
+trading_product:
+  market_type: spot          # spot | usdt_futures
+  margin_mode: isolated      # isolated | cross
+  leverage: 3
+  max_leverage: 5
+  allow_short: false
+  position_mode: one_way
+  use_reduce_only_on_exit: true
+
+# Мониторинг margin call / ликвидации на USDT-M futures
+futures_margin_monitor:
+  enabled: true
+  auto_stop_workflows: true      # выключить crypto workflow в n8n
+  apply_kill_switch: false       # глобальный kill switch (MOEX не затрагивается)
+  lookback_minutes: 120
+  poll_account_margin_ratio: true
+  margin_ratio_halt: 1.0           # maintMargin / marginBalance >= 1.0
+  scan_before_trade: true          # проверка перед каждой futures-сделкой scalp
+
+# Несколько primary workflow на одном рынке (scalp + swing одновременно)
+multi_automation:
+  enabled: false
+  max_concurrent_primary: 2
+
 pairs:
   - BTCUSDT
   - ETHUSDT
@@ -53,6 +82,8 @@ dca:
 api:
   testnet_base_url: https://testnet.binance.vision
   live_base_url: https://api.binance.com
+  futures_testnet_base_url: https://testnet.binancefuture.com
+  futures_live_base_url: https://fapi.binance.com
   enable_withdraw: false  # NEVER true
 
 legal_notice: "Automated trading is operator responsibility. Not legal/tax advice."

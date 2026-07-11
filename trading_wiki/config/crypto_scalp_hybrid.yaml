@@ -1,5 +1,5 @@
-# Crypto scalp hybrid — 80% script / 20% LLM (5m)
-# validate_only + fast model (qwen3.5:4b, think=false) on borderline setups only
+# Crypto scalp 5m — rules_engine only (LLM выключен до настройки GPU)
+# Включить LLM: llm_enabled: true и llm_sample_pct > 0
 
 version: "1.0.0"
 
@@ -7,13 +7,48 @@ timeframe: 5m
 schedule_cron: "*/5 * * * *"
 schedule_minutes: 5
 
+# Pre-session pair selection (vol / volume / diversification)
+universe_scan:
+  enabled: true
+  use_catalog: true
+  top_n: 3
+  min_score: 0.35
+  rescan_during_session: true
+  rescan_interval_hours: 2
+  klines_limit: 120
+  atr_period: 14
+  atr_pct_min: 0.22
+  atr_pct_max: 2.5
+  atr_pct_sweet_min: 0.35
+  atr_pct_sweet_max: 1.2
+  volume_ratio_min: 1.0
+  momentum_bars: 3
+  momentum_min_pct: 0.08
+  rsi_active_low: 38
+  rsi_active_high: 62
+  max_pair_correlation: 0.85
+  # Metrics: try session quote, other stables, cross (BTC/ETH); trade always in quote_asset
+  scan_quote_fallbacks: [USDT, USDC, FDUSD, BUSD]
+  scan_cross_quotes: [BTC, ETH, BNB]
+  scan_metrics_mainnet_fallback: true   # testnet klines often flat — use mainnet for vol screen only
+  # catalog = 20 пар в коде; exchange = все SPOT на Binance; combined = каталог + биржа
+  scan_pool_mode: combined
+  max_scan_bases: 60
+  scan_exchange_listing_mainnet: true
+  weight_atr: 0.35
+  weight_volume: 0.25
+  weight_momentum: 0.20
+  weight_rsi: 0.10
+  weight_trend: 0.10
+  candidates: []   # extra symbols; empty + use_catalog → catalog + whitelist
+
 pairs:
   - BTCUSDT
   - ETHUSDT
 
-# Доля тиков, где при пограничном сигнале вызывается LLM (остальное — скрипт)
-llm_sample_pct: 20
-
+# LLM отключён: все одобренные фильтром сигналы идут через rules_engine
+llm_enabled: false
+llm_sample_pct: 0
 # ambiguity_score: 0 = уверенный скрипт, 1 = полный шум
 ambiguity:
   clear_max: 0.35      # ≤ → execute без LLM (script)
@@ -43,6 +78,15 @@ scalp_rules:
 risk:
   scale_notional_pct: 0.5   # половина от стандартного max_notional swing
   min_stop_distance_pct: 0.008
+
+# Выход из scalp-позиции (MARKET SELL)
+exit:
+  use_stop: true
+  use_take_profit: true
+  max_hold_bars: 6           # 6×5m = 30 мин макс удержание
+  synthetic_max_hold_bars: 2 # быстрый выход «наследных» позиций без записи в БД
+  exit_on_momentum_flip: true
+  momentum_flip_pct: -0.05   # выход если momentum ≤ −0.05%
 
 retail_guard:
   enabled: true

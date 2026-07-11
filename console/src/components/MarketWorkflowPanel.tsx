@@ -4,24 +4,61 @@ import OperatorConfirmModal from "./OperatorConfirmModal";
 import PortfolioCard from "./PortfolioCard";
 import StrategyDetailModal from "./StrategyDetailModal";
 import StrategySubsettingsPanel from "./StrategySubsettingsPanel";
+import WorkflowSessionReportModal from "./WorkflowSessionReportModal";
 import { POLL } from "../config/polling";
 import { useErrorNotifications } from "../context/ErrorNotifications";
 import { useI18n } from "../i18n/LanguageContext";
 import { usePolling } from "../hooks/usePolling";
-import type { StrategyState } from "../types";
+import type { StrategyState, WorkflowSessionReport } from "../types";
 import { strategyDescription } from "../utils/strategyText";
 
 type Market = "crypto" | "securities";
 
 type N8nWorkflow = { id: string; name: string; active: boolean };
 
+type SessionVolumeMode = "stablecoin" | "existing_holdings";
+type HoldingsUnit = "percent" | "absolute";
+
 type MarketControl = {
   trading_mode?: string;
   live_flag?: boolean;
   active_workflow?: string | null;
   workflow_started_at?: string | null;
+  workflow_session_config?: {
+    session_capital?: number | null;
+    session_volume_mode?: SessionVolumeMode;
+    use_existing_holdings?: boolean;
+    existing_holdings_unit?: HoldingsUnit;
+    existing_holdings_use_pct?: number;
+    existing_holdings_use_qty?: number | null;
+  liquidate_on_stop?: boolean;
+  liquidate_on_margin_call?: boolean;
+  universe_scan_selected?: string[];
+    quote_asset?: string;
+  } | null;
+  crypto_workflow_settings?: {
+    quote_asset?: string;
+    allowed_quote_assets?: string[];
+    runtime_override?: boolean;
+    trading_product?: {
+      market_type?: string;
+      is_futures?: boolean;
+      allow_short?: boolean;
+      leverage?: number;
+      margin_mode?: string;
+      runtime_override?: boolean;
+    };
+  } | null;
   workflows?: Array<{ id: string; name: string; active: boolean }>;
+  multi_automation_enabled?: boolean;
+  multi_automation_max_primary?: number;
+  active_workflows_primary?: string[];
   n8n?: { status?: string; message?: string };
+};
+
+const DEFAULT_SESSION_CAPITAL: Record<Market, number> = {
+  crypto: 10_000,
+  securities: 100_000,
 };
 
 type ScheduleResp = {
@@ -55,6 +92,8 @@ type OperationModeOption = { id: OperationMode; labelKey: string };
 type PendingOp =
   | { kind: "start"; workflow: string; strategyId: string; operationMode: OperationMode }
   | { kind: "stop" }
+  | { kind: "stop_one"; workflow: string }
+  | { kind: "multi_automation"; enabled: boolean }
   | { kind: "test_run"; workflow: string }
   | { kind: "schedule"; workflow: string; optionId: string };
 
@@ -62,6 +101,7 @@ type Props = {
   market: Market;
   killSwitch?: boolean;
   onStrategyChange?: (state: StrategyState) => void;
+  onSettingsChange?: () => void;
 };
 
 const OPERATION_MODES: OperationModeOption[] = [
@@ -130,6 +170,7 @@ export default function MarketWorkflowPanel({
   market,
   killSwitch = false,
   onStrategyChange,
+  onSettingsChange,
 }: Props) {
   const { t, lang } = useI18n();
   const { report } = useErrorNotifications();
@@ -144,6 +185,15 @@ export default function MarketWorkflowPanel({
   const [scheduleOptionId, setScheduleOptionId] = useState("");
   const [testMsg, setTestMsg] = useState<string | null>(null);
   const [detailStrategyId, setDetailStrategyId] = useState<string | null>(null);
+  const [sessionReport, setSessionReport] = useState<WorkflowSessionReport | null>(null);
+  const [reportsBusy, setReportsBusy] = useState(false);
+  const [sessionCapitalInput, setSessionCapitalInput] = useState("");
+  const [sessionVolumeMode, setSessionVolumeMode] = useState<SessionVolumeMode>("stablecoin");
+  const [holdingsUnit, setHoldingsUnit] = useState<HoldingsUnit>("percent");
+  const [existingHoldingsPctInput, setExistingHoldingsPctInput] = useState("100");
+  const [existingHoldingsQtyInput, setExistingHoldingsQtyInput] = useState("");
+  const [liquidateOnStop, setLiquidateOnStop] = useState(false);
+  const [multiAutomation, setMultiAutomation] = useState(false);
 
   const { data: strategyData, refresh: refreshStrategy } = usePolling<StrategyState>(
     () => apiGet(`/api/strategies/${market}`),
@@ -152,14 +202,31 @@ export default function MarketWorkflowPanel({
     { staggerKey: `wf-panel-strategy-${market}` },
   );
 
-  const strategies = useMemo(() => strategyData?.strategies ?? [], [strategyData?.strategies]);
-
   const { data: control, refresh: refreshControl } = usePolling<MarketControl>(
     () => apiGet(`/api/automation/control/${market}`),
     POLL.OPS,
     true,
     { staggerKey: `wf-panel-${market}` },
   );
+
+  const isFutures =
+    control?.crypto_workflow_settings?.trading_product?.is_futures ?? false;
+  const activePrimary = control?.active_workflows_primary ?? [];
+  const maxPrimary = control?.multi_automation_max_primary ?? 2;
+
+  useEffect(() => {
+    if (control?.multi_automation_enabled != null) {
+      setMultiAutomation(Boolean(control.multi_automation_enabled));
+    }
+  }, [control?.multi_automation_enabled]);
+
+  const strategies = useMemo(() => strategyData?.strategies ?? [], [strategyData?.strategies]);
+
+  const quoteAsset =
+    control?.crypto_workflow_settings?.quote_asset ??
+    control?.workflow_session_config?.quote_asset ??
+    "USDT";
+  const fiatLabel = market === "crypto" ? quoteAsset : "₽";
 
   const { data: n8nData, refresh: refreshN8n } = usePolling<{
     status: string;
@@ -303,6 +370,38 @@ export default function MarketWorkflowPanel({
       setOpError(null);
       try {
         if (pendingOp.kind === "start") {
+          const volumeMode =
+            market === "securities" ? "stablecoin" : sessionVolumeMode;
+          let cap: number | undefined;
+          let holdingsPct = 0;
+          let holdingsQty: number | undefined;
+
+          if (volumeMode === "stablecoin") {
+            const parsed = Number(String(sessionCapitalInput).replace(/\s/g, ""));
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+              setOpError(t("workflowPanel.sessionCapitalInvalid"));
+              setOpBusy(false);
+              return;
+            }
+            cap = parsed;
+          } else {
+            if (holdingsUnit === "percent") {
+              holdingsPct = Number(String(existingHoldingsPctInput).replace(/\s/g, ""));
+              if (!Number.isFinite(holdingsPct) || holdingsPct <= 0 || holdingsPct > 100) {
+                setOpError(t("workflowPanel.existingHoldingsPctInvalid"));
+                setOpBusy(false);
+                return;
+              }
+            } else {
+              const parsedQty = Number(String(existingHoldingsQtyInput).replace(/\s/g, ""));
+              if (!Number.isFinite(parsedQty) || parsedQty <= 0) {
+                setOpError(t("workflowPanel.existingHoldingsQtyInvalid"));
+                setOpBusy(false);
+                return;
+              }
+              holdingsQty = parsedQty;
+            }
+          }
           if (pendingOp.strategyId !== strategyData?.active) {
             const next = await apiPost<StrategyState>(
               `/api/strategies/${market}`,
@@ -317,11 +416,42 @@ export default function MarketWorkflowPanel({
             {
               workflow_name: pendingOp.workflow,
               trading_mode: pendingOp.operationMode,
+              session_volume_mode: volumeMode,
+              session_capital: cap,
+              use_existing_holdings: volumeMode === "existing_holdings",
+              existing_holdings_unit: holdingsUnit,
+              existing_holdings_use_pct: holdingsPct,
+              existing_holdings_use_qty: holdingsQty,
+              liquidate_on_stop: liquidateOnStop,
+              liquidate_on_margin_call: liquidateOnStop,
+              additive:
+                multiAutomation &&
+                (activePrimary.length > 0 || Boolean(activeWorkflow)) &&
+                !activePrimary.includes(pendingOp.workflow),
             },
             { operatorPassword: password },
           );
         } else if (pendingOp.kind === "stop") {
-          await apiPost(`/api/n8n/workflows/stop?market=${market}`, {}, { operatorPassword: password });
+          const stopResp = await apiPost<{
+            session_report?: { report_id?: string } | null;
+          }>(`/api/n8n/workflows/stop?market=${market}`, {}, { operatorPassword: password });
+          const reportId = stopResp.session_report?.report_id;
+          if (reportId) {
+            const full = await apiGet<WorkflowSessionReport>(`/api/workflow/reports/${reportId}`);
+            setSessionReport(full);
+          }
+        } else if (pendingOp.kind === "stop_one") {
+          await apiPost(
+            `/api/n8n/workflows/stop?market=${market}`,
+            { workflow_name: pendingOp.workflow, operator: "web:operator" },
+            { operatorPassword: password },
+          );
+        } else if (pendingOp.kind === "multi_automation") {
+          await apiPost(
+            `/api/automation/control/${market}/multi-automation`,
+            { enabled: pendingOp.enabled, operator: "web:operator" },
+            { operatorPassword: password },
+          );
         } else if (pendingOp.kind === "test_run") {
           const workflow = pendingOp.workflow;
           setPendingOp(null);
@@ -378,6 +508,15 @@ export default function MarketWorkflowPanel({
       refreshStrategy,
       report,
       strategyData?.active,
+      sessionCapitalInput,
+      sessionVolumeMode,
+      holdingsUnit,
+      existingHoldingsPctInput,
+      existingHoldingsQtyInput,
+      liquidateOnStop,
+      multiAutomation,
+      activePrimary,
+      activeWorkflow,
       t,
     ],
   );
@@ -396,13 +535,19 @@ export default function MarketWorkflowPanel({
   const pendingTitle =
     pendingOp?.kind === "stop"
       ? t("workflowPanel.stop")
-      : pendingOp?.kind === "test_run"
-        ? t("workflowPanel.testRun")
-        : pendingOp?.kind === "schedule"
-          ? t("workflowPanel.scheduleApply")
-          : isRunning
-            ? t("workflowPanel.restart")
-            : t("workflowPanel.start");
+      : pendingOp?.kind === "stop_one"
+        ? t("workflowPanel.stopOne")
+        : pendingOp?.kind === "multi_automation"
+          ? t("workflowPanel.multiAutomationTitle")
+          : pendingOp?.kind === "test_run"
+            ? t("workflowPanel.testRun")
+            : pendingOp?.kind === "schedule"
+              ? t("workflowPanel.scheduleApply")
+              : isRunning
+                ? t("workflowPanel.restart")
+                : multiAutomation && activePrimary.length > 0
+                  ? t("workflowPanel.addWorkflow")
+                  : t("workflowPanel.start");
 
   const pendingRisk =
     pendingOp?.kind === "start" && pendingOp.operationMode === "live"
@@ -497,6 +642,44 @@ export default function MarketWorkflowPanel({
           })}
         </fieldset>
 
+        <div className="workflow-multi-section">
+          <label className="modal-field checkbox-field">
+            <input
+              type="checkbox"
+              checked={multiAutomation}
+              disabled={opBusy || killSwitch}
+              onChange={(e) => {
+                setOpError(null);
+                setPendingOp({ kind: "multi_automation", enabled: e.target.checked });
+              }}
+            />
+            <span>{t("workflowPanel.multiAutomationLabel")}</span>
+            <span className="muted small block">
+              {t("workflowPanel.multiAutomationHint", { max: String(maxPrimary) })}
+            </span>
+          </label>
+          {multiAutomation && activePrimary.length > 0 ? (
+            <ul className="workflow-active-list muted small">
+              {activePrimary.map((wf) => (
+                <li key={wf} className="workflow-active-row">
+                  <span className="mono-small">{wf}</span>
+                  <button
+                    type="button"
+                    className="tiny danger"
+                    disabled={opBusy}
+                    onClick={() => {
+                      setOpError(null);
+                      setPendingOp({ kind: "stop_one", workflow: wf });
+                    }}
+                  >
+                    {t("workflowPanel.stopOne")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+
         <div className="workflow-panel-actions">
           <button
             type="button"
@@ -510,6 +693,22 @@ export default function MarketWorkflowPanel({
             }
             onClick={() => {
               setOpError(null);
+              const cfg = control?.workflow_session_config;
+              const defaultCap =
+                cfg?.session_capital ?? DEFAULT_SESSION_CAPITAL[market];
+              setSessionCapitalInput(String(defaultCap));
+              setSessionVolumeMode(
+                cfg?.session_volume_mode ??
+                  (cfg?.use_existing_holdings ? "existing_holdings" : "stablecoin"),
+              );
+              setHoldingsUnit(cfg?.existing_holdings_unit ?? "percent");
+              setExistingHoldingsPctInput(String(cfg?.existing_holdings_use_pct ?? 100));
+              setExistingHoldingsQtyInput(
+                cfg?.existing_holdings_use_qty != null
+                  ? String(cfg.existing_holdings_use_qty)
+                  : "",
+              );
+              setLiquidateOnStop(Boolean(cfg?.liquidate_on_stop));
               setPendingOp({
                 kind: "start",
                 workflow: selectedWorkflow,
@@ -518,7 +717,35 @@ export default function MarketWorkflowPanel({
               });
             }}
           >
-            {isRunning ? t("workflowPanel.restart") : t("workflowPanel.start")}
+            {isRunning ? t("workflowPanel.restart") : multiAutomation && activePrimary.length > 0 ? t("workflowPanel.addWorkflow") : t("workflowPanel.start")}
+          </button>
+          <button
+            type="button"
+            className="tiny"
+            disabled={reportsBusy}
+            onClick={() => {
+              void (async () => {
+                setReportsBusy(true);
+                try {
+                  const list = await apiGet<{ items: Array<{ id: string }> }>(
+                    `/api/workflow/reports?market=${market}&limit=1`,
+                  );
+                  const id = list.items?.[0]?.id;
+                  if (!id) {
+                    setTestMsg(t("workflowReport.none"));
+                    return;
+                  }
+                  const full = await apiGet<WorkflowSessionReport>(`/api/workflow/reports/${id}`);
+                  setSessionReport(full);
+                } catch (err) {
+                  report("workflow/reports", String(err));
+                } finally {
+                  setReportsBusy(false);
+                }
+              })();
+            }}
+          >
+            {t("workflowReport.lastReport")}
           </button>
           <button
             type="button"
@@ -542,6 +769,40 @@ export default function MarketWorkflowPanel({
           </p>
         ) : activeWorkflow ? (
           <p className="muted small">{t("workflowPanel.uptime")}: {t("workflowPanel.uptimePending")}</p>
+        ) : null}
+
+        {activeWorkflow && control?.workflow_session_config ? (
+          <div className="muted small workflow-session-config-summary">
+            {control.workflow_session_config.session_volume_mode === "existing_holdings" ||
+            control.workflow_session_config.use_existing_holdings ? (
+              control.workflow_session_config.existing_holdings_unit === "absolute" ? (
+                <p>
+                  {t("workflowPanel.existingHoldingsQtyActive", {
+                    qty: String(control.workflow_session_config.existing_holdings_use_qty ?? "—"),
+                  })}
+                </p>
+              ) : (
+                <p>
+                  {t("workflowPanel.existingHoldingsActive", {
+                    pct: String(control.workflow_session_config.existing_holdings_use_pct ?? 100),
+                  })}
+                </p>
+              )
+            ) : control.workflow_session_config.session_capital ? (
+              <p>
+                {t("workflowPanel.sessionCapitalActive", {
+                  amount: String(control.workflow_session_config.session_capital),
+                  currency: fiatLabel,
+                })}
+              </p>
+            ) : null}
+            {control.workflow_session_config.liquidate_on_stop ? (
+              <p>
+                {t("workflowPanel.liquidateOnStopActive", { currency: fiatLabel })}
+                {isFutures ? ` · ${t("workflowPanel.liquidateFuturesNote")}` : null}
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {(scheduleData?.options?.length ?? 0) > 0 ? (
@@ -605,7 +866,10 @@ export default function MarketWorkflowPanel({
         <StrategySubsettingsPanel
           workflow={selectedWorkflow}
           market={market}
-          onChange={handleUniverseChange}
+          onChange={() => {
+            void handleUniverseChange();
+            onSettingsChange?.();
+          }}
         />
       </PortfolioCard>
 
@@ -625,10 +889,132 @@ export default function MarketWorkflowPanel({
           }
         }}
         onConfirm={runPendingOp}
-      />
+      >
+        {pendingOp?.kind === "start" ? (
+          <>
+            <fieldset className="modal-field session-volume-mode">
+              <legend>{t("workflowPanel.sessionVolumeModeLabel")}</legend>
+              <label className="checkbox-field">
+                <input
+                  type="radio"
+                  name="session-volume-mode"
+                  checked={sessionVolumeMode === "stablecoin"}
+                  disabled={opBusy}
+                  onChange={() => setSessionVolumeMode("stablecoin")}
+                />
+                <span>{t("workflowPanel.sessionVolumeStablecoin")}</span>
+              </label>
+              {market === "crypto" ? (
+                <label className="checkbox-field">
+                  <input
+                    type="radio"
+                    name="session-volume-mode"
+                    checked={sessionVolumeMode === "existing_holdings"}
+                    disabled={opBusy}
+                    onChange={() => setSessionVolumeMode("existing_holdings")}
+                  />
+                  <span>{t("workflowPanel.sessionVolumeExisting")}</span>
+                </label>
+              ) : null}
+            </fieldset>
+
+            {sessionVolumeMode === "stablecoin" || market === "securities" ? (
+              <label className="modal-field">
+                <span>{t("workflowPanel.sessionCapitalLabel")}</span>
+                <input
+                  type="number"
+                  className="input"
+                  min={1}
+                  step={market === "crypto" ? 100 : 1000}
+                  value={sessionCapitalInput}
+                  disabled={opBusy}
+                  onChange={(e) => setSessionCapitalInput(e.target.value)}
+                />
+                <span className="muted small">
+                  {t("workflowPanel.sessionCapitalHint", { currency: fiatLabel })}
+                </span>
+              </label>
+            ) : (
+              <>
+                <fieldset className="modal-field session-volume-mode">
+                  <legend>{t("workflowPanel.holdingsUnitLabel")}</legend>
+                  <label className="checkbox-field">
+                    <input
+                      type="radio"
+                      name="holdings-unit"
+                      checked={holdingsUnit === "percent"}
+                      disabled={opBusy}
+                      onChange={() => setHoldingsUnit("percent")}
+                    />
+                    <span>{t("workflowPanel.holdingsUnitPercent")}</span>
+                  </label>
+                  <label className="checkbox-field">
+                    <input
+                      type="radio"
+                      name="holdings-unit"
+                      checked={holdingsUnit === "absolute"}
+                      disabled={opBusy}
+                      onChange={() => setHoldingsUnit("absolute")}
+                    />
+                    <span>{t("workflowPanel.holdingsUnitAbsolute")}</span>
+                  </label>
+                </fieldset>
+                {holdingsUnit === "percent" ? (
+                  <label className="modal-field">
+                    <span>{t("workflowPanel.existingHoldingsPctLabel")}</span>
+                    <input
+                      type="number"
+                      className="input"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={existingHoldingsPctInput}
+                      disabled={opBusy}
+                      onChange={(e) => setExistingHoldingsPctInput(e.target.value)}
+                    />
+                    <span className="muted small">{t("workflowPanel.existingHoldingsPctHint")}</span>
+                  </label>
+                ) : (
+                  <label className="modal-field">
+                    <span>{t("workflowPanel.existingHoldingsQtyLabel")}</span>
+                    <input
+                      type="number"
+                      className="input"
+                      min={0}
+                      step="any"
+                      value={existingHoldingsQtyInput}
+                      disabled={opBusy}
+                      onChange={(e) => setExistingHoldingsQtyInput(e.target.value)}
+                    />
+                    <span className="muted small">{t("workflowPanel.existingHoldingsQtyHint")}</span>
+                  </label>
+                )}
+              </>
+            )}
+
+            {market === "crypto" ? (
+              <label className="modal-field checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={liquidateOnStop}
+                  disabled={opBusy}
+                  onChange={(e) => setLiquidateOnStop(e.target.checked)}
+                />
+                <span>{t("workflowPanel.liquidateOnStopLabel")}</span>
+                <span className="muted small block">
+                  {isFutures
+                    ? t("workflowPanel.liquidateOnStopHintFutures", { currency: fiatLabel })
+                    : t("workflowPanel.liquidateOnStopHint", { currency: fiatLabel })}
+                </span>
+              </label>
+            ) : null}
+          </>
+        ) : null}
+      </OperatorConfirmModal>
       {detailStrategyId ? (
         <StrategyDetailModal strategyId={detailStrategyId} onClose={() => setDetailStrategyId(null)} />
       ) : null}
+      <WorkflowSessionReportModal report={sessionReport} onClose={() => setSessionReport(null)} t={t} />
     </>
   );
 }

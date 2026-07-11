@@ -13,7 +13,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 0.75rem 1rem 1.5rem;
+  padding: 0.35rem 0.85rem 1rem;
 }
 
 .app-sidebar {
@@ -27,7 +27,7 @@
   position: sticky;
   top: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .sidebar-brand {
@@ -59,6 +59,37 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  padding: 0.75rem 0.35rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-footer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.sidebar-footer-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.sidebar-footer-lang {
+  width: 100%;
+}
+
+.sidebar-footer-lang .lang-picker-trigger {
+  width: 100%;
+  justify-content: space-between;
 }
 
 .sidebar-group-label {
@@ -128,6 +159,12 @@
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
+}
+
+@media (min-width: 901px) {
+  .app-topbar {
+    display: none;
+  }
 }
 
 .topbar-actions {
@@ -232,11 +269,11 @@
 }
 
 .app-shell-v2 .control-strip {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .app-shell-v2 .error-banner-slot {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 /* Hide legacy flat nav if any remnant */

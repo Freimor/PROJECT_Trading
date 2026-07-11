@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "../i18n/LanguageContext";
 import ModalPortal from "../ui/ModalPortal";
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
   confirmLabel?: string;
   busy?: boolean;
   error?: string | null;
+  children?: ReactNode;
   onConfirm: (password: string) => void;
   onCancel: () => void;
 };
@@ -23,6 +24,7 @@ export default function OperatorConfirmModal({
   confirmLabel,
   busy = false,
   error = null,
+  children,
   onConfirm,
   onCancel,
 }: Props) {
@@ -65,6 +67,7 @@ export default function OperatorConfirmModal({
           <h3>{title}</h3>
           {lead ? <p className="modal-lead">{lead}</p> : null}
           {risk ? <p className={`modal-risk ${riskClass}`}>{risk}</p> : null}
+          {children}
           <label className="modal-field">
             <span>{t("workspace.modeModalPassword")}</span>
             <input

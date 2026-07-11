@@ -65,16 +65,26 @@ def _fetch_crypto_last_prices(symbols: set[str]) -> dict[str, float]:
     return prices
 
 
+def _wf_filter_clause(wf_names: list[str] | None, *, alias: str = "") -> tuple[str, list[str]]:
+    if not wf_names:
+        return "", []
+    col = f"{alias}.workflow_name" if alias else "workflow_name"
+    placeholders = ",".join("?" for _ in wf_names)
+    return f" AND {col} IN ({placeholders})", list(wf_names)
+
+
 def _compute_session_trade_pnl(
     conn,
     market: str,
     *,
-    wf_clause: str,
-    params: list[Any],
+    started_at: str,
+    wf_names: list[str] | None,
 ) -> dict[str, Any]:
     """Unrealized PnL on orders submitted since session start (not wallet delta)."""
     currency = "USDT" if market == "crypto" else "RUB"
     ok_ph = ",".join("?" for _ in _ORDER_OK)
+    wf_clause, wf_params = _wf_filter_clause(wf_names, alias="o")
+    query_params: list[Any] = [market, started_at, *_ORDER_OK, *wf_params]
     rows = conn.execute(
         f"""
         SELECT o.symbol, o.notional AS order_notional, o.inputs_hash,
@@ -87,7 +97,7 @@ def _compute_session_trade_pnl(
         {wf_clause}
         ORDER BY o.event_at ASC
         """,
-        params,
+        query_params,
     ).fetchall()
 
     if not rows:
@@ -195,11 +205,8 @@ def get_workflow_session_stats(
     conn = get_connection()
     try:
         params: list[Any] = [market, started_at]
-        wf_clause = ""
-        if wf_names:
-            placeholders = ",".join("?" for _ in wf_names)
-            wf_clause = f" AND workflow_name IN ({placeholders})"
-            params.extend(wf_names)
+        wf_clause, wf_params = _wf_filter_clause(wf_names)
+        params.extend(wf_params)
 
         signals = conn.execute(
             f"""
@@ -242,7 +249,12 @@ def get_workflow_session_stats(
             params,
         ).fetchone()
 
-        trade_pnl = _compute_session_trade_pnl(conn, market, wf_clause=wf_clause, params=params)
+        trade_pnl = _compute_session_trade_pnl(
+            conn,
+            market,
+            started_at=started_at,
+            wf_names=wf_names,
+        )
     finally:
         conn.close()
 
@@ -264,6 +276,17 @@ def get_workflow_session_stats(
         except ValueError:
             ago_sec = None
 
+    session_capital: float | None = None
+    try:
+        from workflow_session_config_service import get_workflow_session_config
+
+        cfg = get_workflow_session_config(market)
+        raw_cap = cfg.get("session_capital")
+        if raw_cap is not None:
+            session_capital = float(raw_cap)
+    except (TypeError, ValueError):
+        session_capital = None
+
     return {
         "status": "ok",
         "started_at": started_at,
@@ -279,6 +302,7 @@ def get_workflow_session_stats(
         "currency": trade_pnl.get("currency"),
         "invested_notional": trade_pnl.get("invested_notional"),
         "pnl_source": trade_pnl.get("pnl_source"),
+        "session_capital": session_capital,
         "last_event_at": last_event_at,
         "last_event_ago_sec": ago_sec,
         "last_event_symbol": last["symbol"] if last else None,
