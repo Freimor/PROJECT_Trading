@@ -80,6 +80,45 @@ def crypto_portfolio_total_usdt(*, testnet: bool = True) -> tuple[float | None, 
     return round(total, 2), "ok"
 
 
+def usdt_prices_map(*, testnet: bool = True) -> dict[str, float]:
+    _, _, base_url = _credentials(testnet)
+    prices: dict[str, float] = {}
+    try:
+        with httpx.Client(timeout=12) as client:
+            resp = client.get(f"{base_url}/api/v3/ticker/price")
+            if resp.status_code == 200:
+                for row in resp.json():
+                    sym = str(row.get("symbol", ""))
+                    if sym.endswith("USDT"):
+                        prices[sym] = float(row.get("price", 0) or 0)
+    except Exception:
+        pass
+    return prices
+
+
+def balance_usdt_value(asset: str, qty: float, *, prices: dict[str, float]) -> float:
+    sym = str(asset or "").upper()
+    if sym in _STABLE:
+        return qty
+    price = prices.get(f"{sym}USDT", 0.0)
+    return qty * price if price > 0 else 0.0
+
+
+def enrich_balances_usdt(
+    rows: list[dict[str, Any]],
+    *,
+    testnet: bool = True,
+) -> list[dict[str, Any]]:
+    prices = usdt_prices_map(testnet=testnet)
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        total = float(item.get("total") or item.get("free") or 0)
+        item["usdt_value"] = round(balance_usdt_value(str(item.get("asset", "")), total, prices=prices), 4)
+        out.append(item)
+    return out
+
+
 def moex_portfolio_total_rub(*, sandbox: bool = True) -> tuple[float | None, str]:
     from bridges.tinvest_rest import TinvestRestClient
     import os

@@ -35,24 +35,37 @@ def clear_trading_product_runtime_override() -> None:
     delete_runtime_value(RUNTIME_TRADING_PRODUCT_KEY)
 
 
-def get_crypto_trading_product(*, cfg: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Effective product settings (YAML + runtime override)."""
+def get_crypto_trading_product(
+    *,
+    cfg: dict[str, Any] | None = None,
+    session_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Effective product settings (YAML + runtime override + per-instance session)."""
     crypto = cfg or get_config_effective("crypto_config")
     tp = dict(crypto.get("trading_product") or {})
     override = get_trading_product_runtime_override()
     if override:
         tp.update({k: v for k, v in override.items() if v is not None})
 
+    if session_config:
+        for key in ("market_type", "allow_short", "leverage", "margin_mode"):
+            if session_config.get(key) is not None:
+                tp[key] = session_config[key]
+
     market_type = str(tp.get("market_type") or "spot").strip().lower()
     if market_type not in ("spot", "usdt_futures"):
         market_type = "spot"
-    leverage = int(tp.get("leverage") or 1)
     max_leverage = int(tp.get("max_leverage") or 5)
-    leverage = max(1, min(leverage, max_leverage))
+    if market_type == "spot":
+        leverage = 1
+        allow_short = False
+    else:
+        leverage = int(tp.get("leverage") or 1)
+        leverage = max(1, min(leverage, max_leverage))
+        allow_short = bool(tp.get("allow_short", False))
     margin_mode = str(tp.get("margin_mode") or "isolated").lower()
     if margin_mode not in ("isolated", "cross"):
         margin_mode = "isolated"
-    allow_short = bool(tp.get("allow_short", False)) and market_type == "usdt_futures"
     return {
         "market_type": market_type,
         "is_futures": market_type == "usdt_futures",
@@ -67,8 +80,56 @@ def get_crypto_trading_product(*, cfg: dict[str, Any] | None = None) -> dict[str
     }
 
 
-def is_futures_trading(*, cfg: dict[str, Any] | None = None) -> bool:
-    return bool(get_crypto_trading_product(cfg=cfg).get("is_futures"))
+def is_futures_trading(
+    *,
+    cfg: dict[str, Any] | None = None,
+    session_config: dict[str, Any] | None = None,
+) -> bool:
+    return bool(get_crypto_trading_product(cfg=cfg, session_config=session_config).get("is_futures"))
+
+
+def cfg_for_symbol_trade(
+    cfg: dict[str, Any] | None,
+    *,
+    symbol: str,
+    workflow_name: str | None = None,
+) -> dict[str, Any]:
+    """Merge per-automation trading_product into config for orders/klines."""
+    base = dict(cfg or get_config_effective("crypto_config"))
+    product = get_crypto_trading_product_for_trade(
+        cfg=base,
+        symbol=symbol,
+        workflow_name=workflow_name,
+    )
+    tp = dict(base.get("trading_product") or {})
+    for key in (
+        "market_type",
+        "allow_short",
+        "leverage",
+        "margin_mode",
+        "position_mode",
+        "use_reduce_only_on_exit",
+    ):
+        if product.get(key) is not None:
+            tp[key] = product[key]
+    base["trading_product"] = tp
+    return base
+
+
+def get_crypto_trading_product_for_trade(
+    *,
+    cfg: dict[str, Any] | None = None,
+    symbol: str | None = None,
+    workflow_name: str | None = None,
+    session_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve trading product for a symbol/workflow (automation instance session)."""
+    sc = session_config
+    if sc is None and symbol and workflow_name:
+        from workflow_session_config_service import get_workflow_session_config
+
+        sc = get_workflow_session_config("crypto", symbol=symbol, workflow_name=workflow_name)
+    return get_crypto_trading_product(cfg=cfg, session_config=sc if sc else None)
 
 
 def order_side_for_entry(position_side: PositionSide) -> str:

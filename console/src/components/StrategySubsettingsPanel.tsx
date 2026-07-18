@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, formatOperatorFacingError } from "../api";
 import OperatorConfirmModal from "./OperatorConfirmModal";
+import LlmAssistSection from "./LlmAssistSection";
 import WorkflowUniversePanel from "./WorkflowUniversePanel";
 import { useI18n } from "../i18n/LanguageContext";
 
@@ -93,28 +94,11 @@ function EffectiveLimitsGrid({
   );
 }
 
-type CryptoTradingProduct = {
-  market_type?: "spot" | "usdt_futures";
-  is_futures?: boolean;
-  allow_short?: boolean;
-  leverage?: number;
-  max_leverage?: number;
-  margin_mode?: "isolated" | "cross";
-  runtime_override?: boolean;
-  yaml_default?: {
-    market_type?: string;
-    allow_short?: boolean;
-    leverage?: number;
-    margin_mode?: string;
-  };
-};
-
 type CryptoWorkflowSettings = {
   quote_asset?: string;
   allowed_quote_assets?: string[];
   yaml_default?: string;
   runtime_override?: boolean;
-  trading_product?: CryptoTradingProduct;
 };
 
 export default function StrategySubsettingsPanel({ workflow, market, onChange }: Props) {
@@ -130,54 +114,6 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
   const [cryptoSettings, setCryptoSettings] = useState<CryptoWorkflowSettings | null>(null);
   const [selectedQuote, setSelectedQuote] = useState("USDT");
   const [pendingQuoteApply, setPendingQuoteApply] = useState(false);
-  const [marketType, setMarketType] = useState<"spot" | "usdt_futures">("spot");
-  const [allowShort, setAllowShort] = useState(false);
-  const [leverage, setLeverage] = useState(3);
-  const [marginMode, setMarginMode] = useState<"isolated" | "cross">("isolated");
-  const [pendingProductApply, setPendingProductApply] = useState(false);
-  const [pendingProductReset, setPendingProductReset] = useState(false);
-  const [productModalKind, setProductModalKind] = useState<"market_type" | "params">("params");
-
-  const syncTradingProduct = (tp?: CryptoTradingProduct) => {
-    if (!tp) return;
-    setMarketType(tp.market_type === "usdt_futures" ? "usdt_futures" : "spot");
-    setAllowShort(Boolean(tp.allow_short));
-    setLeverage(tp.leverage ?? 3);
-    setMarginMode(tp.margin_mode === "cross" ? "cross" : "isolated");
-  };
-
-  const savedProduct = cryptoSettings?.trading_product;
-  const savedMarketType =
-    savedProduct?.market_type === "usdt_futures" ? "usdt_futures" : "spot";
-
-  const productParamsDirty = (() => {
-    if (!savedProduct || marketType !== savedMarketType) return false;
-    return (
-      allowShort !== Boolean(savedProduct.allow_short) ||
-      leverage !== (savedProduct.leverage ?? 3) ||
-      marginMode !== (savedProduct.margin_mode === "cross" ? "cross" : "isolated")
-    );
-  })();
-
-  const cancelProductModal = () => {
-    if (opBusy) return;
-    syncTradingProduct(savedProduct);
-    setPendingProductApply(false);
-    setProductModalKind("params");
-    setOpError(null);
-  };
-
-  const productModalRisk = (() => {
-    const lines = [t("strategySubsettings.applyTradingProductRisk")];
-    if (marketType === "usdt_futures") {
-      lines.push(t("strategySubsettings.applyTradingProductFuturesDanger"));
-    } else if (savedMarketType === "usdt_futures" && productModalKind === "market_type") {
-      lines.push(t("strategySubsettings.switchToSpotWarning"));
-    }
-    return lines.join("\n\n");
-  })();
-
-  const marketLabel = market === "crypto" ? t("strategySubsettings.marketCrypto") : t("strategySubsettings.marketMoex");
 
   const loadRisk = useCallback(async () => {
     const data = await apiGet<{ status: string } & RiskProfileState>(
@@ -197,7 +133,6 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
     if (data.status === "ok") {
       setCryptoSettings(data);
       setSelectedQuote(data.quote_asset ?? "USDT");
-      syncTradingProduct(data.trading_product);
     }
   }, [market]);
 
@@ -205,6 +140,9 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
     loadRisk().catch(() => {});
     loadCryptoSettings().catch(() => {});
   }, [loadRisk, loadCryptoSettings]);
+
+  const marketLabel =
+    market === "crypto" ? t("strategySubsettings.marketCrypto") : t("strategySubsettings.marketMoex");
 
   const applyRiskProfile = async (password: string) => {
     setOpBusy(true);
@@ -239,60 +177,7 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
       );
       if (resp.status === "ok") {
         setCryptoSettings(resp);
-        syncTradingProduct(resp.trading_product);
         setPendingQuoteApply(false);
-        onChange?.();
-      }
-    } catch (err) {
-      setOpError(formatOperatorFacingError(err, t));
-    } finally {
-      setOpBusy(false);
-    }
-  };
-
-  const applyTradingProduct = async (password: string) => {
-    setOpBusy(true);
-    setOpError(null);
-    try {
-      const resp = await apiPost<{ status: string } & CryptoWorkflowSettings>(
-        "/api/crypto/workflow-settings/trading-product",
-        {
-          market_type: marketType,
-          allow_short: marketType === "usdt_futures" ? allowShort : false,
-          leverage,
-          margin_mode: marginMode,
-          operator: "web:operator",
-        },
-        { operatorPassword: password },
-      );
-      if (resp.status === "ok") {
-        setCryptoSettings(resp);
-        syncTradingProduct(resp.trading_product);
-        setPendingProductApply(false);
-        setProductModalKind("params");
-        setOpError(null);
-        onChange?.();
-      }
-    } catch (err) {
-      setOpError(formatOperatorFacingError(err, t));
-    } finally {
-      setOpBusy(false);
-    }
-  };
-
-  const resetTradingProduct = async (password: string) => {
-    setOpBusy(true);
-    setOpError(null);
-    try {
-      const resp = await apiPost<{ status: string } & CryptoWorkflowSettings>(
-        "/api/crypto/workflow-settings/trading-product/reset",
-        {},
-        { operatorPassword: password },
-      );
-      if (resp.status === "ok") {
-        setCryptoSettings(resp);
-        syncTradingProduct(resp.trading_product);
-        setPendingProductReset(false);
         onChange?.();
       }
     } catch (err) {
@@ -447,6 +332,10 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
         {riskMsg ? <p className="modal-error small">{riskMsg}</p> : null}
       </section>
 
+      <section className="strategy-subsection">
+        <LlmAssistSection workflow={workflow} onChange={onChange} />
+      </section>
+
       {market === "crypto" ? (
         <>
         <section className="strategy-subsection">
@@ -490,118 +379,7 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
         </section>
 
         <section className="strategy-subsection">
-          <div className="strategy-subsection-head">
-            <h4>{t("strategySubsettings.tradingProductTitle")}</h4>
-            <span className="muted small">
-              {cryptoSettings?.trading_product?.runtime_override
-                ? t("strategySubsettings.runtime")
-                : t("strategySubsettings.defaultPreset")}
-            </span>
-          </div>
-          <p className="muted small">{t("strategySubsettings.tradingProductHint")}</p>
-          <label className="modal-field">
-            <span>{t("strategySubsettings.tradingProductTitle")}</span>
-            <select
-              className="input"
-              value={marketType}
-              disabled={opBusy}
-              onChange={(e) => {
-                const next = e.target.value as "spot" | "usdt_futures";
-                if (next === savedMarketType) return;
-                setMarketType(next);
-                if (next === "spot") setAllowShort(false);
-                setOpError(null);
-                setProductModalKind("market_type");
-                setPendingProductApply(true);
-              }}
-            >
-              <option value="spot">{t("strategySubsettings.marketTypeSpot")}</option>
-              <option value="usdt_futures">{t("strategySubsettings.marketTypeFutures")}</option>
-            </select>
-          </label>
-          <p className="muted small field-hint">{t("strategySubsettings.marketTypePasswordHint")}</p>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={allowShort}
-              disabled={opBusy || marketType !== "usdt_futures"}
-              onChange={(e) => setAllowShort(e.target.checked)}
-            />
-            <span>{t("strategySubsettings.allowShort")}</span>
-          </label>
-          <div className="strategy-product-grid">
-            <div className="strategy-product-field">
-              <label className="modal-field">
-                <span>{t("strategySubsettings.leverage")}</span>
-                <select
-                  className="input"
-                  value={leverage}
-                  disabled={opBusy || marketType !== "usdt_futures"}
-                  onChange={(e) => setLeverage(Number(e.target.value))}
-                >
-                  {Array.from(
-                    { length: cryptoSettings?.trading_product?.max_leverage ?? 5 },
-                    (_, i) => i + 1,
-                  ).map((lev) => (
-                    <option key={lev} value={lev}>
-                      {lev}x
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="muted small field-hint">{t("strategySubsettings.leverageHint")}</p>
-            </div>
-            <div className="strategy-product-field">
-              <label className="modal-field">
-                <span>{t("strategySubsettings.marginMode")}</span>
-                <select
-                  className="input"
-                  value={marginMode}
-                  disabled={opBusy || marketType !== "usdt_futures"}
-                  onChange={(e) => setMarginMode(e.target.value as "isolated" | "cross")}
-                >
-                  <option value="isolated">{t("strategySubsettings.marginIsolated")}</option>
-                  <option value="cross">{t("strategySubsettings.marginCross")}</option>
-                </select>
-              </label>
-              <p className="muted small field-hint">
-                {marginMode === "cross"
-                  ? t("strategySubsettings.marginCrossHint")
-                  : t("strategySubsettings.marginIsolatedHint")}
-              </p>
-            </div>
-          </div>
-          {marketType === "usdt_futures" && productParamsDirty ? (
-            <div className="btn-row">
-              <button
-                type="button"
-                className="tiny primary"
-                disabled={opBusy}
-                onClick={() => {
-                  setOpError(null);
-                  setProductModalKind("params");
-                  setPendingProductApply(true);
-                }}
-              >
-                {t("strategySubsettings.applyFuturesParams")}
-              </button>
-            </div>
-          ) : null}
-          <div className="btn-row">
-            {cryptoSettings?.trading_product?.runtime_override ? (
-              <button
-                type="button"
-                className="tiny"
-                disabled={opBusy}
-                onClick={() => {
-                  setOpError(null);
-                  setPendingProductReset(true);
-                }}
-              >
-                {t("strategySubsettings.resetTradingProduct")}
-              </button>
-            ) : null}
-          </div>
+          <p className="muted small">{t("cryptoAutomation.marketPerInstanceHint")}</p>
         </section>
         </>
       ) : null}
@@ -652,42 +430,6 @@ export default function StrategySubsettingsPanel({ workflow, market, onChange }:
           }
         }}
         onConfirm={applyQuoteAsset}
-      />
-      <OperatorConfirmModal
-        open={pendingProductApply}
-        title={
-          productModalKind === "market_type"
-            ? t("strategySubsettings.confirmMarketType")
-            : t("strategySubsettings.applyFuturesParams")
-        }
-        lead={t("workflowsPage.operatorLead")}
-        risk={productModalRisk}
-        riskTone={marketType === "usdt_futures" ? "danger" : "warn"}
-        confirmLabel={
-          productModalKind === "market_type"
-            ? t("strategySubsettings.confirmMarketTypeApply")
-            : t("strategySubsettings.applyFuturesParams")
-        }
-        busy={opBusy}
-        error={opError}
-        onCancel={cancelProductModal}
-        onConfirm={applyTradingProduct}
-      />
-      <OperatorConfirmModal
-        open={pendingProductReset}
-        title={t("strategySubsettings.resetTradingProduct")}
-        lead={t("workflowsPage.operatorLead")}
-        risk={t("strategySubsettings.resetTradingProductRisk")}
-        confirmLabel={t("strategySubsettings.resetTradingProduct")}
-        busy={opBusy}
-        error={opError}
-        onCancel={() => {
-          if (!opBusy) {
-            setPendingProductReset(false);
-            setOpError(null);
-          }
-        }}
-        onConfirm={resetTradingProduct}
       />
     </div>
   );

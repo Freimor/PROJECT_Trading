@@ -5,16 +5,11 @@ import {
   TickMarkType,
   type IChartApi,
   type ISeriesApi,
-  type SeriesMarker,
-  type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle, ChartIndicators, ChartMarker, ChartOverlays } from "../types";
-import {
-  buildSignalHighlights,
-  markersForSeries,
-  type SignalHighlight,
-} from "../utils/chartSignals";
+import { buildMarkerPins, type MarkerPin } from "../utils/chartSignals";
+import { priceFormatForCandles, sanitizeCandles } from "../utils/chartPriceFormat";
 
 type Props = {
   candles: Candle[];
@@ -28,16 +23,7 @@ type Props = {
   onMarkerClick?: (marker: ChartMarker) => void;
 };
 
-type OverlayBox = {
-  id: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  label: string;
-  side: "buy" | "sell";
-  marker: ChartMarker;
-};
+type MarkerPinBox = MarkerPin;
 
 const DEFAULT_PANEL_HEIGHT = 96;
 
@@ -56,17 +42,6 @@ const OVERLAY_LABELS: Record<string, string> = {
   macd: "MACD",
   macd_signal: "Signal",
 };
-
-function toSeriesMarker(m: ChartMarker): SeriesMarker<Time> {
-  return {
-    time: m.time as UTCTimestamp,
-    position: m.position as SeriesMarker<Time>["position"],
-    shape: m.shape as SeriesMarker<Time>["shape"],
-    color: m.color,
-    text: m.text,
-    id: m.id,
-  };
-}
 
 function showSeconds(interval?: string): boolean {
   return ["1m", "5m", "15m"].includes(interval ?? "");
@@ -176,45 +151,34 @@ function chartBaseOptions(height: number, interval?: string) {
   };
 }
 
-function layoutHighlights(
+function layoutMarkerPins(
   chart: IChartApi,
   series: ISeriesApi<"Candlestick">,
-  highlights: SignalHighlight[],
-): OverlayBox[] {
+  markers: ChartMarker[],
+  candles: Candle[],
+  interval?: string,
+): MarkerPinBox[] {
   const timeScale = chart.timeScale();
-  const barSpacing = timeScale.options().barSpacing ?? 6;
-  const boxWidth = Math.max(barSpacing * 2.4, 18);
-  const boxes: OverlayBox[] = [];
-
-  for (const h of highlights) {
-    const x = timeScale.timeToCoordinate(h.time as UTCTimestamp);
-    const yTop = series.priceToCoordinate(h.high);
-    const yBottom = series.priceToCoordinate(h.low);
-    if (x === null || yTop === null || yBottom === null) continue;
-
-    const top = Math.min(yTop, yBottom);
-    const boxHeight = Math.max(Math.abs(yBottom - yTop), 12);
-
-    boxes.push({
-      id: h.id,
-      left: x - boxWidth / 2,
-      top: top - 18,
-      width: boxWidth,
-      height: boxHeight + 18,
-      label: h.label,
-      side: h.side,
-      marker: h.marker,
-    });
-  }
-
-  return boxes;
+  return buildMarkerPins(
+    markers,
+    candles,
+    {
+      timeToX: (time) => timeScale.timeToCoordinate(time as UTCTimestamp),
+      priceToY: (price) => series.priceToCoordinate(price),
+    },
+    interval,
+  );
 }
 
 function bindChartSync(leader: IChartApi, followers: IChartApi[]) {
   const handler = (range: Parameters<Parameters<IChartApi["timeScale"]["subscribeVisibleLogicalRangeChange"]>[0]>[0]) => {
     if (!range) return;
     for (const chart of followers) {
-      chart.timeScale().setVisibleLogicalRange(range);
+      try {
+        chart.timeScale().setVisibleLogicalRange(range);
+      } catch {
+        // Panel may have fewer bars than main — ignore invalid range.
+      }
     }
   };
   leader.timeScale().subscribeVisibleLogicalRangeChange(handler);
@@ -253,15 +217,14 @@ export default function PriceChartWithMarkers({
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const priceOverlaySeriesRef = useRef<ISeriesApi<"Line">[]>([]);
   const markersRef = useRef(markers);
-  const highlightsRef = useRef<SignalHighlight[]>([]);
+  const markerPinsRef = useRef<MarkerPinBox[]>([]);
   const fitKeyRef = useRef("");
-  const [overlayBoxes, setOverlayBoxes] = useState<OverlayBox[]>([]);
+  const [markerPins, setMarkerPins] = useState<MarkerPinBox[]>([]);
 
   const panels = overlays?.panels ?? [];
   const priceOverlays = overlays?.price ?? [];
-
-  const highlights = useMemo(() => buildSignalHighlights(markers, candles), [markers, candles]);
-  const seriesMarkers = useMemo(() => markersForSeries(markers), [markers]);
+  const safeCandles = useMemo(() => sanitizeCandles(candles), [candles]);
+  const priceFormat = useMemo(() => priceFormatForCandles(safeCandles), [safeCandles]);
 
   const legendItems = useMemo(() => {
     const items: Array<{ key: string; label: string; color: string }> = [];
@@ -292,17 +255,17 @@ export default function PriceChartWithMarkers({
   }, [panels, priceOverlays]);
 
   markersRef.current = markers;
-  highlightsRef.current = highlights;
+  markerPinsRef.current = markerPins;
 
   const refreshOverlays = useCallback(() => {
     const chart = chartRef.current;
     const series = seriesRef.current;
-    if (!chart || !series || highlightsRef.current.length === 0) {
-      setOverlayBoxes([]);
+    if (!chart || !series || markersRef.current.length === 0) {
+      setMarkerPins([]);
       return;
     }
-    setOverlayBoxes(layoutHighlights(chart, series, highlightsRef.current));
-  }, []);
+    setMarkerPins(layoutMarkerPins(chart, series, markersRef.current, safeCandles, interval));
+  }, [safeCandles, interval]);
 
   useEffect(() => {
     if (!mainContainerRef.current) return;
@@ -314,6 +277,7 @@ export default function PriceChartWithMarkers({
       borderVisible: false,
       wickUpColor: "#3dd68c",
       wickDownColor: "#ff6b6b",
+      priceFormat,
     });
 
     chartRef.current = mainChart;
@@ -337,7 +301,7 @@ export default function PriceChartWithMarkers({
       const t = param.time as number;
       const hit =
         markersRef.current.find((m) => m.time === t) ??
-        highlightsRef.current.find((h) => h.time === t)?.marker;
+        markerPinsRef.current.find((p) => p.time === t)?.marker;
       if (hit) onMarkerClick(hit);
     });
 
@@ -349,7 +313,7 @@ export default function PriceChartWithMarkers({
       seriesRef.current = null;
       priceOverlaySeriesRef.current = [];
     };
-  }, [height, onMarkerClick, refreshOverlays, interval]);
+  }, [height, onMarkerClick, refreshOverlays, interval, priceFormat]);
 
   useEffect(() => {
     const mainChart = chartRef.current;
@@ -429,7 +393,6 @@ export default function PriceChartWithMarkers({
 
     if (subCharts.length > 0) {
       unsubs.push(bindChartSync(mainChart, subCharts));
-      unsubs.push(bindChartSync(subCharts[subCharts.length - 1], [mainChart, ...subCharts.slice(0, -1)]));
       fitMainAndSyncPanels(mainChart, subCharts);
     }
 
@@ -451,23 +414,20 @@ export default function PriceChartWithMarkers({
   }, [panels, indicators, interval, panelHeight]);
 
   useEffect(() => {
-    fitKeyRef.current = "";
     chartRef.current?.applyOptions({
       timeScale: timeScaleOptions(interval),
       localization: {
         timeFormatter: crosshairTimeFormatter(interval),
       },
     });
-    if (candles.length > 0 && chartRef.current) {
-      fitMainAndSyncPanels(chartRef.current, panelChartsRef.current);
-    }
-  }, [interval, candles.length]);
+  }, [interval]);
 
   useEffect(() => {
     if (!seriesRef.current) return;
 
+    seriesRef.current.applyOptions({ priceFormat });
     seriesRef.current.setData(
-      candles.map((c) => ({
+      safeCandles.map((c) => ({
         time: c.time as UTCTimestamp,
         open: c.open,
         high: c.high,
@@ -475,10 +435,10 @@ export default function PriceChartWithMarkers({
         close: c.close,
       })),
     );
-    seriesRef.current.setMarkers(seriesMarkers.map(toSeriesMarker));
+    seriesRef.current.setMarkers([]);
 
     const fitKey = `${symbol ?? ""}:${interval ?? ""}`;
-    if (fitKey !== fitKeyRef.current && candles.length > 0) {
+    if (fitKey !== fitKeyRef.current && safeCandles.length > 0) {
       fitKeyRef.current = fitKey;
       const mainChart = chartRef.current;
       if (mainChart) {
@@ -487,7 +447,7 @@ export default function PriceChartWithMarkers({
     }
 
     refreshOverlays();
-  }, [candles, seriesMarkers, symbol, interval, refreshOverlays]);
+  }, [safeCandles, symbol, interval, refreshOverlays, priceFormat]);
 
   useEffect(() => {
     const mainChart = chartRef.current;
@@ -507,6 +467,7 @@ export default function PriceChartWithMarkers({
         priceLineVisible: false,
         lastValueVisible: true,
         title: OVERLAY_LABELS[key] ?? key,
+        priceFormat,
       });
       line.setData(
         points.map((p) => ({
@@ -516,11 +477,11 @@ export default function PriceChartWithMarkers({
       );
       priceOverlaySeriesRef.current.push(line);
     }
-  }, [indicators, priceOverlays]);
+  }, [indicators, priceOverlays, priceFormat]);
 
   useEffect(() => {
     refreshOverlays();
-  }, [highlights, refreshOverlays]);
+  }, [markers, safeCandles, refreshOverlays]);
 
   return (
     <div className="price-chart-wrap">
@@ -534,7 +495,30 @@ export default function PriceChartWithMarkers({
           ))}
         </div>
       ) : null}
-      <div ref={mainContainerRef} className="price-chart" style={{ height }} />
+      <div className="price-chart-main-wrap" style={{ position: "relative", height }}>
+        <div ref={mainContainerRef} className="price-chart" style={{ height }} />
+        {markerPins.length > 0 ? (
+          <div className="chart-marker-pins" aria-hidden="true">
+            {markerPins.map((pin) => (
+              <button
+                key={pin.id}
+                type="button"
+                className={`chart-marker-pin tone-${pin.tone}`}
+                style={{
+                  left: `${pin.left}px`,
+                  top: `${pin.top}px`,
+                }}
+                onClick={() => onMarkerClick?.(pin.marker)}
+              >
+                <span className="chart-marker-pin-label">{pin.label}</span>
+                <span className="chart-marker-tooltip" role="tooltip">
+                  {pin.summary}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
       {panels.map((panel, index) => (
         <div key={panel.id} className="chart-indicator-panel">
           <span className="chart-panel-label">{panel.id.toUpperCase()}</span>
@@ -547,27 +531,6 @@ export default function PriceChartWithMarkers({
           />
         </div>
       ))}
-      {overlayBoxes.length > 0 ? (
-        <div className="chart-signal-overlays" aria-hidden="true">
-          {overlayBoxes.map((box) => (
-            <button
-              key={box.id}
-              type="button"
-              className={`chart-signal-box ${box.side}`}
-              style={{
-                left: `${box.left}px`,
-                top: `${box.top}px`,
-                width: `${box.width}px`,
-                height: `${box.height}px`,
-              }}
-              title={box.label}
-              onClick={() => onMarkerClick?.(box.marker)}
-            >
-              <span className="chart-signal-label">{box.label}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

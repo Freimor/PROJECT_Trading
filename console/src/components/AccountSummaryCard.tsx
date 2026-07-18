@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 import PortfolioCard from "./PortfolioCard";
+import BalanceAssetsList from "./BalanceAssetsList";
 import { useI18n } from "../i18n/LanguageContext";
-import { formatMoexPosition } from "../utils/moex";
+import type { BalanceRow } from "../utils/balances";
 
 export type AccountMetric = {
   currency?: string;
@@ -27,6 +28,7 @@ type Props = {
   loading?: boolean;
   emptyMessage?: string;
   positions?: Position[];
+  balances?: BalanceRow[];
   linkTo?: string;
   linkLabel?: string;
   period: PerformancePeriod;
@@ -59,6 +61,7 @@ export default function AccountSummaryCard({
   loading,
   emptyMessage,
   positions,
+  balances,
   linkTo,
   linkLabel,
   period,
@@ -124,25 +127,21 @@ export default function AccountSummaryCard({
               </span>
             )}
           </div>
-          {positions && positions.length > 0 && (
-            <ul className="balance-list compact">
-              {positions
-                .filter((p) => p.ticker !== "RUB000UTSTOM" || (p.quantity ?? 0) > 0)
-                .slice(0, 4)
-                .map((p) => {
-                  const row = formatMoexPosition(p.ticker, p.quantity, p.avg_price, {
-                    cashRub: t("workspace.cashRub"),
-                    pieces: t("workspace.pieces"),
-                  });
-                  return (
-                    <li key={p.ticker}>
-                      <span>{row.label}</span>
-                      <span>{row.value}</span>
-                    </li>
-                  );
-                })}
-            </ul>
-          )}
+          {balances && balances.length > 0 ? (
+            <BalanceAssetsList
+              title={t("overview.allAssets")}
+              balances={balances}
+              cashRubLabel={t("workspace.cashRub")}
+              piecesLabel={t("workspace.pieces")}
+            />
+          ) : positions && positions.length > 0 ? (
+            <BalanceAssetsList
+              title={t("overview.allAssets")}
+              positions={positions}
+              cashRubLabel={t("workspace.cashRub")}
+              piecesLabel={t("workspace.pieces")}
+            />
+          ) : null}
         </>
       )}
       {children}

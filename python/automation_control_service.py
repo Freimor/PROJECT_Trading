@@ -255,7 +255,7 @@ def _mark_workflow_started(
 
         should_set = (
             session_capital is not None
-            or session_volume_mode == "existing_holdings"
+            or session_volume_mode in ("existing_holdings", "combined")
             or use_existing_holdings
             or liquidate_on_stop
             or liquidate_on_margin_call is not None
@@ -977,6 +977,40 @@ def reset_workflows_on_boot(market: str) -> dict[str, Any]:
     }
 
 
+def reconcile_running_instance_workflows_on_boot() -> dict[str, Any]:
+    """Re-enable n8n workflows for DB instances still marked running after container restart."""
+    activated: dict[str, list[str]] = {}
+    try:
+        from crypto_automation_instance_service import reconcile_n8n_workflows_for_running_instances as crypto_rec
+
+        activated["crypto"] = crypto_rec()
+    except Exception as exc:
+        logger.warning("boot_reconcile_crypto_failed: %s", exc)
+        activated["crypto"] = []
+    try:
+        from securities_automation_instance_service import reconcile_n8n_workflows_for_running_instances as sec_rec
+
+        activated["securities"] = sec_rec()
+    except Exception as exc:
+        logger.warning("boot_reconcile_securities_failed: %s", exc)
+        activated["securities"] = []
+    try:
+        from n8n_service import _patch_error_workflow_references
+
+        _patch_error_workflow_references()
+    except Exception as exc:
+        logger.warning("boot_patch_error_workflow_failed: %s", exc)
+    parts = [f"{m}: {', '.join(ws)}" for m, ws in activated.items() if ws]
+    if parts:
+        log_system_activity(
+            f"Старт: восстановлены n8n workflow: {'; '.join(parts)}",
+            category="control",
+            level="info",
+            payload={"activated": activated},
+        )
+    return {"status": "ok", "activated": activated}
+
+
 def stop_market_workflows(market: str) -> dict[str, Any]:
     """Deactivate all workflows for the market."""
     if market not in MARKET_CONFIG:
@@ -1506,7 +1540,6 @@ def run_workflow_once(
         return {"status": "error", "message": "empty_universe", "workflow": workflow_name}
 
     results: list[dict[str, Any]] = []
-    crypto_equity = resolve_workflow_equity("crypto") if market == "crypto" else None
     for sym in symbols:
         try:
             if workflow_name == "crypto-signal-paper":
@@ -1517,7 +1550,11 @@ def run_workflow_once(
                         symbol=sym,
                         env="dry_run",
                         workflow_name=workflow_name,
-                        equity=crypto_equity or resolve_workflow_equity("crypto"),
+                        equity=resolve_workflow_equity(
+                            "crypto",
+                            symbol=sym,
+                            workflow_name=workflow_name,
+                        ),
                     )
                 )
             elif workflow_name == "crypto-scalp-hybrid-paper":
@@ -1528,7 +1565,11 @@ def run_workflow_once(
                         symbol=sym,
                         env="dry_run",
                         workflow_name=workflow_name,
-                        equity=crypto_equity or resolve_workflow_equity("crypto"),
+                        equity=resolve_workflow_equity(
+                            "crypto",
+                            symbol=sym,
+                            workflow_name=workflow_name,
+                        ),
                     )
                 )
             elif workflow_name == "securities-swing-paper":

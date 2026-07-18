@@ -22,7 +22,9 @@ def _resolved_model(market: str, model: str | None) -> str:
 
 
 def ollama_host() -> str:
-    return os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    from ollama_connection_service import get_effective_ollama_host
+
+    return get_effective_ollama_host()
 
 
 def list_ollama_models() -> dict[str, Any]:

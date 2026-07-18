@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -428,11 +429,53 @@ def purge_expired() -> int:
     conn = get_connection()
     try:
         now = datetime.now(timezone.utc).isoformat()
+        expired_ids = [
+            row["id"]
+            for row in conn.execute(
+                """
+                SELECT id FROM news_items
+                WHERE expires_at IS NOT NULL AND expires_at < ? AND benchmark_retained = 0
+                """,
+                (now,),
+            ).fetchall()
+        ]
+        if not expired_ids:
+            return 0
+        placeholders = ",".join("?" * len(expired_ids))
+        conn.execute(
+            f"DELETE FROM news_signals WHERE news_item_id IN ({placeholders})",
+            expired_ids,
+        )
+        conn.execute(
+            f"DELETE FROM news_user_context WHERE news_item_id IN ({placeholders})",
+            expired_ids,
+        )
         cur = conn.execute(
-            "DELETE FROM news_items WHERE expires_at IS NOT NULL AND expires_at < ? AND benchmark_retained = 0",
-            (now,),
+            f"DELETE FROM news_items WHERE id IN ({placeholders})",
+            expired_ids,
         )
         conn.commit()
         return cur.rowcount
     finally:
         conn.close()
+
+
+def bootstrap_news_on_startup_background() -> None:
+    """Purge expired items and ingest feeds when DB is empty — non-blocking startup."""
+
+    def _run() -> None:
+        try:
+            from activity_feed_service import log_system_activity
+
+            stats = news_verification_stats()
+            if sum(stats.get("by_status", {}).values()) > 0:
+                return
+            purge_expired()
+            ingest_all()
+            log_system_activity("Первичная загрузка новостей", category="news", level="info")
+        except Exception as exc:
+            from activity_feed_service import log_system_activity
+
+            log_system_activity(f"News bootstrap: {exc}", category="news", level="warn")
+
+    threading.Thread(target=_run, daemon=True, name="news-bootstrap").start()

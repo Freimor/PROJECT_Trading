@@ -64,7 +64,8 @@ def scalp_bearish_rule_filter(
             strengths.append(trend_strength)
 
     passed_rules = [c["rule"] for c in checks if c.get("passed")]
-    proceed = len(passed_rules) >= 2
+    min_rules = int(rules.get("min_rules_to_proceed", 2))
+    proceed = len(passed_rules) >= max(1, min_rules)
     if not strengths:
         ambiguity = 1.0
     else:

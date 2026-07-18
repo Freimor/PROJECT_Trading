@@ -355,6 +355,83 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
     def _wf_active(ctrl: dict[str, Any]) -> bool:
         return any(bool(w.get("active")) for w in (ctrl.get("workflows") or []))
 
+    inst_summary: dict[str, Any] = {"has_instances": False}
+    sec_inst_summary: dict[str, Any] = {"has_instances": False}
+    try:
+        from crypto_automation_instance_service import (
+            reconcile_n8n_workflows_for_running_instances as reconcile_crypto_n8n,
+            summarize_instances_for_overview,
+        )
+
+        inst_summary = summarize_instances_for_overview()
+        if inst_summary.get("running_count", 0) > 0 and not _wf_active(crypto_ctrl):
+            try:
+                reconcile_crypto_n8n()
+                crypto_ctrl = get_market_control_state("crypto")
+            except Exception:
+                pass
+    except Exception:
+        inst_summary = {"has_instances": False}
+    try:
+        from securities_automation_instance_service import (
+            reconcile_n8n_workflows_for_running_instances,
+            summarize_instances_for_overview as summarize_sec_instances,
+        )
+
+        sec_inst_summary = summarize_sec_instances()
+        if sec_inst_summary.get("running_count", 0) > 0 and not _wf_active(sec_ctrl):
+            try:
+                reconcile_n8n_workflows_for_running_instances()
+                sec_ctrl = get_market_control_state("securities")
+            except Exception:
+                pass
+    except Exception:
+        sec_inst_summary = {"has_instances": False}
+
+    crypto_workflows_active = _wf_active(crypto_ctrl)
+    crypto_started_at = crypto_ctrl.get("workflow_started_at")
+    crypto_operation_mode = trading_mode_to_operation(crypto_mode)
+    crypto_workflow_session = crypto_ctrl.get("workflow_session")
+    crypto_active_workflows = [
+        w.get("name") for w in crypto_ctrl.get("workflows", []) if w.get("active")
+    ]
+    crypto_pairs = crypto_cfg.get("pairs", [])
+
+    if inst_summary.get("has_instances"):
+        crypto_pairs = inst_summary.get("running_symbols") or crypto_pairs
+        if inst_summary.get("running_count", 0) > 0:
+            crypto_workflows_active = _wf_active(crypto_ctrl)
+            crypto_started_at = inst_summary.get("earliest_started_at") or crypto_started_at
+            crypto_operation_mode = (
+                inst_summary.get("operation_mode") or crypto_operation_mode
+            )
+            crypto_workflow_session = inst_summary.get("workflow_session") or crypto_workflow_session
+            crypto_active_workflows = (
+                inst_summary.get("active_workflows") or crypto_active_workflows
+            )
+        elif not _wf_active(crypto_ctrl):
+            crypto_workflows_active = False
+            crypto_started_at = None
+            crypto_workflow_session = {"status": "inactive"}
+
+    sec_workflows_active = _wf_active(sec_ctrl)
+    sec_started_at = sec_ctrl.get("workflow_started_at")
+    sec_workflow_session = sec_ctrl.get("workflow_session")
+    sec_active_workflows = [w.get("name") for w in sec_ctrl.get("workflows", []) if w.get("active")]
+
+    if sec_inst_summary.get("has_instances"):
+        if sec_inst_summary.get("running_count", 0) > 0:
+            sec_workflows_active = _wf_active(sec_ctrl)
+            sec_started_at = sec_inst_summary.get("earliest_started_at") or sec_started_at
+            sec_workflow_session = sec_inst_summary.get("workflow_session") or sec_workflow_session
+            sec_active_workflows = (
+                sec_inst_summary.get("active_workflows") or sec_active_workflows
+            )
+        elif not _wf_active(sec_ctrl):
+            sec_workflows_active = False
+            sec_started_at = None
+            sec_workflow_session = {"status": "inactive"}
+
     return {
         "kill_switch": bool(trading.get("kill_switch")),
         "kill_switch_updated_at": kill_meta.get("updated_at"),
@@ -369,15 +446,16 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
         "crypto": {
             "env": crypto_cfg.get("env"),
             "mode": crypto_cfg.get("mode"),
-            "operation_mode": trading_mode_to_operation(crypto_mode),
+            "operation_mode": crypto_operation_mode,
             "operation_detail": operation_mode_detail(crypto_mode),
             "mode_updated_at": crypto_meta.get("updated_at"),
-            "workflow_started_at": crypto_ctrl.get("workflow_started_at"),
+            "workflow_started_at": crypto_started_at,
             "workflow_pnl": crypto_ctrl.get("workflow_pnl"),
-            "workflow_session": crypto_ctrl.get("workflow_session"),
-            "workflows_active": _wf_active(crypto_ctrl),
-            "active_workflows": [w.get("name") for w in crypto_ctrl.get("workflows", []) if w.get("active")],
-            "pairs": crypto_cfg.get("pairs", []),
+            "workflow_session": crypto_workflow_session,
+            "workflows_active": crypto_workflows_active,
+            "active_workflows": crypto_active_workflows,
+            "pairs": crypto_pairs,
+            "automation_instances": inst_summary if inst_summary.get("has_instances") else None,
             "active_strategy": crypto_strategy["active"],
             "strategy_label": crypto_strategy["strategy"].get("label"),
             "workflow": crypto_strategy["strategy"].get("workflow"),
@@ -389,11 +467,12 @@ def get_automation_overview(*, days: int = 7) -> dict[str, Any]:
             "operation_mode": trading_mode_to_operation(sec_mode),
             "operation_detail": operation_mode_detail(sec_mode),
             "mode_updated_at": sec_meta.get("updated_at"),
-            "workflow_started_at": sec_ctrl.get("workflow_started_at"),
+            "workflow_started_at": sec_started_at,
             "workflow_pnl": sec_ctrl.get("workflow_pnl"),
-            "workflow_session": sec_ctrl.get("workflow_session"),
-            "workflows_active": _wf_active(sec_ctrl),
-            "active_workflows": [w.get("name") for w in sec_ctrl.get("workflows", []) if w.get("active")],
+            "workflow_session": sec_workflow_session,
+            "workflows_active": sec_workflows_active,
+            "active_workflows": sec_active_workflows,
+            "automation_instances": sec_inst_summary if sec_inst_summary.get("has_instances") else None,
             "active_mode": sec_strategy["active"],
             "strategy_label": sec_strategy["strategy"].get("label"),
             "workflows": [s.get("workflow") for s in sec_strategy["strategies"]],

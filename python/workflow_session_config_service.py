@@ -25,7 +25,7 @@ DEFAULT_SESSION_CAPITAL: dict[str, float] = {
     "securities": 100_000.0,
 }
 
-SessionVolumeMode = Literal["stablecoin", "existing_holdings"]
+SessionVolumeMode = Literal["stablecoin", "existing_holdings", "combined"]
 HoldingsUnit = Literal["percent", "absolute"]
 LiquidateReason = Literal["stop", "margin_call"]
 
@@ -65,10 +65,17 @@ def _normalize_session_params(
     existing_holdings_use_qty: float | None = None,
 ) -> dict[str, Any]:
     """Resolve mode + holdings unit from new or legacy request fields."""
+    use_holdings = bool(use_existing_holdings)
+    has_cap = session_capital is not None and float(session_capital) > 0
+
     mode: SessionVolumeMode
-    if session_volume_mode in ("stablecoin", "existing_holdings"):
+    if session_volume_mode == "combined":
+        mode = "combined"
+    elif session_volume_mode in ("stablecoin", "existing_holdings"):
         mode = session_volume_mode  # type: ignore[assignment]
-    elif use_existing_holdings:
+    elif use_holdings and has_cap:
+        mode = "combined"
+    elif use_holdings:
         mode = "existing_holdings"
     else:
         mode = "stablecoin"
@@ -81,21 +88,30 @@ def _normalize_session_params(
     abs_qty = float(existing_holdings_use_qty) if existing_holdings_use_qty is not None else 0.0
 
     cap: float | None = None
-    if mode == "stablecoin":
-        if session_capital is None or float(session_capital) <= 0:
-            raise ValueError("session_capital_must_be_positive")
+    if mode in ("stablecoin", "combined") and has_cap:
         cap = round(float(session_capital), 2)
-    elif mode == "existing_holdings":
+    elif mode == "stablecoin":
+        raise ValueError("session_capital_must_be_positive")
+
+    holdings_active = mode in ("existing_holdings", "combined") and (
+        use_holdings or mode != "stablecoin"
+    )
+    if holdings_active:
         if unit == "absolute":
             if abs_qty <= 0:
-                raise ValueError("existing_holdings_qty_must_be_positive")
+                if mode == "existing_holdings":
+                    raise ValueError("existing_holdings_qty_must_be_positive")
+                holdings_active = False
         elif pct <= 0:
-            pct = 100.0
-        if session_capital is not None and float(session_capital) > 0:
-            cap = round(float(session_capital), 2)
+            if mode == "existing_holdings":
+                pct = 100.0
+            else:
+                holdings_active = False
 
-    if market == "securities" and mode == "stablecoin" and cap is None:
-        raise ValueError("session_capital_must_be_positive")
+    if mode == "combined" and cap is None and not holdings_active:
+        raise ValueError("combined_budget_requires_stablecoin_or_holdings")
+    if mode == "existing_holdings" and not holdings_active:
+        raise ValueError("existing_holdings_qty_must_be_positive")
 
     return {
         "session_volume_mode": mode,
@@ -103,7 +119,7 @@ def _normalize_session_params(
         "existing_holdings_unit": unit,
         "existing_holdings_use_pct": round(pct, 2),
         "existing_holdings_use_qty": round(abs_qty, 8) if abs_qty > 0 else None,
-        "use_existing_holdings": mode == "existing_holdings",
+        "use_existing_holdings": holdings_active and mode in ("existing_holdings", "combined"),
     }
 
 
@@ -148,6 +164,60 @@ def capture_holdings_baseline(
         except Exception:
             pass
     return out
+
+
+def capture_instance_baseline(
+    symbol: str,
+    *,
+    testnet: bool = True,
+) -> dict[str, Any]:
+    """Wallet snapshot for one pair at automation session start."""
+    sym = str(symbol).upper()
+    quote = get_crypto_quote_asset().upper()
+    baseline: dict[str, float] = {}
+    balances = get_account_balances(testnet=testnet)
+    cash = wallet_quote_balance(balances, quote=quote)
+    if cash > 0:
+        baseline[quote] = round(cash, 8)
+    pair = sym if sym.endswith(quote) else pair_with_quote(sym, quote=quote)
+    qty = _wallet_base_qty(pair, testnet=testnet, quote=quote)
+    if qty > 0:
+        baseline[str(pair).upper()] = round(qty, 8)
+    return {
+        "holdings_baseline": baseline,
+        "baseline_captured_at": _utc_now(),
+        "quote_asset": quote,
+    }
+
+
+def capture_securities_instance_baseline(
+    symbols: list[str],
+    *,
+    sandbox: bool = True,
+) -> dict[str, Any]:
+    """Wallet snapshot for MOEX automation symbols at session start."""
+    baseline: dict[str, float] = {}
+    sym_set = {str(s).upper() for s in symbols if s}
+    try:
+        from bridges.tinvest_bridge import get_portfolio_snapshot
+
+        snap = get_portfolio_snapshot(sandbox=sandbox)
+        if snap.get("status") == "ok":
+            for p in snap.get("positions") or []:
+                ticker = str(p.get("ticker") or "").upper()
+                qty = float(p.get("quantity", 0) or 0)
+                if ticker in sym_set and qty > 0:
+                    baseline[ticker] = round(qty, 8)
+            total = snap.get("total_amount")
+            if total is not None:
+                baseline["RUB"] = round(float(total), 2)
+    except Exception:
+        pass
+    return {
+        "holdings_baseline": baseline,
+        "baseline_captured_at": _utc_now(),
+        "currency": "RUB",
+    }
 
 
 def set_workflow_session_config(
@@ -224,7 +294,34 @@ def set_workflow_session_config(
     return payload
 
 
-def get_workflow_session_config(market: str) -> dict[str, Any]:
+def get_workflow_session_config(market: str, *, symbol: str | None = None, workflow_name: str | None = None) -> dict[str, Any]:
+    if market == "crypto" and symbol and workflow_name:
+        try:
+            from crypto_automation_instance_service import find_running_instance
+
+            inst = find_running_instance(symbol=symbol, workflow_name=workflow_name)
+            if inst:
+                cfg = dict(inst.get("session_config") or {})
+                cfg.setdefault("workflow_name", inst.get("workflow_name"))
+                cfg.setdefault("symbol", inst.get("symbol"))
+                cfg["instance_id"] = inst.get("id")
+                if "session_volume_mode" not in cfg:
+                    cfg["session_volume_mode"] = (
+                        "existing_holdings" if cfg.get("use_existing_holdings") else "stablecoin"
+                    )
+                if "existing_holdings_unit" not in cfg:
+                    cfg["existing_holdings_unit"] = "percent"
+                if "liquidate_on_margin_call" not in cfg:
+                    cfg["liquidate_on_margin_call"] = bool(cfg.get("liquidate_on_stop"))
+                quote = get_crypto_quote_asset()
+                cfg.setdefault("quote_asset", quote)
+                return cfg
+        except Exception:
+            pass
+    return _get_workflow_session_config_raw(market)
+
+
+def _get_workflow_session_config_raw(market: str) -> dict[str, Any]:
     if market not in WORKFLOW_SESSION_CONFIG_KEY:
         return {}
     meta = get_runtime_meta(WORKFLOW_SESSION_CONFIG_KEY[market]) or {}
@@ -266,7 +363,7 @@ def _baseline_qty(symbol: str, cfg: dict[str, Any]) -> float:
 def _pre_session_allocated_qty(baseline: float, cfg: dict[str, Any]) -> float:
     if baseline <= 0:
         return 0.0
-    if cfg.get("session_volume_mode", "stablecoin") != "existing_holdings":
+    if cfg.get("session_volume_mode", "stablecoin") not in ("existing_holdings", "combined"):
         if not cfg.get("use_existing_holdings"):
             return 0.0
     unit = str(cfg.get("existing_holdings_unit") or "percent")
@@ -293,7 +390,7 @@ def compute_managed_qty(
     wallet_delta = max(0.0, wallet_qty - baseline)
     session_acquired = max(wallet_delta, max(0.0, db_session_net))
 
-    if mode == "existing_holdings" or cfg.get("use_existing_holdings"):
+    if mode in ("existing_holdings", "combined") or cfg.get("use_existing_holdings"):
         pre_allocated = _pre_session_allocated_qty(baseline, cfg)
     else:
         pre_allocated = 0.0
@@ -308,14 +405,58 @@ def compute_managed_qty(
     }
 
 
+def cap_sizing_to_session_capital(
+    sizing: dict[str, Any],
+    *,
+    market: str,
+    symbol: str | None = None,
+    workflow_name: str | None = None,
+    leverage: int = 1,
+) -> dict[str, Any]:
+    """Hard ceiling: stablecoin-mode automation budget must not exceed session_capital."""
+    session = get_workflow_session_config(market, symbol=symbol, workflow_name=workflow_name)
+    if session.get("session_volume_mode", "stablecoin") not in ("stablecoin", "combined"):
+        return sizing
+    raw_cap = session.get("session_capital")
+    if raw_cap is None:
+        return sizing
+    try:
+        cap_f = float(raw_cap)
+    except (TypeError, ValueError):
+        return sizing
+    if cap_f <= 0:
+        return sizing
+
+    notional = float(sizing.get("notional") or 0)
+    if notional <= cap_f + 1e-9:
+        return sizing
+
+    qty = float(sizing.get("quantity") or 0)
+    ratio = cap_f / notional if notional > 0 else 1.0
+    out = dict(sizing)
+    out["quantity"] = round(qty * ratio, 8)
+    out["notional"] = round(cap_f, 2)
+    lev = max(1, int(leverage or 1))
+    out["margin_notional"] = round(cap_f / lev, 2)
+    out["session_capital_capped"] = True
+    out["session_capital"] = round(cap_f, 2)
+    return out
+
+
 def resolve_workflow_equity(
     market: str,
     *,
     wallet_equity: float | None = None,
     default: float | None = None,
+    symbol: str | None = None,
+    workflow_name: str | None = None,
 ) -> float:
     fallback = default if default is not None else default_session_capital(market)
-    session = get_workflow_session_config(market)
+    session = get_workflow_session_config(
+        market,
+        symbol=symbol,
+        workflow_name=workflow_name,
+    )
     mode = session.get("session_volume_mode", "stablecoin")
 
     if mode == "existing_holdings":
@@ -329,16 +470,20 @@ def resolve_workflow_equity(
                 return min(cap_f, wallet_equity) if wallet_equity and wallet_equity > 0 else cap_f
         return 0.0
 
-    cap = session.get("session_capital")
-    if cap is not None:
-        try:
-            cap_f = float(cap)
-        except (TypeError, ValueError):
-            cap_f = 0.0
-        if cap_f > 0:
-            if wallet_equity is not None and wallet_equity > 0:
-                return min(cap_f, wallet_equity)
-            return cap_f
+    if mode in ("stablecoin", "combined"):
+        cap = session.get("session_capital")
+        if cap is not None:
+            try:
+                cap_f = float(cap)
+            except (TypeError, ValueError):
+                cap_f = 0.0
+            if cap_f > 0:
+                if wallet_equity is not None and wallet_equity > 0:
+                    return min(cap_f, wallet_equity)
+                return cap_f
+        if mode == "combined":
+            return 0.0
+
     if wallet_equity is not None and wallet_equity > 0:
         return wallet_equity
     return fallback
@@ -551,7 +696,7 @@ def liquidate_session_holdings(
         else "session_liquidate_on_stop"
     )
     quote = str(cfg.get("quote_asset") or get_crypto_quote_asset()).upper()
-    product = get_crypto_trading_product(cfg=crypto_cfg)
+    product = get_crypto_trading_product(cfg=crypto_cfg, session_config=cfg)
     results: list[dict[str, Any]] = []
 
     if product.get("is_futures"):

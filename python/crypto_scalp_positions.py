@@ -13,7 +13,7 @@ from binance_trading import (
     place_market_order,
 )
 from config_loader import load_config
-from crypto_product import get_crypto_trading_product, order_side_for_exit
+from crypto_product import get_crypto_trading_product_for_trade, order_side_for_exit
 from db.connection import get_connection
 from effective_config import get_config_effective
 from event_log import log_event
@@ -78,7 +78,7 @@ def _db_session_net_qty(
 
     sym = symbol.upper()
     side = str(position_side).lower()
-    cfg = get_workflow_session_config("crypto")
+    cfg = get_workflow_session_config("crypto", symbol=sym, workflow_name=workflow_name)
     since = cfg.get("baseline_captured_at")
     conn = get_connection()
     try:
@@ -216,7 +216,7 @@ def _get_futures_scalp_position(
         return None
 
     position_side = str(exch.get("position_side") or "long").lower()
-    session_cfg = get_workflow_session_config("crypto")
+    session_cfg = get_workflow_session_config("crypto", symbol=sym, workflow_name=workflow_name)
     last_entry = _last_entry_from_db(
         sym, position_side=position_side, since=session_cfg.get("baseline_captured_at")
     )
@@ -281,7 +281,15 @@ def get_scalp_position(
 ) -> dict[str, Any] | None:
     """Open scalp leg — spot long or futures long/short."""
     crypto_cfg = get_config_effective("crypto_config")
-    product = get_crypto_trading_product(cfg=crypto_cfg)
+    from workflow_session_config_service import get_workflow_session_config
+
+    cfg = get_workflow_session_config("crypto", symbol=symbol, workflow_name=workflow_name)
+    product = get_crypto_trading_product_for_trade(
+        cfg=crypto_cfg,
+        symbol=symbol,
+        workflow_name=workflow_name,
+        session_config=cfg,
+    )
     if product.get("is_futures"):
         return _get_futures_scalp_position(
             symbol, workflow_name=workflow_name, testnet=testnet, cfg=crypto_cfg, product=product
@@ -290,7 +298,7 @@ def get_scalp_position(
     from workflow_session_config_service import compute_managed_qty, get_workflow_session_config
 
     sym = symbol.upper()
-    cfg = get_workflow_session_config("crypto")
+    cfg = cfg or get_workflow_session_config("crypto", symbol=sym, workflow_name=workflow_name)
     wallet_qty = _wallet_base_qty(sym, testnet=testnet)
     db_net = _db_session_net_qty(sym, workflow_name=workflow_name, position_side="long")
     breakdown = compute_managed_qty(
@@ -413,7 +421,9 @@ def try_scalp_exit(
 ) -> dict[str, Any]:
     """Close scalp leg if exit rules fire (spot SELL or futures reduce-only)."""
     crypto_cfg = get_config_effective("crypto_config")
-    product = get_crypto_trading_product(cfg=crypto_cfg)
+    product = get_crypto_trading_product_for_trade(
+        cfg=crypto_cfg, symbol=symbol, workflow_name=workflow_name
+    )
     pos = get_scalp_position(symbol, workflow_name=workflow_name, testnet=testnet)
     if not pos:
         return {"status": "no_position", "symbol": symbol}

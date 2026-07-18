@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, getOperatorPassword } from "../api";
 import PortfolioCard from "../components/PortfolioCard";
+import OllamaConnectionSection from "../components/OllamaConnectionSection";
+import LlmAssistSection from "../components/LlmAssistSection";
 import { POLL } from "../config/polling";
 import { useErrorNotifications } from "../context/ErrorNotifications";
 import { useI18n } from "../i18n/LanguageContext";
@@ -1048,6 +1050,12 @@ export default function BenchmarkPage() {
             ))}
           </>
         )}
+      </PortfolioCard>
+
+      <OllamaConnectionSection />
+
+      <PortfolioCard title={t("llmAssist.title")}>
+        <LlmAssistSection />
       </PortfolioCard>
 
       <PortfolioCard title={t("benchmark.ollamaRegistryTitle")}>

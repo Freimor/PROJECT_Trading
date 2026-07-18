@@ -21,6 +21,14 @@ def get_guardrails() -> dict[str, Any]:
     trading["kill_switch"] = is_kill_switch_active(yaml_kill)
     trading["mode"] = get_effective_trading_mode()
     g["trading"] = trading
+    llm = dict(g.get("llm") or {})
+    try:
+        from llm_assist_service import get_effective_guardrails_llm_mode
+
+        llm["mode"] = get_effective_guardrails_llm_mode()
+    except Exception:
+        pass
+    g["llm"] = llm
     return g
 
 

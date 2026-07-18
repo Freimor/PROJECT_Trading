@@ -101,6 +101,39 @@ def log_system_activity(
 
 from filter_event_details import summarize_filter_activity
 
+_ORDER_FEED_OK = ("execute", "executed", "submitted", "approve")
+
+
+def _parse_event_payload(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("payload_json")
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else dict(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+
+def _trade_event_priority(row: dict[str, Any]) -> int:
+    """Orders and fills must stay visible above signal/filter noise."""
+    stage = row.get("stage")
+    decision = row.get("decision")
+    if stage in ("order", "fill") and decision in _ORDER_FEED_OK:
+        return 3
+    if stage == "order" and decision == "error":
+        payload = _parse_event_payload(row)
+        side = str(payload.get("side") or "").upper()
+        if side == "SELL" or payload.get("exit_reason"):
+            return 2
+    if stage in ("error",) or decision == "error":
+        return 2
+    if stage == "llm":
+        return 1
+    if stage in ("guardrails", "filter"):
+        return 0
+    return 0
+
 
 def _trade_event_message(row: dict[str, Any]) -> str | None:
     stage = row.get("stage")
@@ -141,16 +174,46 @@ def _trade_event_message(row: dict[str, Any]) -> str | None:
             reason = reason or "без причины"
             return f"LLM отклонил {symbol}: {reason}"
 
-    if stage == "order" and decision in ("execute", "approve", "submitted"):
-        notional = row.get("notional")
+    if stage == "order" and decision in _ORDER_FEED_OK:
+        from automation_equity_service import format_order_activity_message, resolve_order_notional
+
+        payload = _parse_event_payload(row)
+        side = str(payload.get("side") or "BUY").upper()
+        if payload.get("exit_reason"):
+            side = "SELL"
         currency = row.get("currency") or ("USDT" if row.get("market") == "crypto" else "RUB")
-        if isinstance(notional, (int, float)) and notional > 0:
-            unit = "₽" if currency in ("RUB", "rub") else currency
-            return f"Покупка {symbol} на {notional:,.0f} {unit}".replace(",", " ")
-        return f"Ордер на покупку {symbol}"
+        notional = resolve_order_notional(row, payload)
+        return format_order_activity_message(
+            symbol=symbol,
+            side=side,
+            notional=notional,
+            currency=str(currency),
+            market=str(row.get("market") or "crypto"),
+        )
+
+    if stage == "order" and decision == "error":
+        payload = _parse_event_payload(row)
+        side = str(payload.get("side") or "").upper()
+        if side == "SELL" or payload.get("exit_reason"):
+            reason = row.get("reject_reason") or payload.get("msg") or payload.get("message") or "ошибка ордера"
+            return f"Не удалось продать {symbol}: {reason}"
 
     if stage == "fill":
-        return f"Исполнена покупка {symbol}"
+        from automation_equity_service import format_order_activity_message, resolve_order_notional
+
+        payload = _parse_event_payload(row)
+        side = str(payload.get("side") or "BUY").upper()
+        if payload.get("exit_reason"):
+            side = "SELL"
+        currency = row.get("currency") or ("USDT" if row.get("market") == "crypto" else "RUB")
+        notional = resolve_order_notional(row, payload)
+        return format_order_activity_message(
+            symbol=symbol,
+            side=side,
+            notional=notional,
+            currency=str(currency),
+            market=str(row.get("market") or "crypto"),
+        )
 
     if stage == "guardrails" and decision in ("reject", "halt", "skip"):
         return f"Guardrails: {row.get('reject_reason') or 'отклонено'}"
@@ -164,11 +227,16 @@ def _trade_event_message(row: dict[str, Any]) -> str | None:
 def _trade_event_level(row: dict[str, Any]) -> str:
     stage = row.get("stage")
     decision = row.get("decision")
+    if stage == "order" and decision == "error":
+        payload = _parse_event_payload(row)
+        side = str(payload.get("side") or "").upper()
+        if side == "SELL" or payload.get("exit_reason"):
+            return "warn"
     if stage in ("error",) or decision == "error":
         return "error"
     if stage == "guardrails" and decision in ("reject", "halt"):
         return "warn"
-    if stage in ("fill", "order") and decision in ("execute", "approve", "submitted"):
+    if stage in ("fill", "order") and decision in _ORDER_FEED_OK:
         return "success"
     return "info"
 
@@ -389,7 +457,7 @@ def get_activity_feed(*, limit: int = 40, days: int = 3) -> dict[str, Any]:
                 "message": message,
                 "ref_type": "trade_event",
                 "ref_id": row["id"],
-                "_priority": 0,
+                "_priority": _trade_event_priority(row),
             }
         )
 
@@ -421,10 +489,13 @@ def get_activity_feed(*, limit: int = 40, days: int = 3) -> dict[str, Any]:
         paper["_priority"] = 2
         system_items.append(paper)
 
-    trade_items.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
+    trade_items.sort(
+        key=lambda x: (int(x.get("_priority", 0)), str(x.get("occurred_at", ""))),
+        reverse=True,
+    )
     system_items.sort(key=lambda x: str(x.get("occurred_at", "")), reverse=True)
 
-    # Trade events first — health/boot cannot crowd out signals from other symbols.
+    # Trade events first — orders/fills outrank signal/filter noise.
     trade_cap = min(len(trade_items), int(limit * 0.75))
     merged = trade_items[:trade_cap]
     seen_ids = {str(i["id"]) for i in merged}

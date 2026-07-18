@@ -144,7 +144,9 @@ def universe_change_blocked_reason(workflow: str) -> str | None:
     return None
 
 
-def _ensure_universe_mutable(workflow: str) -> None:
+def _ensure_universe_mutable(workflow: str, *, allow_active: bool = False) -> None:
+    if allow_active:
+        return
     block = universe_change_blocked_reason(workflow)
     if block:
         raise ValueError(f"universe_change_blocked:{block}")
@@ -222,9 +224,10 @@ def save_workflow_universe(
     items: list[dict[str, Any]],
     *,
     operator: str = "web",
+    allow_active: bool = False,
 ) -> dict[str, Any]:
     workflow_market(workflow)
-    _ensure_universe_mutable(workflow)
+    _ensure_universe_mutable(workflow, allow_active=allow_active)
     normalized = _normalize_items(items)
     payload = {
         "workflow": workflow,
@@ -246,6 +249,7 @@ def add_symbols_to_workflow(
     source: Source = "manual",
     enabled: bool = True,
     operator: str = "web",
+    allow_active: bool = False,
 ) -> dict[str, Any]:
     state = get_workflow_universe(workflow)
     by_symbol = {i["symbol"]: dict(i) for i in state["items"]}
@@ -263,7 +267,12 @@ def add_symbols_to_workflow(
             "source": source,
             "added_at": now,
         }
-    return save_workflow_universe(workflow, list(by_symbol.values()), operator=operator)
+    return save_workflow_universe(
+        workflow,
+        list(by_symbol.values()),
+        operator=operator,
+        allow_active=allow_active,
+    )
 
 
 def set_symbol_enabled(

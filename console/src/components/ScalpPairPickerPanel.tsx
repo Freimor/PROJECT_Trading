@@ -3,6 +3,7 @@ import { apiGet, apiPost, formatOperatorFacingError } from "../api";
 import OperatorConfirmModal from "./OperatorConfirmModal";
 import { useI18n } from "../i18n/LanguageContext";
 import { usePolling } from "../hooks/usePolling";
+import { formatIsoLocal } from "../utils/datetime";
 import type { ScalpPairScanProgress } from "../types";
 
 type ScanRankRow = {
@@ -50,10 +51,17 @@ function applyLastScanState(
     setSelected: (v: Set<string>) => void;
   },
   paramTopN: number,
+  singleSelect = false,
+  selectedSymbol?: string,
 ) {
   if (!last) return;
   if (last.scanned_at) setters.setScannedAt(last.scanned_at);
   if (last.ranked?.length) setters.setRanked(last.ranked);
+  if (singleSelect) {
+    const sym = selectedSymbol?.toUpperCase();
+    setters.setSelected(sym ? new Set([sym]) : new Set());
+    return;
+  }
   if (last.selected_symbols?.length) {
     setters.setSelected(new Set(last.selected_symbols));
   } else if (last.ranked?.length) {
@@ -76,6 +84,14 @@ type Props = {
   workflow: string;
   locked?: boolean;
   onApplied?: () => void;
+  /** Pick one pair for automation create (no apply-to-universe). */
+  singleSelect?: boolean;
+  selectedSymbol?: string;
+  onPickSymbol?: (symbol: string) => void;
+  /** Pairs already used by an automation with the same strategy. */
+  disabledSymbols?: Set<string>;
+  /** spot | usdt_futures — futures pre-scan uses USDT-M klines */
+  marketType?: "spot" | "usdt_futures";
 };
 
 type ParamKey =
@@ -158,8 +174,17 @@ function ParamScale({
   );
 }
 
-export default function ScalpPairPickerPanel({ workflow, locked = false, onApplied }: Props) {
-  const { t } = useI18n();
+export default function ScalpPairPickerPanel({
+  workflow,
+  locked = false,
+  onApplied,
+  singleSelect = false,
+  selectedSymbol,
+  onPickSymbol,
+  disabledSymbols,
+  marketType = "spot",
+}: Props) {
+  const { t, lang } = useI18n();
   const [settings, setSettings] = useState<ScanSettings | null>(null);
   const [paramInputs, setParamInputs] = useState<Record<string, string>>({});
   const [ranked, setRanked] = useState<ScanRankRow[]>([]);
@@ -188,6 +213,11 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
   useEffect(() => {
     paramTopNRef.current = paramTopN;
   }, [paramTopN]);
+
+  useEffect(() => {
+    if (!singleSelect || !selectedSymbol) return;
+    setSelected(new Set([selectedSymbol.toUpperCase()]));
+  }, [singleSelect, selectedSymbol]);
 
   const fetchScanProgress = useCallback(
     () => apiGet<{ status: string } & ScalpPairScanProgress>("/api/crypto/scalp/universe-scan/progress"),
@@ -223,8 +253,14 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
       status: string;
       last_scan?: LastScanPayload;
     }>(`/api/crypto/scalp/universe-scan/last?workflow_name=${encodeURIComponent(workflow)}`);
-    applyLastScanState(data.last_scan, scanStateSetters, paramTopNRef.current);
-  }, [workflow, scanStateSetters]);
+    applyLastScanState(
+      data.last_scan,
+      scanStateSetters,
+      paramTopNRef.current,
+      singleSelect,
+      selectedSymbol,
+    );
+  }, [workflow, scanStateSetters, singleSelect, selectedSymbol]);
 
   useEffect(() => {
     loadSettings().catch(() => {});
@@ -250,6 +286,25 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
     return out;
   };
 
+  const pickRowSymbol = useCallback(
+    (row: ScanRankRow, checked = true) => {
+      if (busy || locked || !row.eligible) return;
+      if (disabledSymbols?.has(row.symbol.toUpperCase())) return;
+      if (singleSelect) {
+        setSelected(new Set([row.symbol]));
+        onPickSymbol?.(row.symbol);
+        return;
+      }
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (checked) next.add(row.symbol);
+        else next.delete(row.symbol);
+        return next;
+      });
+    },
+    [singleSelect, busy, locked, disabledSymbols, onPickSymbol],
+  );
+
   const runScan = async () => {
     setBusy(true);
     setMessage(null);
@@ -262,13 +317,14 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
         message?: string;
       }>("/api/crypto/scalp/universe-scan/run", {
         workflow_name: workflow,
+        market_type: marketType,
         settings: buildSettingsPayload(),
       });
       if (scan.status !== "ok") {
         setMessage(scan.message ?? scan.status);
         return;
       }
-      applyLastScanState(scan, scanStateSetters, paramTopN);
+      applyLastScanState(scan, scanStateSetters, paramTopN, singleSelect, selectedSymbol);
       setMessage(t("universe.scalpScanDone", { count: String(scan.ranked?.length ?? 0) }));
     } catch (err) {
       setMessage(formatOperatorFacingError(err, t));
@@ -304,6 +360,8 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
         },
         scanStateSetters,
         paramTopN,
+        singleSelect,
+        selectedSymbol,
       );
       await loadLastScan();
       setPendingApply(false);
@@ -448,23 +506,25 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
               {scanBase ? <span className="muted small"> · {scanBase}</span> : null}
             </span>
           ) : null}
-          <button
-          type="button"
-          className="tiny"
-          disabled={busy || locked || selected.size === 0}
-          onClick={() => {
-            setOpError(null);
-            setPendingApply(true);
-          }}
-        >
-          {t("universe.scalpApplySelection", { count: String(selected.size) })}
-        </button>
+          {!singleSelect ? (
+            <button
+              type="button"
+              className="tiny"
+              disabled={busy || locked || selected.size === 0}
+              onClick={() => {
+                setOpError(null);
+                setPendingApply(true);
+              }}
+            >
+              {t("universe.scalpApplySelection", { count: String(selected.size) })}
+            </button>
+          ) : null}
         </div>
       </div>
 
       {scannedAt ? (
         <p className="muted small">
-          {t("universe.scalpScannedAt")}: {String(scannedAt).slice(0, 19).replace("T", " ")} ·{" "}
+          {t("universe.scalpScannedAt")}: {formatIsoLocal(scannedAt, lang === "en" ? "en-GB" : "ru-RU")} ·{" "}
           {t("universe.scalpEligibleCount", { count: String(eligibleCount), total: String(ranked.length) })}
         </p>
       ) : null}
@@ -485,21 +545,26 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
               </tr>
             </thead>
             <tbody>
-              {ranked.map((row) => (
-                <tr key={row.symbol} className={row.eligible ? "eligible" : "rejected"}>
-                  <td>
+              {ranked.map((row) => {
+                const rowDisabled =
+                  busy ||
+                  locked ||
+                  !row.eligible ||
+                  Boolean(disabledSymbols?.has(row.symbol.toUpperCase()));
+                const isPicked = singleSelect && selected.has(row.symbol);
+                return (
+                <tr
+                  key={row.symbol}
+                  className={`${row.eligible ? "eligible" : "rejected"}${isPicked ? " is-picked" : ""}${singleSelect && row.eligible && !rowDisabled ? " is-clickable" : ""}`}
+                  onClick={singleSelect ? () => pickRowSymbol(row) : undefined}
+                >
+                  <td onClick={(e) => e.stopPropagation()}>
                     <input
-                      type="checkbox"
+                      type={singleSelect ? "radio" : "checkbox"}
+                      name={singleSelect ? "scalp-pick-single" : undefined}
                       checked={selected.has(row.symbol)}
-                      disabled={busy || locked || !row.eligible}
-                      onChange={(e) => {
-                        setSelected((prev) => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(row.symbol);
-                          else next.delete(row.symbol);
-                          return next;
-                        });
-                      }}
+                      disabled={rowDisabled}
+                      onChange={(e) => pickRowSymbol(row, e.target.checked)}
                     />
                   </td>
                   <td className="mono-small">{row.symbol}</td>
@@ -513,9 +578,16 @@ export default function ScalpPairPickerPanel({ workflow, locked = false, onAppli
                         ? "mainnet"
                         : "—"}
                   </td>
-                  <td>{row.eligible ? t("universe.scalpEligible") : rejectLabel(row.reject_reason)}</td>
+                  <td>
+                    {disabledSymbols?.has(row.symbol.toUpperCase())
+                      ? t("cryptoAutomation.duplicatePairShort")
+                      : row.eligible
+                        ? t("universe.scalpEligible")
+                        : rejectLabel(row.reject_reason)}
+                  </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>

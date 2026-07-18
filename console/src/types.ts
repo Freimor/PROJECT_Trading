@@ -82,6 +82,9 @@ export type ChartMarker = {
   position: string;
   color: string;
   text: string;
+  short_label?: string;
+  summary?: string;
+  payload?: Record<string, unknown>;
 };
 
 export type TradeEvent = {
@@ -133,7 +136,7 @@ export type WorkflowPnl = {
 
 export type WorkflowSessionConfig = {
   session_capital?: number | null;
-  session_volume_mode?: "stablecoin" | "existing_holdings";
+  session_volume_mode?: "stablecoin" | "existing_holdings" | "combined";
   use_existing_holdings?: boolean;
   existing_holdings_unit?: "percent" | "absolute";
   existing_holdings_use_pct?: number;
@@ -167,6 +170,20 @@ export type WorkflowSessionStats = {
   last_event_stage?: string | null;
   last_event_decision?: string | null;
   last_event_reject_reason?: string | null;
+  instances_running?: number;
+  instances_total?: number;
+  running_symbols?: string[];
+};
+
+export type CryptoAutomationInstancesSummary = {
+  has_instances?: boolean;
+  total_count?: number;
+  running_count?: number;
+  stopped_count?: number;
+  running_symbols?: string[];
+  active_workflows?: string[];
+  earliest_started_at?: string | null;
+  operation_mode?: string;
 };
 
 export type OllamaStatus = {
@@ -229,6 +246,7 @@ export type AutomationOverview = {
     workflows_active?: boolean;
     active_workflows?: string[];
     pairs?: string[];
+    automation_instances?: CryptoAutomationInstancesSummary | null;
     active_strategy?: string;
     strategy_label?: string;
     workflow?: string;
@@ -251,6 +269,7 @@ export type AutomationOverview = {
     tinvest_api?: string;
     workflow?: string;
     funnel_signal?: { passed?: number; total?: number };
+    automation_instances?: CryptoAutomationInstancesSummary | null;
   };
   dry_run_signals_7d?: number;
 };

@@ -7,6 +7,7 @@ from typing import Any
 from effective_config import get_config_effective, get_guardrails
 from risk_profile_service import apply_risk_profile_to_guardrails
 from swing_conservatism_service import apply_swing_conservatism_securities
+from crypto_pipeline import _llm_mode, _llm_reject_reason, _synthetic_approve
 from market_data import fetch_moex_candles_as_of
 from event_log import log_event, log_llm_decision
 from filter_event_details import filter_log_payload
@@ -85,7 +86,30 @@ def run_securities_swing_dry_run(
     )
 
     llm_result: dict[str, Any] = {"action": "reject"}
-    if not skip_llm:
+    llm_mode = _llm_mode()
+    if skip_llm:
+        llm_result = {
+            **_synthetic_approve(filtered.get("rule_name")),
+            "reasoning": "skip_llm flag",
+        }
+        log_event(
+            market="securities", env=env, stage="llm", symbol=ticker,
+            decision="approve", workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
+            model="rules_engine",
+            payload={"llm_skipped": True, "skip_llm": True},
+        )
+    elif llm_mode == "disabled":
+        llm_result = {
+            **_synthetic_approve(filtered.get("rule_name")),
+            "reasoning": "llm_disabled: rules-only swing",
+        }
+        log_event(
+            market="securities", env=env, stage="llm", symbol=ticker,
+            decision="approve", workflow_name=workflow_name, inputs_hash=ih, currency="RUB",
+            model="rules_engine",
+            payload={"llm_skipped": True, "llm_mode": llm_mode},
+        )
+    else:
         news, pending_signal_ids = news_context_with_signals([ticker, "MOEX"])
         llm_result = validate_signal(
             market="securities", symbol=ticker, indicators=filtered,

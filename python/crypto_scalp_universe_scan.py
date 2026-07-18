@@ -10,8 +10,9 @@ from asset_catalog_service import crypto_scan_candidates
 from binance_client import fetch_klines
 from config_loader import load_config
 from crypto_quote import get_crypto_quote_asset, pair_with_quote, symbol_base_asset
-from effective_config import get_guardrails
+from effective_config import get_config_effective, get_guardrails
 from indicators.technical import compute_indicators, parse_binance_klines
+from scalp_klines import fetch_scalp_candles
 from workflow_universe_service import get_workflow_universe, save_workflow_universe
 
 logger = logging.getLogger(__name__)
@@ -244,6 +245,39 @@ def _candle_scan_quality(candles: list[dict[str, float]]) -> float:
     return atr * max(vol, 0.05) + (0.001 if vol > 0 else 0)
 
 
+def _normalize_market_type(market_type: str | None) -> str:
+    mt = str(market_type or "spot").strip().lower()
+    return mt if mt in ("spot", "usdt_futures") else "spot"
+
+
+def _fetch_futures_scan_candles(
+    trading_sym: str,
+    *,
+    cfg: dict[str, Any],
+    testnet: bool,
+    timeframe: str,
+    limit: int,
+) -> tuple[str, str, str, list[dict[str, float]]]:
+    """Futures USDT-M klines for pre-scan (testnet + mainnet metrics fallback)."""
+    crypto_cfg = get_config_effective("crypto_config")
+    scalp_hybrid = load_config("crypto_scalp_hybrid")
+    result = fetch_scalp_candles(
+        symbol=trading_sym,
+        timeframe=timeframe,
+        limit=limit,
+        testnet=testnet,
+        crypto_cfg=crypto_cfg,
+        scalp_cfg={
+            **scalp_hybrid,
+            "signal_klines_mainnet_fallback": bool(cfg.get("scan_metrics_mainnet_fallback", True)),
+        },
+        session_config={"market_type": "usdt_futures"},
+        mainnet_fallback=bool(cfg.get("scan_metrics_mainnet_fallback", True)),
+    )
+    data_env = result.source if result.source != "unusable" else ("testnet" if testnet else "mainnet")
+    return trading_sym, trading_sym, data_env, result.candles
+
+
 def _fetch_best_scan_candles(
     base: str,
     *,
@@ -252,9 +286,15 @@ def _fetch_best_scan_candles(
     testnet: bool,
     timeframe: str,
     limit: int,
+    market_type: str = "spot",
 ) -> tuple[str, str, str, list[dict[str, float]]]:
     """Pick best klines for metrics; trading always uses session quote stablecoin."""
     trading = pair_with_quote(base, quote=session_quote)
+    if _normalize_market_type(market_type) == "usdt_futures":
+        return _fetch_futures_scan_candles(
+            trading, cfg=cfg, testnet=testnet, timeframe=timeframe, limit=limit
+        )
+
     markets = _scan_market_symbols(base, session_quote, cfg)
     best: tuple[str, str, list[dict[str, float]], float] | None = None
 
@@ -546,6 +586,7 @@ def scan_scalp_universe(
     *,
     top_n: int | None = None,
     testnet: bool = True,
+    market_type: str = "spot",
     operator: str = "web:operator",
     config_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -558,6 +599,8 @@ def scan_scalp_universe(
 
     if "scalp" not in workflow_name.lower():
         return {"status": "skipped", "reason": "not_scalp_workflow"}
+
+    market_type = _normalize_market_type(market_type)
 
     candidates = _resolve_candidates(cfg)
     bases = _resolve_candidate_bases(cfg, testnet=testnet)
@@ -589,6 +632,7 @@ def scan_scalp_universe(
                     testnet=testnet,
                     timeframe=timeframe,
                     limit=klines_limit,
+                    market_type=market_type,
                 )
                 candle_map[trading_sym] = candles
                 row = score_scalp_symbol(
@@ -600,6 +644,8 @@ def scan_scalp_universe(
                     data_env=data_env,
                     base_asset=base,
                 )
+                if row.get("metrics") is not None:
+                    row["metrics"]["data_market_type"] = market_type
                 ranked.append(row)
             except Exception as exc:
                 sym = pair_with_quote(base, quote=session_quote)
@@ -616,7 +662,8 @@ def scan_scalp_universe(
         "workflow": workflow_name,
         "scanned_at": _utc_now(),
         "quote_asset": session_quote,
-        "scan_mode": "multi_market_metrics",
+        "scan_mode": "futures_metrics" if market_type == "usdt_futures" else "multi_market_metrics",
+        "market_type": market_type,
         "candidates_count": len(candidates),
         "ranked": ranked,
         "selected": selected,

@@ -2,14 +2,12 @@ import { useI18n } from "../i18n/LanguageContext";
 import type { ChartMarker } from "../types";
 
 export type MarkerFilters = {
-  llm: boolean;
   orders: boolean;
   fills: boolean;
   news: boolean;
 };
 
 export const DEFAULT_MARKER_FILTERS: MarkerFilters = {
-  llm: true,
   orders: true,
   fills: true,
   news: true,
@@ -20,10 +18,11 @@ export function filterChartMarkers(markers: ChartMarker[], filters: MarkerFilter
     const kind = m.kind ?? "";
     const stage = m.stage ?? "";
     if (kind === "news" || stage === "news") return filters.news;
-    if (kind.startsWith("llm") || stage === "llm" || stage === "guardrails") return filters.llm;
     if (kind.startsWith("order") || stage === "order") return filters.orders;
     if (kind.startsWith("fill") || stage === "fill") return filters.fills;
-    return filters.llm;
+    if (stage === "guardrails" && m.decision !== "approve") return filters.orders;
+    if (stage === "filter" && m.decision === "reject") return filters.orders;
+    return false;
   });
 }
 
@@ -40,7 +39,6 @@ export default function ChartMarkerMenu({ filters, onChange }: Props) {
   };
 
   const items: { key: keyof MarkerFilters; label: string }[] = [
-    { key: "llm", label: t("workspace.markersLlm") },
     { key: "orders", label: t("workspace.markersOrders") },
     { key: "fills", label: t("workspace.markersFills") },
     { key: "news", label: t("workspace.markersNews") },

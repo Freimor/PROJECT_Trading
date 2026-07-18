@@ -57,6 +57,9 @@ export function WorkflowSessionMetrics({
   const ago = formatAgo(session.last_event_ago_sec, t);
 
   const midParts: string[] = [];
+  if (session.instances_running != null && session.instances_running > 1) {
+    midParts.push(t("controlStrip.instancesAggregate", { n: session.instances_running }));
+  }
   if (session.pnl_source === "session_trades") {
     midParts.push(t("controlStrip.sessionPnlTrades"));
   }

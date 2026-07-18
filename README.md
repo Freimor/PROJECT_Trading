@@ -132,7 +132,9 @@ curl -s http://localhost:11434/api/ps
 
 После загрузки модели **`size_vram` > 0** — модель в VRAM.
 
-**Без GPU в Docker:** установите [Ollama на Windows](https://ollama.com) — часто сам использует GPU. В `.env` для сервисов: `OLLAMA_HOST=http://host.docker.internal:11434` (контейнер `ollama` можно не поднимать).
+**Без GPU в Docker:** установите [Ollama на Windows](https://ollama.com) — часто сам использует GPU. В консоли: **Benchmark → Ollama — куда подключаться → Windows Ollama (GPU)**, либо в `.env`: `OLLAMA_HOST=http://host.docker.internal:11434` (контейнер `ollama` можно не поднимать).
+
+**LLM assist:** Benchmark → **LLM assist** — режим swing (validate/advisory/off) и scalp (доля пограничных тиков через быструю LLM). Настройки сохраняются в runtime без правки YAML.
 
 **Таймаут scalp:** если LLM не уложился в `timeout_ms` (`crypto_scalp_hybrid.yaml`, сейчас 25 с) — сигнал **отклоняется** (`ollama_timeout`, fail-closed).
 

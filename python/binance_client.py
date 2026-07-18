@@ -13,6 +13,37 @@ from urllib.parse import urlencode
 
 import httpx
 
+_NETWORK_ERRORS = (
+    httpx.ConnectError,
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.NetworkError,
+)
+
+
+class BinanceNetworkError(RuntimeError):
+    """Binance HTTP request failed after retries (DNS, TLS, timeout)."""
+
+
+def _get_with_retry(
+    url: str,
+    *,
+    params: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: float = 30,
+    retries: int = 3,
+) -> httpx.Response:
+    last_exc: Exception | None = None
+    for attempt in range(max(1, retries)):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                return client.get(url, params=params, headers=headers)
+        except _NETWORK_ERRORS as exc:
+            last_exc = exc
+            if attempt < retries - 1:
+                time.sleep(0.4 * (attempt + 1))
+    raise BinanceNetworkError(str(last_exc or "binance_unreachable")) from last_exc
+
 
 def _credentials(testnet: bool) -> tuple[str, str, str]:
     if testnet:
@@ -38,10 +69,9 @@ def fetch_klines(
     params: dict[str, Any] = {"symbol": symbol, "interval": interval, "limit": limit}
     if end_time_ms is not None:
         params["endTime"] = end_time_ms
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
+    resp = _get_with_retry(url, params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
 
 
 @lru_cache(maxsize=4)
@@ -234,12 +264,15 @@ def get_account_balances(testnet: bool = True) -> list[dict]:
         return []
     params: dict[str, Any] = {"timestamp": int(time.time() * 1000)}
     params["signature"] = _sign(params, secret)
-    with httpx.Client(timeout=30) as client:
-        resp = client.get(
+    try:
+        resp = _get_with_retry(
             f"{base}/api/v3/account",
             params=params,
             headers={"X-MBX-APIKEY": key},
+            timeout=30,
         )
+    except BinanceNetworkError:
+        raise
     if resp.status_code != 200:
         return []
     return resp.json().get("balances", [])

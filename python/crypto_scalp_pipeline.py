@@ -5,26 +5,30 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from binance_trading import fetch_market_klines
 from config_loader import load_config
 from crypto_pipeline import _llm_mode, _llm_reject_reason, _synthetic_approve
-from crypto_product import get_crypto_trading_product, order_side_for_entry
+from crypto_product import get_crypto_trading_product_for_trade, order_side_for_entry
 from effective_config import get_config_effective, get_guardrails
 from event_log import log_event, log_llm_decision
 from filter_event_details import filter_log_payload
 from guardrails import enforce_guardrails, position_size_dry_run
-from indicators.technical import compute_indicators, parse_binance_klines
+from indicators.technical import compute_indicators
 from llm_client import validate_signal
 from news_service import news_context_with_signals
 from on_chain.metrics import apply_on_chain_gate
 from retail_guard import check_retail_guard
 from scalp_direction import resolve_scalp_direction
+from scalp_klines import fetch_scalp_candles
+from scalp_klines_feed_health import record_klines_feed_health
 from signals_engine_service import consume_signals
 from utils import inputs_hash
 
 
-def _scalp_cfg() -> dict[str, Any]:
-    return load_config("crypto_scalp_hybrid")
+def _scalp_cfg(*, symbol: str = "", workflow_name: str = "") -> dict[str, Any]:
+    from llm_assist_service import apply_instance_scalp_llm
+
+    base = load_config("crypto_scalp_hybrid")
+    return apply_instance_scalp_llm(base, symbol=symbol, workflow_name=workflow_name)
 
 
 def _compute_scalp_extras(candles: list[dict[str, float]], rules: dict[str, Any]) -> dict[str, Any]:
@@ -144,7 +148,8 @@ def scalp_rule_filter(
             strengths.append(trend_strength)
 
     passed_rules = [c["rule"] for c in checks if c.get("passed")]
-    proceed = len(passed_rules) >= 2
+    min_rules = int(rules.get("min_rules_to_proceed", 2))
+    proceed = len(passed_rules) >= max(1, min_rules)
 
     if not strengths:
         ambiguity = 1.0
@@ -200,11 +205,13 @@ def run_crypto_scalp_signal(
     skip_llm: bool = False,
     equity: float = 10000.0,
 ) -> dict[str, Any]:
-    cfg = _scalp_cfg()
+    cfg = _scalp_cfg(symbol=symbol, workflow_name=workflow_name)
     crypto_cfg = get_config_effective("crypto_config")
-    product = get_crypto_trading_product(cfg=crypto_cfg)
+    product = get_crypto_trading_product_for_trade(
+        cfg=crypto_cfg, symbol=symbol, workflow_name=workflow_name
+    )
     guardrails = get_guardrails()
-    llm_mode = _llm_mode()
+    llm_mode = _llm_mode(symbol=symbol, workflow_name=workflow_name)
     testnet = crypto_cfg.get("env") == "testnet" or env == "paper"
     timeframe = str(cfg.get("timeframe", "5m"))
     prompt_version = str(cfg.get("prompt_version", "crypto_scalp_validate_v1"))
@@ -214,10 +221,51 @@ def run_crypto_scalp_signal(
     sample_pct = int(cfg.get("llm_sample_pct", 0))
     llm_on = _scalp_llm_enabled(cfg) and not skip_llm and llm_mode != "disabled"
 
-    raw_klines = fetch_market_klines(
-        symbol, timeframe, limit=120, testnet=testnet, cfg=crypto_cfg
+    klines = fetch_scalp_candles(
+        symbol=symbol,
+        timeframe=timeframe,
+        limit=120,
+        testnet=testnet,
+        crypto_cfg=crypto_cfg,
+        workflow_name=workflow_name,
+        scalp_cfg=cfg,
     )
-    candles = parse_binance_klines(raw_klines)
+    feed_health = record_klines_feed_health(symbol, klines, cfg)
+    klines_source = klines.source
+    candles = klines.candles
+
+    if feed_health.get("block_reason") or not klines.quality_ok:
+        reject_reason = str(feed_health.get("block_reason") or "klines_unusable")
+        quality_payload = {
+            "klines_source": klines_source,
+            "testnet_poor": klines.testnet_poor,
+            "quality_ok": klines.quality_ok,
+            "fallback_attempted": klines.fallback_attempted,
+            "feed_health": feed_health,
+            "filter_profile": cfg.get("filter_profile"),
+            "config_version": cfg.get("version"),
+            "market_type": product.get("market_type"),
+            "timeframe": timeframe,
+        }
+        log_event(
+            market="crypto",
+            env=env,
+            stage="filter",
+            symbol=symbol,
+            decision="skip",
+            reject_reason=reject_reason,
+            workflow_name=workflow_name,
+            payload=quality_payload,
+        )
+        return {
+            "status": "skipped",
+            "stage": "filter",
+            "symbol": symbol,
+            "reason": reject_reason,
+            "klines_source": klines_source,
+            "feed_health": feed_health,
+        }
+
     indicators = compute_indicators(candles)
     extras = _compute_scalp_extras(candles, cfg.get("scalp_rules", {}))
     merged = {**indicators, **extras}
@@ -238,7 +286,13 @@ def run_crypto_scalp_signal(
         decision="approve",
         workflow_name=workflow_name,
         inputs_hash=ih,
-        payload={"indicators": merged, "timeframe": timeframe},
+        payload={
+            "indicators": merged,
+            "timeframe": timeframe,
+            "klines_source": klines_source,
+            "testnet_poor": klines.testnet_poor,
+            "feed_health": feed_health,
+        },
     )
 
     filtered = scalp_rule_filter(merged, extras, cfg)
@@ -271,6 +325,11 @@ def run_crypto_scalp_signal(
             "direction": direction,
             "allow_short": allow_short,
             "market_type": product.get("market_type"),
+            "filter_profile": cfg.get("filter_profile"),
+            "config_version": cfg.get("version"),
+            "klines_source": klines_source,
+            "testnet_poor": klines.testnet_poor,
+            "feed_health": feed_health,
         }
     )
 
@@ -478,10 +537,22 @@ def run_crypto_scalp_signal(
         side=direction,
         leverage=int(product.get("leverage") or 1),
     )
+    lev = int(product.get("leverage") or 1)
     sizing["quantity"] = round(float(sizing.get("quantity", 0)) * risk_scale, 8)
     sizing["notional"] = round(float(sizing.get("notional", 0)) * risk_scale, 2)
+    sizing["margin_notional"] = round(float(sizing.get("margin_notional", 0)) * risk_scale, 2)
     sizing["hybrid_path"] = llm_result.get("hybrid_path")
     sizing["risk_scale"] = risk_scale
+
+    from workflow_session_config_service import cap_sizing_to_session_capital
+
+    sizing = cap_sizing_to_session_capital(
+        sizing,
+        market="crypto",
+        symbol=symbol,
+        workflow_name=workflow_name,
+        leverage=lev,
+    )
 
     log_event(
         market="crypto",

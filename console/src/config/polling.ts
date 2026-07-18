@@ -22,6 +22,8 @@ export const POLL = {
   EQUITY: 180_000,
   /** n8n workflows, paper, benchmark. */
   OPS: 120_000,
+  /** Активный автомат в работе — сводка, stats, кошелёк. */
+  TICK: 20_000,
   /** Ожидающие подтверждения админа. */
   PENDING: 60_000,
 } as const;

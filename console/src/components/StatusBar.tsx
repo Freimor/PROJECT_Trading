@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiPost, formatOperatorFacingError } from "../api";
 import OperatorConfirmModal from "./OperatorConfirmModal";
@@ -52,8 +52,34 @@ export default function StatusBar({ overview, onRefresh }: Props) {
 
   const killOn = Boolean(overview?.kill_switch);
   const ollama = overview?.ollama;
+  const cryptoInst = overview?.crypto?.automation_instances;
+  const cryptoRunningCount = cryptoInst?.running_count ?? 0;
+  const moexInst = overview?.securities?.automation_instances;
+  const moexRunningCount = moexInst?.running_count ?? 0;
   const cryptoState = workflowState(killOn, overview?.crypto);
   const moexState = workflowState(killOn, overview?.securities);
+
+  const cryptoUptimeFrom =
+    cryptoRunningCount > 0
+      ? cryptoInst?.earliest_started_at ?? overview?.crypto?.workflow_started_at
+      : overview?.crypto?.workflow_started_at;
+
+  const moexUptimeFrom =
+    moexRunningCount > 0
+      ? moexInst?.earliest_started_at ?? overview?.securities?.workflow_started_at
+      : overview?.securities?.workflow_started_at;
+
+  const moexSymbolsLabel = useMemo(() => {
+    const syms = moexInst?.running_symbols ?? [];
+    if (!syms.length) return null;
+    return syms.join(", ");
+  }, [moexInst?.running_symbols]);
+
+  const cryptoSymbolsLabel = useMemo(() => {
+    const syms = cryptoInst?.running_symbols ?? overview?.crypto?.pairs ?? [];
+    if (!syms.length) return null;
+    return syms.map((s) => String(s).replace("USDT", "")).join(", ");
+  }, [cryptoInst?.running_symbols, overview?.crypto?.pairs]);
 
   const applyKill = useCallback(
     async (password: string) => {
@@ -106,10 +132,32 @@ export default function StatusBar({ overview, onRefresh }: Props) {
           <Link to="/crypto" className={`control-strip-workflow wf-${cryptoState}`}>
             <div className="control-strip-wf-body">
               <span className="control-strip-wf-title">{t("controlStrip.cryptoWorkflow")}</span>
-              <span className="control-strip-wf-mode">{workflowLabel(cryptoState, t)}</span>
+              <span className="control-strip-wf-mode">
+                {workflowLabel(cryptoState, t)}
+                {cryptoInst?.has_instances && cryptoRunningCount > 0 ? (
+                  <>
+                    {" · "}
+                    {t("controlStrip.cryptoInstancesRunning", { count: cryptoRunningCount })}
+                  </>
+                ) : cryptoInst?.has_instances && (cryptoInst.total_count ?? 0) > 0 ? (
+                  <>
+                    {" · "}
+                    {t("controlStrip.cryptoInstancesIdle", { count: cryptoInst.total_count ?? 0 })}
+                  </>
+                ) : null}
+              </span>
               {cryptoState !== "off" ? (
-                <span className="control-strip-wf-uptime">
-                  {t("controlStrip.uptime")}: {formatUptime(overview?.crypto?.workflow_started_at, t)}
+                <>
+                  <span className="control-strip-wf-uptime">
+                    {t("controlStrip.uptime")}: {formatUptime(cryptoUptimeFrom, t)}
+                  </span>
+                  {cryptoSymbolsLabel ? (
+                    <span className="control-strip-wf-symbols muted small">{cryptoSymbolsLabel}</span>
+                  ) : null}
+                </>
+              ) : cryptoInst?.has_instances && (cryptoInst.total_count ?? 0) > 0 ? (
+                <span className="control-strip-wf-uptime muted small">
+                  {t("controlStrip.cryptoInstancesIdle", { count: cryptoInst.total_count ?? 0 })}
                 </span>
               ) : null}
             </div>
@@ -123,10 +171,32 @@ export default function StatusBar({ overview, onRefresh }: Props) {
           <Link to="/moex" className={`control-strip-workflow wf-${moexState}`}>
             <div className="control-strip-wf-body">
               <span className="control-strip-wf-title">{t("controlStrip.moexWorkflow")}</span>
-              <span className="control-strip-wf-mode">{workflowLabel(moexState, t)}</span>
+              <span className="control-strip-wf-mode">
+                {workflowLabel(moexState, t)}
+                {moexInst?.has_instances && moexRunningCount > 0 ? (
+                  <>
+                    {" · "}
+                    {t("controlStrip.cryptoInstancesRunning", { count: moexRunningCount })}
+                  </>
+                ) : moexInst?.has_instances && (moexInst.total_count ?? 0) > 0 ? (
+                  <>
+                    {" · "}
+                    {t("controlStrip.cryptoInstancesIdle", { count: moexInst.total_count ?? 0 })}
+                  </>
+                ) : null}
+              </span>
               {moexState !== "off" ? (
-                <span className="control-strip-wf-uptime">
-                  {t("controlStrip.uptime")}: {formatUptime(overview?.securities?.workflow_started_at, t)}
+                <>
+                  <span className="control-strip-wf-uptime">
+                    {t("controlStrip.uptime")}: {formatUptime(moexUptimeFrom, t)}
+                  </span>
+                  {moexSymbolsLabel ? (
+                    <span className="control-strip-wf-symbols muted small">{moexSymbolsLabel}</span>
+                  ) : null}
+                </>
+              ) : moexInst?.has_instances && (moexInst.total_count ?? 0) > 0 ? (
+                <span className="control-strip-wf-uptime muted small">
+                  {t("controlStrip.cryptoInstancesIdle", { count: moexInst.total_count ?? 0 })}
                 </span>
               ) : null}
             </div>

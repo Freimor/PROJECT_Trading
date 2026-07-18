@@ -7,10 +7,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import httpx
+
 from binance_trading import get_trading_equity, place_market_order
-from binance_client import get_account_balances
+from binance_client import BinanceNetworkError, get_account_balances
 from bridges.tinvest_bridge import check_tinvest_connection, get_portfolio_snapshot, post_dca_order
 from config_loader import load_config
+from crypto_product import cfg_for_symbol_trade
 from crypto_pipeline import run_crypto_signal
 from crypto_scalp_pipeline import _scalp_llm_enabled, run_crypto_scalp_signal
 from db.connection import get_connection
@@ -317,6 +320,9 @@ def run_crypto_scalp_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = Fa
     scalp_cfg = load_config("crypto_scalp_hybrid")
     paper_cfg = scalp_cfg.get("paper") or {}
     wf = str(paper_cfg.get("workflow_name") or paper_cfg.get("auto_workflow_name") or "crypto-scalp-hybrid-paper")
+    from crypto_scalp_pipeline import _scalp_cfg, _scalp_llm_enabled
+
+    merged_scalp = _scalp_cfg(symbol=symbol.upper(), workflow_name=wf)
 
     try:
         from crypto_scalp_universe_scan import maybe_rescan_scalp_universe
@@ -325,98 +331,130 @@ def run_crypto_scalp_paper_trade(*, symbol: str = "BTCUSDT", skip_llm: bool = Fa
     except Exception:
         pass
 
-    exit_result = try_scalp_exit(symbol, workflow_name=wf, testnet=True)
-    if exit_result.get("status") == "executed":
-        capture_snapshot(trigger="crypto_scalp_exit")
-        return exit_result
-
-    if get_scalp_position(symbol, workflow_name=wf, testnet=True):
-        return {
-            "status": "skipped",
-            "reject_reason": "scalp_position_open",
-            "symbol": symbol,
-            "exit_check": exit_result,
-        }
-
-    balances = get_account_balances(testnet=True)
-    from crypto_quote import wallet_quote_balance
-
-    quote_cash = wallet_quote_balance(balances)
-    wallet_equity = get_trading_equity(testnet=True, cfg=crypto_cfg)
-    if wallet_equity <= 0:
-        wallet_equity = quote_cash
-    equity = resolve_workflow_equity("crypto", wallet_equity=wallet_equity)
-
-    signal = run_crypto_scalp_signal(
-        symbol=symbol,
-        env="paper",
-        workflow_name=wf,
-        skip_llm=skip_llm or not _scalp_llm_enabled(scalp_cfg),
-        equity=equity,
+    _exchange_errors = (
+        BinanceNetworkError,
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.NetworkError,
     )
-    if signal.get("status") != "ready_for_order":
-        return {"status": signal.get("status", "skipped"), "signal": signal}
 
-    sizing = signal.get("sizing") or {}
-    qty = float(sizing.get("quantity") or 0)
-    if qty <= 0:
-        return {"status": "error", "reject_reason": "zero_quantity", "signal": signal}
+    try:
+        exit_result = try_scalp_exit(symbol, workflow_name=wf, testnet=True)
+        if exit_result.get("status") == "executed":
+            capture_snapshot(trigger="crypto_scalp_exit")
+            return exit_result
 
-    direction = str(signal.get("direction") or sizing.get("position_side") or "long").lower()
-    entry_side = str(sizing.get("order_side") or signal.get("side") or "BUY").upper()
-    order = place_market_order(
-        symbol=symbol,
-        side=entry_side,
-        quantity=qty,
-        testnet=True,
-        cfg=crypto_cfg,
-    )
-    submitted = order.get("orderId") is not None and order.get("http_status") == 200
-    reject_reason = None
-    if not submitted:
-        reject_reason = (
-            order.get("reject_reason")
-            or order.get("msg")
-            or order.get("message")
-            or (f"http_{order.get('http_status')}" if order.get("http_status") is not None else None)
+        if get_scalp_position(symbol, workflow_name=wf, testnet=True):
+            return {
+                "status": "skipped",
+                "reject_reason": "scalp_position_open",
+                "symbol": symbol,
+                "exit_check": exit_result,
+            }
+
+        balances = get_account_balances(testnet=True)
+        from crypto_quote import wallet_quote_balance
+
+        quote_cash = wallet_quote_balance(balances)
+        wallet_equity = get_trading_equity(testnet=True, cfg=crypto_cfg)
+        if wallet_equity <= 0:
+            wallet_equity = quote_cash
+        equity = resolve_workflow_equity(
+            "crypto",
+            wallet_equity=wallet_equity,
+            symbol=symbol,
+            workflow_name=wf,
         )
-    exec_qty = float(order.get("executedQty") or order.get("origQty") or qty)
-    log_event(
-        market="crypto",
-        env="paper",
-        stage="order",
-        symbol=symbol,
-        decision="execute" if submitted else "error",
-        workflow_name=wf,
-        inputs_hash=signal.get("inputs_hash"),
-        notional=sizing.get("notional"),
-        reject_reason=reject_reason,
-        payload={
-            **order,
-            "side": entry_side,
-            "direction": direction,
-            "position_side": direction,
-            "market_type": signal.get("market_type"),
-            "leverage": signal.get("leverage"),
-            "hybrid_path": signal.get("hybrid_path"),
-            "scalp": {
-                "entry_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-                "entry_price": sizing.get("entry_price"),
-                "stop_price": sizing.get("stop_price"),
-                "take_profit_price": sizing.get("take_profit_price"),
-                "quantity": exec_qty,
+
+        signal = run_crypto_scalp_signal(
+            symbol=symbol,
+            env="paper",
+            workflow_name=wf,
+            skip_llm=skip_llm or not _scalp_llm_enabled(merged_scalp),
+            equity=equity,
+        )
+        if signal.get("status") != "ready_for_order":
+            return {"status": signal.get("status", "skipped"), "signal": signal}
+
+        sizing = signal.get("sizing") or {}
+        qty = float(sizing.get("quantity") or 0)
+        if qty <= 0:
+            return {"status": "error", "reject_reason": "zero_quantity", "signal": signal}
+
+        direction = str(signal.get("direction") or sizing.get("position_side") or "long").lower()
+        entry_side = str(sizing.get("order_side") or signal.get("side") or "BUY").upper()
+        trade_cfg = cfg_for_symbol_trade(crypto_cfg, symbol=symbol, workflow_name=wf)
+        order = place_market_order(
+            symbol=symbol,
+            side=entry_side,
+            quantity=qty,
+            testnet=True,
+            cfg=trade_cfg,
+        )
+        submitted = order.get("orderId") is not None and order.get("http_status") == 200
+        reject_reason = None
+        if not submitted:
+            reject_reason = (
+                order.get("reject_reason")
+                or order.get("msg")
+                or order.get("message")
+                or (f"http_{order.get('http_status')}" if order.get("http_status") is not None else None)
+            )
+        exec_qty = float(order.get("executedQty") or order.get("origQty") or qty)
+        log_event(
+            market="crypto",
+            env="paper",
+            stage="order",
+            symbol=symbol,
+            decision="execute" if submitted else "error",
+            workflow_name=wf,
+            inputs_hash=signal.get("inputs_hash"),
+            notional=sizing.get("notional"),
+            reject_reason=reject_reason,
+            payload={
+                **order,
+                "side": entry_side,
+                "direction": direction,
                 "position_side": direction,
+                "market_type": signal.get("market_type"),
+                "leverage": signal.get("leverage"),
+                "hybrid_path": signal.get("hybrid_path"),
+                "scalp": {
+                    "entry_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+                    "entry_price": sizing.get("entry_price"),
+                    "stop_price": sizing.get("stop_price"),
+                    "take_profit_price": sizing.get("take_profit_price"),
+                    "quantity": exec_qty,
+                    "position_side": direction,
+                },
             },
-        },
-    )
-    capture_snapshot(trigger="crypto_scalp_order")
-    return {
-        "status": "executed" if submitted else "order_error",
-        "action": "entry",
-        "signal": signal,
-        "order": order,
-        "reject_reason": reject_reason,
-    }
+        )
+        capture_snapshot(trigger="crypto_scalp_order")
+        return {
+            "status": "executed" if submitted else "order_error",
+            "action": "entry",
+            "signal": signal,
+            "order": order,
+            "reject_reason": reject_reason,
+        }
+    except _exchange_errors as exc:
+        from activity_feed_service import log_system_activity
+
+        sym = symbol.upper()
+        detail = str(exc).split("\n", 1)[0][:180]
+        log_system_activity(
+            f"Binance testnet недоступен ({sym}): {detail}",
+            category="crypto",
+            level="warn",
+        )
+        return {
+            "status": "error",
+            "reject_reason": "exchange_unreachable",
+            "symbol": sym,
+            "workflow_name": wf,
+            "message": detail,
+        }
 
 
 def run_securities_swing_paper(*, ticker: str = "SBER", skip_llm: bool = False) -> dict[str, Any]:

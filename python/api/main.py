@@ -219,13 +219,9 @@ async def lifespan(_: FastAPI):
     init_database()
     seed_sources()
     try:
-        from news_service import ingest_all, news_verification_stats, purge_expired
+        from news_service import bootstrap_news_on_startup_background
 
-        stats = news_verification_stats()
-        if sum(stats.get("by_status", {}).values()) == 0:
-            purge_expired()
-            ingest_all()
-            log_system_activity("Первичная загрузка новостей", category="news", level="info")
+        bootstrap_news_on_startup_background()
     except Exception as exc:
         log_system_activity(f"News bootstrap: {exc}", category="news", level="warn")
     try:
@@ -250,6 +246,12 @@ async def lifespan(_: FastAPI):
                 )
     except Exception as exc:
         log_system_activity(f"Сброс workflow при старте: {exc}", category="control", level="warn")
+    try:
+        from automation_control_service import reconcile_running_instance_workflows_on_boot
+
+        reconcile_running_instance_workflows_on_boot()
+    except Exception as exc:
+        log_system_activity(f"Reconcile workflow при старте: {exc}", category="control", level="warn")
     try:
         from ollama_manager_service import bootstrap_ollama_models_background
 
@@ -527,7 +529,7 @@ class WorkflowUniverseLlmRequest(BaseModel):
 class WorkflowSelectRequest(BaseModel):
     workflow_name: str
     trading_mode: Literal["dry_run", "paper", "live"] | None = None
-    session_volume_mode: Literal["stablecoin", "existing_holdings"] | None = None
+    session_volume_mode: Literal["stablecoin", "existing_holdings", "combined"] | None = None
     session_capital: float | None = Field(None, gt=0, le=100_000_000)
     use_existing_holdings: bool = False
     existing_holdings_unit: Literal["percent", "absolute"] = "percent"
@@ -546,6 +548,56 @@ class MultiAutomationRequest(BaseModel):
 
 class WorkflowStopOneRequest(BaseModel):
     workflow_name: str
+    operator: str = "web:operator"
+
+
+class CryptoAutomationCreateRequest(BaseModel):
+    strategy_id: str
+    symbol: str
+    operation_mode: Literal["dry_run", "paper", "live"] = "paper"
+    name: str | None = None
+    session_volume_mode: Literal["stablecoin", "existing_holdings", "combined"] = "stablecoin"
+    session_capital: float | None = Field(None, gt=0, le=100_000_000)
+    use_existing_holdings: bool = False
+    existing_holdings_unit: Literal["percent", "absolute"] = "percent"
+    existing_holdings_use_pct: float = Field(0, ge=0, le=100)
+    existing_holdings_use_qty: float | None = Field(None, gt=0)
+    liquidate_on_stop: bool = False
+    market_type: Literal["spot", "usdt_futures"] = "spot"
+    allow_short: bool = False
+    leverage: int = Field(3, ge=1, le=20)
+    margin_mode: Literal["isolated", "cross"] = "isolated"
+    llm_assist_enabled: bool | None = None
+    llm_assist_mode: Literal["disabled", "advisory", "validate_only"] | None = None
+    llm_assist_sample_pct: int | None = Field(None, ge=0, le=100)
+    operator: str = "web:operator"
+
+
+class CryptoAutomationPatchRequest(BaseModel):
+    name: str | None = None
+    collapsed: bool | None = None
+    sort_order: int | None = None
+    operator: str = "web:operator"
+
+
+class SecuritiesAutomationCreateRequest(BaseModel):
+    strategy_id: str
+    symbols: list[str]
+    operation_mode: Literal["dry_run", "paper", "live"] = "paper"
+    name: str | None = None
+    session_volume_mode: Literal["stablecoin", "existing_holdings", "combined"] = "stablecoin"
+    session_capital: float | None = Field(None, gt=0, le=100_000_000)
+    use_existing_holdings: bool = False
+    existing_holdings_unit: Literal["percent", "absolute"] = "percent"
+    existing_holdings_use_pct: float = Field(0, ge=0, le=100)
+    existing_holdings_use_qty: float | None = Field(None, gt=0)
+    operator: str = "web:operator"
+
+
+class SecuritiesAutomationPatchRequest(BaseModel):
+    name: str | None = None
+    collapsed: bool | None = None
+    sort_order: int | None = None
     operator: str = "web:operator"
 
 
@@ -580,6 +632,20 @@ class ScalpScanSettingsPatch(BaseModel):
 class ScalpScanRunRequest(BaseModel):
     workflow_name: str = "crypto-scalp-hybrid-paper"
     settings: ScalpScanSettingsPatch | None = None
+    market_type: str | None = None  # spot | usdt_futures — futures scan uses USDT-M klines
+
+
+class OllamaConnectionRequest(BaseModel):
+    preset: str  # docker | windows_host | custom
+    custom_host: str | None = None
+    operator: str = "web:operator"
+
+
+class LlmAssistPatchRequest(BaseModel):
+    enabled: bool | None = None
+    sample_pct: int | None = Field(None, ge=0, le=100)
+    llm_mode: str | None = None  # disabled | advisory | validate_only (swing strategies)
+    operator: str = "web:operator"
 
 
 class ScalpScanApplyRequest(BaseModel):
@@ -587,6 +653,24 @@ class ScalpScanApplyRequest(BaseModel):
     symbols: list[str]
     scan_id: str | None = None
     operator: str = "web:operator"
+
+
+class SecuritiesScanSettingsPatch(BaseModel):
+    top_n: int | None = Field(None, ge=1, le=15)
+    min_score: float | None = Field(None, ge=0.1, le=0.95)
+    min_valtoday_mln: float | None = Field(None, ge=1, le=5000)
+    min_numtrades: int | None = Field(None, ge=0, le=100_000)
+    max_scan_tickers: int | None = Field(None, ge=5, le=80)
+    volume_ratio_min: float | None = Field(None, ge=0.1, le=3.0)
+    momentum_min_pct: float | None = Field(None, ge=0.1, le=10.0)
+    equities_only: bool | None = None
+    use_whitelist: bool | None = None
+    operator: str = "web:operator"
+
+
+class SecuritiesScanRunRequest(BaseModel):
+    scan_context: str = "moex-create"
+    settings: SecuritiesScanSettingsPatch | None = None
 
 
 class WorkflowScheduleRequest(BaseModel):
@@ -1061,17 +1145,59 @@ def crypto_scalp_signal(
         if env == "dry_run"
         else str(scalp_cfg.get("paper", {}).get("workflow_name", "crypto-scalp-hybrid-paper"))
     )
-    from crypto_scalp_pipeline import _scalp_llm_enabled
+    from crypto_scalp_pipeline import _scalp_cfg, _scalp_llm_enabled
     from workflow_session_config_service import resolve_workflow_equity
 
-    effective_equity = resolve_workflow_equity("crypto", default=equity)
+    effective_equity = resolve_workflow_equity(
+        "crypto",
+        default=equity,
+        symbol=symbol.upper(),
+        workflow_name=wf,
+    )
+    scalp_merged = _scalp_cfg(symbol=symbol.upper(), workflow_name=wf)
     return run_crypto_scalp_signal(
         symbol=symbol,
         env=env,
         workflow_name=wf,
-        skip_llm=skip_llm or not _scalp_llm_enabled(scalp_cfg),
+        skip_llm=skip_llm or not _scalp_llm_enabled(scalp_merged),
         equity=effective_equity,
     )
+
+
+@app.get("/api/crypto/scalp/klines-feed-health")
+def crypto_scalp_klines_feed_health(
+    symbol: str | None = None,
+    symbols: str | None = None,
+) -> dict[str, Any]:
+    """Per-symbol testnet kline feed health (runtime counters from scalp pipeline)."""
+    from scalp_klines_feed_health import get_klines_feed_health
+
+    sym_list: list[str] = []
+    if symbols:
+        sym_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    elif symbol:
+        sym_list = [symbol.strip().upper()]
+    if not sym_list:
+        raise HTTPException(status_code=400, detail="symbol or symbols required")
+
+    scalp_cfg = load_config("crypto_scalp_hybrid")
+    kq = scalp_cfg.get("klines_quality") or {}
+    alert_ticks = int(kq.get("feed_dead_alert_ticks", 6))
+
+    items: dict[str, Any] = {}
+    for sym in sym_list:
+        raw = get_klines_feed_health(sym)
+        items[sym] = raw or {
+            "symbol": sym,
+            "consecutive_testnet_poor": 0,
+            "consecutive_mainnet_fallback": 0,
+            "consecutive_unusable": 0,
+            "feed_dead": False,
+            "last_source": None,
+            "updated_at": None,
+        }
+
+    return {"status": "ok", "items": items, "alert_ticks": alert_ticks}
 
 
 @app.get("/api/crypto/scalp/universe-scan/candidates")
@@ -1154,6 +1280,7 @@ def crypto_scalp_universe_scan_run(body: ScalpScanRunRequest) -> dict[str, Any]:
     return scan_scalp_universe(
         body.workflow_name.strip(),
         testnet=True,
+        market_type=body.market_type or "spot",
         config_overrides=overrides,
     )
 
@@ -1198,6 +1325,14 @@ def crypto_scalp_universe_scan_last(workflow_name: str = "crypto-scalp-hybrid-pa
 @app.get("/api/crypto/pairs")
 def crypto_pairs() -> list[str]:
     try:
+        from crypto_automation_instance_service import running_instance_symbols
+
+        inst_syms = running_instance_symbols()
+        if inst_syms:
+            return inst_syms
+    except Exception:
+        pass
+    try:
         wf = get_active_market_workflow("crypto")
         if not wf:
             state = get_strategy_state("crypto")
@@ -1218,6 +1353,296 @@ def crypto_pairs() -> list[str]:
     except Exception:
         pass
     return load_config("crypto_config").get("pairs", [])
+
+
+@app.get("/api/crypto/automations")
+def crypto_automations_list() -> dict[str, Any]:
+    from crypto_automation_instance_service import list_instances
+
+    items = list_instances()
+    return {"status": "ok", "items": items, "count": len(items)}
+
+
+@app.post("/api/crypto/automations")
+def crypto_automations_create(
+    body: CryptoAutomationCreateRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_automation_instance_service import create_instance
+
+    try:
+        inst = create_instance(
+            strategy_id=body.strategy_id,
+            symbol=body.symbol,
+            operation_mode=body.operation_mode,
+            name=body.name,
+            session_capital=body.session_capital,
+            session_volume_mode=body.session_volume_mode,
+            use_existing_holdings=body.use_existing_holdings,
+            existing_holdings_unit=body.existing_holdings_unit,
+            existing_holdings_use_pct=body.existing_holdings_use_pct,
+            existing_holdings_use_qty=body.existing_holdings_use_qty,
+            liquidate_on_stop=body.liquidate_on_stop,
+            market_type=body.market_type,
+            allow_short=body.allow_short,
+            leverage=body.leverage,
+            margin_mode=body.margin_mode,
+            llm_assist_enabled=body.llm_assist_enabled,
+            llm_assist_mode=body.llm_assist_mode,
+            llm_assist_sample_pct=body.llm_assist_sample_pct,
+            operator=body.operator,
+        )
+        return {"status": "ok", "instance": inst}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/crypto/automations/{instance_id}")
+def crypto_automations_get(instance_id: str) -> dict[str, Any]:
+    from crypto_automation_instance_service import get_instance, get_instance_stats
+
+    inst = get_instance(instance_id)
+    if not inst:
+        raise HTTPException(status_code=404, detail="instance_not_found")
+    stats = get_instance_stats(instance_id)
+    return {"status": "ok", "instance": inst, "stats": stats}
+
+
+@app.patch("/api/crypto/automations/{instance_id}")
+def crypto_automations_patch(
+    instance_id: str,
+    body: CryptoAutomationPatchRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    from crypto_automation_instance_service import update_instance
+
+    if body.name is not None:
+        _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    try:
+        inst = update_instance(
+            instance_id,
+            name=body.name,
+            collapsed=body.collapsed,
+            sort_order=body.sort_order,
+            operator=body.operator,
+        )
+        return {"status": "ok", "instance": inst}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/crypto/automations/{instance_id}")
+def crypto_automations_delete(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_automation_instance_service import delete_instance
+
+    try:
+        return delete_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crypto/automations/{instance_id}/start")
+def crypto_automations_start(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_automation_instance_service import start_instance
+
+    try:
+        return start_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/crypto/automations/{instance_id}/stop")
+def crypto_automations_stop(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from crypto_automation_instance_service import stop_instance
+
+    try:
+        return stop_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/crypto/automations/{instance_id}/stats")
+def crypto_automations_stats(instance_id: str, days: int = 7, session: bool = False) -> dict[str, Any]:
+    from crypto_automation_instance_service import get_instance_stats
+
+    try:
+        return {"status": "ok", **get_instance_stats(instance_id, days=days, session=session)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/crypto/automations/{instance_id}/wallet")
+def crypto_automations_wallet(instance_id: str) -> dict[str, Any]:
+    from crypto_automation_instance_service import get_instance_wallet
+
+    try:
+        return get_instance_wallet(instance_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/crypto/automations/{instance_id}/equity-curve")
+def crypto_automations_equity_curve(instance_id: str) -> dict[str, Any]:
+    from automation_equity_service import get_crypto_instance_equity_curve
+
+    try:
+        return get_crypto_instance_equity_curve(instance_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/securities/automations")
+def securities_automations_list() -> dict[str, Any]:
+    from securities_automation_instance_service import list_instances
+
+    items = list_instances()
+    return {"status": "ok", "items": items, "count": len(items)}
+
+
+@app.post("/api/securities/automations")
+def securities_automations_create(
+    body: SecuritiesAutomationCreateRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_automation_instance_service import create_instance
+
+    try:
+        inst = create_instance(
+            strategy_id=body.strategy_id,
+            symbols=body.symbols,
+            operation_mode=body.operation_mode,
+            name=body.name,
+            session_capital=body.session_capital,
+            session_volume_mode=body.session_volume_mode,
+            use_existing_holdings=body.use_existing_holdings,
+            existing_holdings_unit=body.existing_holdings_unit,
+            existing_holdings_use_pct=body.existing_holdings_use_pct,
+            existing_holdings_use_qty=body.existing_holdings_use_qty,
+            operator=body.operator,
+        )
+        return {"status": "ok", "instance": inst}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/securities/automations/{instance_id}")
+def securities_automations_get(instance_id: str) -> dict[str, Any]:
+    from securities_automation_instance_service import get_instance, get_instance_stats
+
+    inst = get_instance(instance_id)
+    if not inst:
+        raise HTTPException(status_code=404, detail="instance_not_found")
+    stats = get_instance_stats(instance_id)
+    return {"status": "ok", "instance": inst, "stats": stats}
+
+
+@app.patch("/api/securities/automations/{instance_id}")
+def securities_automations_patch(
+    instance_id: str,
+    body: SecuritiesAutomationPatchRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    from securities_automation_instance_service import update_instance
+
+    if body.name is not None:
+        _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    try:
+        inst = update_instance(
+            instance_id,
+            name=body.name,
+            collapsed=body.collapsed,
+            sort_order=body.sort_order,
+            operator=body.operator,
+        )
+        return {"status": "ok", "instance": inst}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/securities/automations/{instance_id}")
+def securities_automations_delete(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_automation_instance_service import delete_instance
+
+    try:
+        return delete_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/securities/automations/{instance_id}/start")
+def securities_automations_start(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_automation_instance_service import start_instance
+
+    try:
+        return start_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/securities/automations/{instance_id}/stop")
+def securities_automations_stop(
+    instance_id: str,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_automation_instance_service import stop_instance
+
+    try:
+        return stop_instance(instance_id, operator="web:operator")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/securities/automations/{instance_id}/stats")
+def securities_automations_stats(instance_id: str, days: int = 7) -> dict[str, Any]:
+    from securities_automation_instance_service import get_instance_stats
+
+    try:
+        return {"status": "ok", **get_instance_stats(instance_id, days=days)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/securities/automations/{instance_id}/equity-curve")
+def securities_automations_equity_curve(instance_id: str) -> dict[str, Any]:
+    from automation_equity_service import get_securities_instance_equity_curve
+
+    try:
+        return get_securities_instance_equity_curve(instance_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # --- News (этап 3) ---
@@ -1318,7 +1743,6 @@ def binance_balances(testnet: bool = True, top: int = 12) -> dict[str, Any]:
             "balances": [],
         }
 
-    priority = {"USDT": 0, "USDC": 1, "BTC": 2, "ETH": 3, "BNB": 4}
     parsed: list[dict[str, Any]] = []
     for row in raw:
         free = float(row.get("free", 0) or 0)
@@ -1328,14 +1752,32 @@ def binance_balances(testnet: bool = True, top: int = 12) -> dict[str, Any]:
         asset = str(row.get("asset", ""))
         parsed.append({"asset": asset, "free": free, "locked": locked, "total": free + locked})
 
-    parsed.sort(
-        key=lambda b: (
-            priority.get(b["asset"], 100),
-            -b["total"],
-            b["asset"],
+    from workflow_pnl_service import enrich_balances_usdt
+
+    parsed = enrich_balances_usdt(parsed, testnet=testnet)
+    priority = {"USDT": 0, "USDC": 1, "BTC": 2, "ETH": 3, "BNB": 4}
+    pinned: set[str] = set()
+    try:
+        from crypto_automation_instance_service import running_instance_symbols
+        from crypto_quote import symbol_base_asset
+
+        for sym in running_instance_symbols():
+            pinned.add(symbol_base_asset(sym).upper())
+    except Exception:
+        pass
+
+    def _sort_key(b: dict[str, Any]) -> tuple:
+        asset = str(b.get("asset") or "")
+        pin_rank = 0 if asset in pinned else 1
+        return (
+            pin_rank,
+            priority.get(asset, 100),
+            -float(b.get("usdt_value") or 0),
+            asset,
         )
-    )
-    limit = max(1, min(top, 50))
+
+    parsed.sort(key=_sort_key)
+    limit = max(1, min(top, 500)) if top > 0 else len(parsed)
     return {
         "status": "ok",
         "testnet": testnet,
@@ -1439,6 +1881,81 @@ def swing_universe() -> list[str]:
         if symbols:
             return symbols
     return load_config("securities_config").get("swing_signals", {}).get("universe", [])
+
+
+@app.get("/api/securities/universe-scan/candidates")
+def securities_universe_scan_candidates() -> dict[str, Any]:
+    from securities_universe_scan import get_scan_candidate_info
+
+    return {"status": "ok", **get_scan_candidate_info()}
+
+
+@app.get("/api/securities/universe-scan/progress")
+def securities_universe_scan_progress() -> dict[str, Any]:
+    from securities_universe_scan import get_scan_progress
+
+    return {"status": "ok", **get_scan_progress()}
+
+
+@app.get("/api/securities/universe-scan/settings")
+def securities_universe_scan_settings_get() -> dict[str, Any]:
+    from securities_universe_scan_settings_service import get_effective_scan_settings
+
+    return {"status": "ok", **get_effective_scan_settings()}
+
+
+@app.post("/api/securities/universe-scan/settings")
+def securities_universe_scan_settings_set(
+    body: SecuritiesScanSettingsPatch,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_universe_scan_settings_service import set_scan_settings
+
+    patch = body.model_dump(exclude={"operator"}, exclude_none=True)
+    try:
+        return {"status": "ok", **set_scan_settings(patch, operator=body.operator)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/securities/universe-scan/settings/reset")
+def securities_universe_scan_settings_reset(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from securities_universe_scan_settings_service import reset_scan_settings
+
+    return {"status": "ok", **reset_scan_settings(operator="web:operator")}
+
+
+@app.post("/api/securities/universe-scan/run")
+def securities_universe_scan_run(body: SecuritiesScanRunRequest) -> dict[str, Any]:
+    from securities_universe_scan import scan_securities_universe
+
+    overrides = None
+    if body.settings:
+        overrides = body.settings.model_dump(exclude={"operator"}, exclude_none=True)
+    return scan_securities_universe(body.scan_context.strip() or "moex-create", config_overrides=overrides)
+
+
+@app.get("/api/securities/universe-scan/last")
+def securities_universe_scan_last(scan_context: str = "moex-create") -> dict[str, Any]:
+    from runtime_settings import get_runtime_meta
+    from securities_universe_scan import get_last_scan
+
+    ctx = scan_context.strip() or "moex-create"
+    key = f"securities_universe_last_scan:{ctx}"
+    last = get_last_scan(ctx)
+    meta = get_runtime_meta(key)
+    return {
+        "status": "ok",
+        "scan_context": ctx,
+        "last_scan": last,
+        "updated_at": meta.get("updated_at") if meta else None,
+    }
 
 
 @app.get("/api/assets/search")
@@ -1801,6 +2318,97 @@ def benchmark_calibrate_status(market: str | None = None) -> dict[str, Any]:
     if market:
         return get_calibration_job_status(market=market)
     return list_calibration_jobs_status()
+
+
+@app.get("/api/ollama/connection")
+def ollama_connection_get() -> dict[str, Any]:
+    from ollama_connection_service import get_ollama_connection_settings
+
+    return get_ollama_connection_settings(ping=True)
+
+
+@app.post("/api/ollama/connection")
+def ollama_connection_set(
+    body: OllamaConnectionRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from ollama_connection_service import set_ollama_connection
+
+    try:
+        return set_ollama_connection(
+            preset=body.preset.strip(),
+            custom_host=body.custom_host,
+            operator=body.operator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/ollama/connection/reset")
+def ollama_connection_reset(
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from ollama_connection_service import clear_ollama_connection
+
+    return clear_ollama_connection(operator="web:operator")
+
+
+@app.get("/api/crypto/llm-assist-profile")
+def crypto_llm_assist_profile(strategy_id: str) -> dict[str, Any]:
+    from llm_assist_service import get_create_profile
+
+    return get_create_profile(strategy_id)
+
+
+@app.get("/api/llm-assist")
+def llm_assist_get(workflow: str | None = None) -> dict[str, Any]:
+    from llm_assist_service import get_llm_assist_settings
+
+    return get_llm_assist_settings(workflow=workflow)
+
+
+@app.post("/api/llm-assist/{strategy_id}")
+def llm_assist_patch(
+    strategy_id: str,
+    body: LlmAssistPatchRequest,
+    x_operator_password: str | None = Header(None, alias="X-Operator-Password"),
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict[str, Any]:
+    _check_operator_auth(password=x_operator_password, admin_key=x_admin_key)
+    from llm_assist_service import (
+        STRATEGY_DEFS,
+        set_guardrails_llm_mode,
+        set_strategy_llm_assist,
+    )
+
+    sid = strategy_id.strip()
+    if sid not in STRATEGY_DEFS:
+        raise HTTPException(status_code=404, detail="unknown_strategy")
+
+    defn = STRATEGY_DEFS[sid]
+    try:
+        if defn["kind"] == "hybrid_sample":
+            if body.llm_mode is not None:
+                raise HTTPException(status_code=400, detail="use_enabled_and_sample_pct_for_scalp")
+            return set_strategy_llm_assist(
+                sid,
+                enabled=body.enabled,
+                sample_pct=body.sample_pct,
+                operator=body.operator,
+            )
+        if body.llm_mode is not None:
+            return set_guardrails_llm_mode(body.llm_mode, operator=body.operator)
+        if body.enabled is False:
+            return set_guardrails_llm_mode("disabled", operator=body.operator)
+        if body.enabled is True:
+            return set_guardrails_llm_mode("validate_only", operator=body.operator)
+        raise HTTPException(status_code=400, detail="llm_mode_or_enabled_required")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/ollama/models")

@@ -14,7 +14,9 @@ from indicators.technical import compute_indicator_series, parse_binance_klines
 from market_data import fetch_moex_candles_as_of, moex_iss_interval, resample_ohlcv
 from strategy_service import symbols_for_market
 
-MARKER_STAGES = ("llm", "guardrails", "order", "fill", "risk")
+from event_summary import summarize_trade_event
+
+MARKER_STAGES = ("signal", "filter", "llm", "guardrails", "order", "fill", "risk")
 
 
 def _parse_dt(value: str) -> datetime:
@@ -44,6 +46,47 @@ def _normalize_candle(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _fetch_crypto_candles(
+    *,
+    symbol: str,
+    timeframe: str,
+    limit: int,
+    testnet: bool,
+) -> tuple[list[dict[str, Any]], str, bool]:
+    """Fetch crypto OHLCV; on poor testnet feed use mainnet for chart display only."""
+    from config_loader import load_config
+    from scalp_klines import chart_klines_quality_poor, klines_quality_settings
+
+    limit = min(limit, 1000)
+    raw = fetch_klines(symbol, timeframe, limit=limit, testnet=testnet)
+    parsed = parse_binance_klines(raw)
+    candles = [_normalize_candle(c) for c in parsed]
+    if not testnet:
+        return candles, "mainnet", False
+
+    scalp_cfg = load_config("crypto_scalp_hybrid")
+    quality = klines_quality_settings(scalp_cfg)
+    min_bars = quality["min_bars"]
+    flat_max = quality["flat_range_pct_max"]
+    testnet_poor = chart_klines_quality_poor(parsed, min_bars=min_bars, flat_range_pct_max=flat_max)
+    use_fallback = bool(scalp_cfg.get("signal_klines_mainnet_fallback", True))
+
+    if testnet_poor and use_fallback:
+        try:
+            raw_main = fetch_klines(symbol, timeframe, limit=limit, testnet=False)
+            parsed_main = parse_binance_klines(raw_main)
+            if not chart_klines_quality_poor(parsed_main, min_bars=min_bars, flat_range_pct_max=flat_max):
+                return (
+                    [_normalize_candle(c) for c in parsed_main],
+                    "mainnet_metrics_fallback",
+                    True,
+                )
+        except Exception:
+            pass
+
+    return candles, "testnet", testnet_poor
+
+
 def _fetch_live_candles(
     *,
     market: str,
@@ -51,11 +94,14 @@ def _fetch_live_candles(
     timeframe: str,
     limit: int,
     testnet: bool,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], str, bool]:
     if market == "crypto":
-        raw = fetch_klines(symbol, timeframe, limit=min(limit, 1000), testnet=testnet)
-        parsed = parse_binance_klines(raw)
-        return [_normalize_candle(c) for c in parsed]
+        return _fetch_crypto_candles(
+            symbol=symbol,
+            timeframe=timeframe,
+            limit=limit,
+            testnet=testnet,
+        )
 
     as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     tf = str(timeframe).strip().lower()
@@ -68,7 +114,7 @@ def _fetch_live_candles(
         moex = resample_ohlcv(moex, 4 * 3600)
         if limit > 0 and len(moex) > limit:
             moex = moex[-limit:]
-    return [_normalize_candle(c) for c in moex]
+    return [_normalize_candle(c) for c in moex], market, False
 
 
 def _cache_max_age_seconds(market: str, interval: str) -> int:
@@ -95,6 +141,40 @@ def _cache_is_fresh(
     return newest >= threshold
 
 
+def _cached_candles_usable(
+    candles: list[dict[str, Any]],
+    *,
+    market: str,
+    interval: str,
+    testnet: bool,
+) -> bool:
+    if not candles or not _cache_is_fresh(candles, market=market, interval=interval):
+        return False
+    if market != "crypto" or not testnet:
+        return True
+    from config_loader import load_config
+    from scalp_klines import chart_klines_quality_poor, klines_quality_settings
+
+    scalp_cfg = load_config("crypto_scalp_hybrid")
+    quality = klines_quality_settings(scalp_cfg)
+    parsed = [
+        {
+            "t": c["time"],
+            "o": c["open"],
+            "h": c["high"],
+            "l": c["low"],
+            "c": c["close"],
+            "v": c.get("volume", 0),
+        }
+        for c in candles
+    ]
+    return not chart_klines_quality_poor(
+        parsed,
+        min_bars=quality["min_bars"],
+        flat_range_pct_max=quality["flat_range_pct_max"],
+    )
+
+
 def get_chart_candles(
     *,
     market: str,
@@ -110,6 +190,8 @@ def get_chart_candles(
     symbol = symbol.upper()
     limit = max(30, min(limit, 1000))
     candles: list[dict[str, Any]] = []
+    data_source = "cache"
+    testnet_poor = False
 
     if use_cache:
         cached = get_candles_range(
@@ -120,44 +202,50 @@ def get_chart_candles(
         )
         if len(cached) >= 30:
             normalized = [_normalize_candle(c) for c in cached]
-            if _cache_is_fresh(normalized, market=market, interval=interval):
+            if _cached_candles_usable(
+                normalized, market=market, interval=interval, testnet=testnet
+            ):
                 candles = normalized
 
     if len(candles) < 30:
-        live = _fetch_live_candles(
+        live, live_source, live_poor = _fetch_live_candles(
             market=market,
             symbol=symbol,
             timeframe=interval,
             limit=limit,
             testnet=testnet,
         )
+        testnet_poor = live_poor
         if live and _cache_is_fresh(live, market=market, interval=interval):
             candles = live
-            raw_for_cache = []
-            for c in live:
-                raw_for_cache.append(
-                    {
-                        "t": datetime.fromtimestamp(c["time"], tz=timezone.utc)
-                        .replace(microsecond=0)
-                        .isoformat(),
-                        "o": c["open"],
-                        "h": c["high"],
-                        "l": c["low"],
-                        "c": c["close"],
-                        "v": c["volume"],
-                    }
-                )
-            if raw_for_cache:
-                from ohlcv_cache import upsert_candles
+            data_source = live_source
+            if live_source == "testnet":
+                raw_for_cache = []
+                for c in live:
+                    raw_for_cache.append(
+                        {
+                            "t": datetime.fromtimestamp(c["time"], tz=timezone.utc)
+                            .replace(microsecond=0)
+                            .isoformat(),
+                            "o": c["open"],
+                            "h": c["high"],
+                            "l": c["low"],
+                            "c": c["close"],
+                            "v": c["volume"],
+                        }
+                    )
+                if raw_for_cache:
+                    from ohlcv_cache import upsert_candles
 
-                upsert_candles(
-                    market=market,
-                    symbol=symbol,
-                    timeframe=interval,
-                    candles=raw_for_cache,
-                )
+                    upsert_candles(
+                        market=market,
+                        symbol=symbol,
+                        timeframe=interval,
+                        candles=raw_for_cache,
+                    )
         elif live:
             candles = live
+            data_source = live_source
 
     return {
         "status": "ok",
@@ -166,6 +254,8 @@ def get_chart_candles(
         "interval": interval,
         "count": len(candles),
         "candles": candles,
+        "data_source": data_source,
+        "testnet_poor": testnet_poor,
     }
 
 
@@ -228,6 +318,8 @@ def get_chart_indicators(
         "interval": interval,
         "series": series,
         "levels": levels,
+        "data_source": candle_resp.get("data_source"),
+        "testnet_poor": candle_resp.get("testnet_poor"),
     }
 
 
@@ -288,7 +380,9 @@ def _news_markers_for_symbol(*, market: str, symbol: str, limit: int = 40) -> li
                 "shape": "circle",
                 "position": "aboveBar",
                 "color": "#c778ff",
-                "text": title[:24],
+                "short_label": "NEWS",
+                "text": "NEWS",
+                "summary": title,
                 "source": row["source_name"],
                 "trust_score": row["trust_score"],
             }
@@ -312,6 +406,94 @@ def _env_display(env: str | None) -> str:
     return "Demo"
 
 
+def _order_side(payload: dict[str, Any], decision: str | None) -> str:
+    side = str(payload.get("side") or payload.get("action_side") or "").upper()
+    if side in ("BUY", "SELL"):
+        return side
+    if payload.get("exit_reason"):
+        return "SELL"
+    if decision in ("sell", "error", "reject"):
+        return "SELL"
+    return "BUY"
+
+
+def _marker_short_label(
+    *,
+    stage: str,
+    decision: str | None,
+    payload: dict[str, Any],
+    kind: str,
+) -> str:
+    side = _order_side(payload, decision)
+    if stage == "order":
+        if decision in ("error", "reject"):
+            return "FAIL"
+        if side == "SELL" or payload.get("exit_reason"):
+            return "SOLD"
+        return "BUY"
+    if stage == "fill":
+        return "SOLD" if side == "SELL" else "BUY"
+    if stage == "guardrails":
+        if decision == "approve":
+            return "OK"
+        return "BLOCK"
+    if stage == "filter":
+        if decision == "approve":
+            return "PASS"
+        if decision == "reject":
+            return "REJECT"
+        return "SKIP"
+    if stage == "llm":
+        if decision == "approve":
+            return "LLM+"
+        if decision == "reject":
+            return "LLM-"
+        return "LLM"
+    if stage == "risk":
+        return "SIZE"
+    if stage == "signal":
+        return "SIGNAL"
+    if kind == "news" or stage == "news":
+        return "NEWS"
+    if decision:
+        return f"{stage[:4].upper()}".strip() or stage.upper()
+    return stage.upper()[:6]
+
+
+def _marker_summary(row: dict[str, Any], payload: dict[str, Any]) -> str:
+    summary_row = {**row, "payload_json": json.dumps(payload, ensure_ascii=False)}
+    base = summarize_trade_event(summary_row)
+    extras: list[str] = []
+    reject = row.get("reject_reason")
+    if reject and str(reject) not in base:
+        extras.append(str(reject))
+    if payload.get("notional") is not None:
+        extras.append(f"объём {payload['notional']} USDT")
+    if payload.get("quantity") is not None:
+        extras.append(f"qty {payload['quantity']}")
+    hybrid = payload.get("hybrid_path")
+    if hybrid:
+        extras.append(f"путь: {hybrid}")
+    reasoning = payload.get("llm_reasoning") or payload.get("reasoning")
+    if reasoning:
+        extras.append(str(reasoning)[:160])
+    rule = payload.get("rule_name")
+    if rule:
+        extras.append(f"правило: {rule}")
+    exit_reason = payload.get("exit_reason")
+    if exit_reason:
+        extras.append(f"выход: {exit_reason}")
+    conf = row.get("confidence")
+    if conf is not None and "уверенность" not in base.lower():
+        try:
+            extras.append(f"confidence {float(conf):.0%}")
+        except (TypeError, ValueError):
+            pass
+    if extras:
+        return f"{base} · {' · '.join(extras)}"
+    return base
+
+
 def _marker_label(
     *,
     stage: str,
@@ -320,44 +502,40 @@ def _marker_label(
     payload: dict[str, Any],
     kind: str,
 ) -> str:
-    mode = _env_display(env)
-    side = (payload.get("side") or payload.get("action_side") or "").lower()
-    if kind in ("order_buy", "fill_buy") or side == "buy":
-        return f"{mode} | BUY"
-    if kind in ("order_sell", "fill_sell") or side == "sell":
-        return f"{mode} | SELL"
-    if stage == "llm":
-        if decision == "approve":
-            return f"{mode} | APPROVE"
-        if decision == "reject":
-            return f"{mode} | REJECT"
-    if stage == "guardrails":
-        return f"{mode} | BLOCK"
-    if stage == "news":
-        return "NEWS"
-    if decision:
-        return f"{stage}/{decision}"
-    return stage
+    """Legacy combined label — prefer short_label in API."""
+    return _marker_short_label(stage=stage, decision=decision, payload=payload, kind=kind)
 
 
 def _marker_visual(stage: str, decision: str | None, payload: dict[str, Any]) -> dict[str, str]:
-    side = (payload.get("side") or payload.get("action_side") or "").lower()
+    side = _order_side(payload, decision)
+    if stage == "signal":
+        return {"kind": "signal", "shape": "circle", "position": "belowBar", "color": "#6e7681"}
+    if stage == "filter":
+        if decision == "approve":
+            return {"kind": "filter_pass", "shape": "circle", "position": "belowBar", "color": "#6e7681"}
+        if decision == "reject":
+            return {"kind": "filter_reject", "shape": "square", "position": "aboveBar", "color": "#8b949e"}
+        return {"kind": "filter_skip", "shape": "square", "position": "aboveBar", "color": "#8b949e"}
     if stage == "llm":
         if decision == "approve":
             return {"kind": "llm_approve", "shape": "arrowUp", "position": "belowBar", "color": "#3dd68c"}
-        return {"kind": "llm_reject", "shape": "circle", "position": "aboveBar", "color": "#8b949e"}
+        return {"kind": "llm_reject", "shape": "square", "position": "aboveBar", "color": "#ff6b6b"}
     if stage == "guardrails":
+        if decision == "approve":
+            return {"kind": "guardrails_ok", "shape": "circle", "position": "belowBar", "color": "#3dd68c"}
         return {"kind": "guardrails_block", "shape": "square", "position": "aboveBar", "color": "#f0a030"}
     if stage == "order":
-        if side == "sell" or decision in ("sell", "execute"):
-            return {"kind": "order_sell", "shape": "arrowDown", "position": "aboveBar", "color": "#5b9cf5"}
-        return {"kind": "order_buy", "shape": "arrowUp", "position": "belowBar", "color": "#5b9cf5"}
+        if side == "SELL" or payload.get("exit_reason"):
+            return {"kind": "order_sell", "shape": "arrowDown", "position": "aboveBar", "color": "#ff6b6b"}
+        if decision in ("error", "reject"):
+            return {"kind": "order_fail", "shape": "square", "position": "aboveBar", "color": "#ff6b6b"}
+        return {"kind": "order_buy", "shape": "arrowUp", "position": "belowBar", "color": "#3dd68c"}
     if stage == "fill":
-        if side == "sell":
+        if side == "SELL":
             return {"kind": "fill_sell", "shape": "arrowDown", "position": "aboveBar", "color": "#e8c547"}
         return {"kind": "fill_buy", "shape": "arrowUp", "position": "belowBar", "color": "#e8c547"}
     if stage == "risk":
-        return {"kind": "risk", "shape": "circle", "position": "inBar", "color": "#9b7ede"}
+        return {"kind": "risk", "shape": "circle", "position": "belowBar", "color": "#9b7ede"}
     return {"kind": stage, "shape": "circle", "position": "inBar", "color": "#6e7681"}
 
 
@@ -406,13 +584,16 @@ def get_chart_markers(
     for row in rows:
         payload = _payload(row)
         vis = _marker_visual(row["stage"], row.get("decision"), payload)
-        label = _marker_label(
+        short = _marker_short_label(
             stage=row["stage"],
             decision=row.get("decision"),
-            env=row.get("env"),
             payload=payload,
             kind=vis["kind"],
         )
+        summary = _marker_summary(row, payload)
+        env_tag = _env_display(row.get("env"))
+        if env_tag and env_tag not in summary:
+            summary = f"[{env_tag}] {summary}"
 
         markers.append(
             {
@@ -434,7 +615,9 @@ def get_chart_markers(
                 "shape": vis["shape"],
                 "position": vis["position"],
                 "color": vis["color"],
-                "text": label[:24],
+                "short_label": short,
+                "text": short,
+                "summary": summary[:500],
                 "payload": payload,
             }
         )

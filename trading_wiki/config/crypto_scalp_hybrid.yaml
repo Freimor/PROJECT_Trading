@@ -1,11 +1,29 @@
 # Crypto scalp 5m — rules_engine only (LLM выключен до настройки GPU)
 # Включить LLM: llm_enabled: true и llm_sample_pct > 0
 
-version: "1.0.0"
+version: "1.1.0"
+# filter_profile relaxed_v1 — ослабленный фильтр (виден в событиях filter.filter_profile):
+#   momentum_min_pct: 0.15 → 0.10
+#   volume_spike_min: 1.35 → 1.15
+#   require_trend_align: true → false
+#   min_rules_to_proceed: 2 (без изменений — нужны 2 из 5 правил)
+filter_profile: relaxed_v1
 
 timeframe: 5m
 schedule_cron: "*/5 * * * *"
 schedule_minutes: 5
+
+# Testnet futures klines часто «плоские» — для сигналов берём mainnet-свечи (ордера всё равно testnet)
+signal_klines_mainnet_fallback: true
+
+# Качество свечей: явный reject klines_unusable + алерт при «мёртвом» testnet feed
+klines_quality:
+  min_bars: 30
+  flat_range_pct_max: 0.03
+  feed_dead_alert_ticks: 6          # 6×5m ≈ 30 мин на mainnet_metrics_fallback
+  alert_cooldown_minutes: 30
+  block_signals_on_unusable: true
+  block_on_feed_dead: false        # true = стоп торговли символом после feed_dead_alert_ticks
 
 # Pre-session pair selection (vol / volume / diversification)
 universe_scan:
@@ -46,9 +64,10 @@ pairs:
   - BTCUSDT
   - ETHUSDT
 
-# LLM отключён: все одобренные фильтром сигналы идут через rules_engine
+# LLM assist — hybrid: sample_pct% пограничных 5m тиков через быструю LLM (veto)
+# Включить в консоли: Настройки стратегии → LLM assist, или здесь:
 llm_enabled: false
-llm_sample_pct: 0
+llm_sample_pct: 20
 # ambiguity_score: 0 = уверенный скрипт, 1 = полный шум
 ambiguity:
   clear_max: 0.35      # ≤ → execute без LLM (script)
@@ -66,14 +85,15 @@ llm:
   max_tokens: 256          # короткий JSON; без этого берётся guardrails.max_tokens=4096
   timeout_ms: 25000        # 5m scalp: превышение → reject (ollama_timeout), fail-closed
 
-# Микро-правила 5m (до ambiguity)
+# Микро-правила 5m (до ambiguity) — relaxed_v1
 scalp_rules:
+  min_rules_to_proceed: 2
   momentum_bars: 3
-  momentum_min_pct: 0.15
+  momentum_min_pct: 0.10
   rsi_active_low: 38
   rsi_active_high: 62
-  volume_spike_min: 1.35
-  require_trend_align: true
+  volume_spike_min: 1.15
+  require_trend_align: false
 
 risk:
   scale_notional_pct: 0.5   # половина от стандартного max_notional swing

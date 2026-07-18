@@ -28,6 +28,27 @@ swing_signals:
   paper_amount_rub: 5000
   prefer_limit_orders: true
 
+universe_scan:
+  enabled: true
+  top_n: 5
+  min_score: 0.35
+  min_valtoday_mln: 15
+  min_numtrades: 50
+  max_scan_tickers: 25
+  equities_only: true
+  use_whitelist: false
+  klines_limit: 60
+  volume_ratio_min: 0.25
+  momentum_bars: 5
+  momentum_min_pct: 0.5
+  rsi_active_low: 35
+  rsi_active_high: 65
+  weight_liquidity: 0.35
+  weight_volume: 0.25
+  weight_momentum: 0.20
+  weight_rsi: 0.10
+  weight_atr: 0.10
+
 session:
   timezone: Europe/Moscow
   start_hour: 10

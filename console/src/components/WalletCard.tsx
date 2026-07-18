@@ -1,50 +1,29 @@
 import PortfolioCard from "./PortfolioCard";
-import { fmtAmount, normalizeBalances, type BalancesResponse } from "../utils/balances";
+import { normalizeBalances, type BalancesResponse } from "../utils/balances";
+import BalanceAssetsList from "./BalanceAssetsList";
+import { useI18n } from "../i18n/LanguageContext";
 
 type Props = {
   data: BalancesResponse | null;
   loading?: boolean;
-  highlightAssets?: string[];
 };
 
-export default function WalletCard({
-  data,
-  loading,
-  highlightAssets = ["USDT", "BTC", "ETH", "BNB"],
-}: Props) {
+export default function WalletCard({ data, loading }: Props) {
+  const { t } = useI18n();
   const { rows, status, message } = normalizeBalances(data ?? undefined);
 
   return (
     <PortfolioCard title="Кошелёк Binance testnet">
-      {loading && !data && <p className="muted small">Загрузка баланса…</p>}
+      {loading && !data && <p className="muted small">{t("common.loading")}</p>}
       {status === "empty" && (
-        <p className="muted small">{message ?? "Пусто или нет API-ключей testnet в .env"}</p>
+        <p className="muted small">{message ?? t("overview.emptyTestnet")}</p>
       )}
       {status === "ok" && (
         <>
-          {highlightAssets.map((asset) => {
-            const row = rows.find((b) => b.asset === asset);
-            return (
-              <div className="metric-row" key={asset}>
-                <span>{asset}</span>
-                <strong>{fmtAmount(row?.free, asset === "USDT" ? 2 : 6)}</strong>
-              </div>
-            );
-          })}
-          {rows.length > highlightAssets.length && (
-            <ul className="balance-list compact">
-              {rows
-                .filter((b) => !highlightAssets.includes(b.asset))
-                .slice(0, 5)
-                .map((b) => (
-                  <li key={b.asset}>
-                    <span>{b.asset}</span>
-                    <span>{fmtAmount(b.free)}</span>
-                  </li>
-                ))}
-            </ul>
-          )}
-          <p className="muted small">Активов с балансом: {rows.length}</p>
+          <BalanceAssetsList title={t("overview.allAssets")} balances={rows} />
+          <p className="muted small">
+            {t("overview.assetsWithBalance")}: {rows.length}
+          </p>
         </>
       )}
     </PortfolioCard>

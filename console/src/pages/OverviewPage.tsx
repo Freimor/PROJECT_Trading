@@ -14,6 +14,7 @@ import ru from "../i18n/ru";
 import type { AdminLayoutContext } from "../layouts/AdminLayout";
 import { usePolling } from "../hooks/usePolling";
 import { formatMoexNextOpen } from "../utils/moex";
+import { normalizeBalances, type BalancesResponse } from "../utils/balances";
 
 type PerformanceResp = {
   baseline_started_at?: string;
@@ -77,10 +78,19 @@ export default function OverviewPage() {
 
   const { data: performance } = usePolling<PerformanceResp>(
     () => apiGet(`/api/portfolio/performance?period=${period}`),
-    POLL.WALLET,
+    POLL.TICK,
     true,
     { errorSource: "GET /api/portfolio/performance", staggerKey: `overview-perf-${period}` },
   );
+
+  const { data: binanceBalances } = usePolling<BalancesResponse>(
+    () => apiGet("/api/binance/balances?testnet=true&top=0"),
+    POLL.TICK,
+    true,
+    { staggerKey: "overview-binance-bal" },
+  );
+
+  const demoCryptoBalances = normalizeBalances(binanceBalances).rows;
 
   const { data: moexPortfolio } = usePolling<MoexDash>(
     () => apiGet("/api/tinvest/portfolio?sandbox=true", { timeoutMs: 45_000 }),
@@ -143,6 +153,7 @@ export default function OverviewPage() {
           metric={demoCrypto}
           period={period}
           onPeriodChange={setPeriod}
+          balances={demoCryptoBalances}
           emptyMessage={t("overview.emptyTestnet")}
           linkTo="/crypto"
           linkLabel={t("overview.openCrypto")}

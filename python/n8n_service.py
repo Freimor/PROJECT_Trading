@@ -375,4 +375,38 @@ def import_market_workflows(market: str, *, update_if_exists: bool = True) -> di
 
 
 def import_all_workflows(*, update_if_exists: bool = True) -> dict[str, Any]:
-    return import_workflows(ALL_IMPORT_ORDER, update_if_exists=update_if_exists)
+    result = import_workflows(ALL_IMPORT_ORDER, update_if_exists=update_if_exists)
+    _patch_error_workflow_references()
+    return result
+
+
+def _patch_error_workflow_references() -> None:
+    """Resolve errorWorkflow name → n8n workflow id (name lookup fails at runtime)."""
+    handler = _find_workflow_by_name("shared-global-error-handler")
+    if not handler or not handler.get("id"):
+        return
+    handler_id = str(handler["id"])
+    for wf in list_workflows():
+        wid = str(wf.get("id") or "")
+        if not wid or wid == handler_id:
+            continue
+        try:
+            current = get_workflow(wid)
+        except Exception:
+            continue
+        settings = dict(current.get("settings") or {})
+        err = settings.get("errorWorkflow")
+        if err not in ("shared-global-error-handler", handler_id):
+            continue
+        if err == handler_id:
+            continue
+        settings["errorWorkflow"] = handler_id
+        _put_workflow(
+            wid,
+            _workflow_put_body(
+                current,
+                nodes=current.get("nodes") or [],
+                connections=current.get("connections") or {},
+                settings=settings,
+            ),
+        )

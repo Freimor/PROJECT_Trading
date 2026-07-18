@@ -10,7 +10,7 @@ export type TileStatus = {
 };
 
 type Props = {
-  title: string;
+  title: ReactNode;
   tileId?: string;
   status?: TileStatus;
   /** @deprecated use status */
@@ -39,7 +39,7 @@ export default function PortfolioCard({
   children,
 }: Props) {
   const { t } = useI18n();
-  const id = tileId ?? title;
+  const id = tileId ?? (typeof title === "string" ? title : "tile");
   const [collapsed, setCollapsed] = useState(() => {
     const saved = localStorage.getItem(collapseKey(id));
     if (saved !== null) return saved === "true";

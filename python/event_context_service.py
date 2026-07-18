@@ -24,7 +24,19 @@ REJECT_HINTS: dict[str, str] = {
     "invalid_action": "В ответе LLM нет корректного action (approve/reject).",
     "low_confidence": "LLM одобрила сделку, но confidence ниже порога в guardrails.yaml.",
     "missing_counter_thesis": "LLM одобрила, но counter_thesis слишком короткий или пустой.",
-    "scalp_no_rule_match": "Scalp-фильтр: меньше двух микро-правил (momentum/RSI/volume/MACD).",
+    "scalp_no_rule_match": (
+        "Scalp-фильтр: меньше min_rules_to_proceed микро-правил (momentum/RSI/volume/MACD/trend). "
+        "Если klines_source=testnet и индикаторы нулевые — проверьте feed health."
+    ),
+    "klines_unusable": (
+        "Свечи непригодны для индикаторов даже после mainnet fallback (плоские/мало баров). "
+        "Сигнал не анализируется — не путать с scalp_no_rule_match."
+    ),
+    "testnet_feed_dead": (
+        "Testnet-лента для символа давно «мёртвая» (N тиков подряд mainnet_metrics_fallback). "
+        "Торговля заблокирована настройкой block_on_feed_dead."
+    ),
+    "scalp_no_bear_rule_match": "Scalp short-фильтр: недостаточно медвежьих правил для шорта.",
     "scalp_ambiguity_too_high": "Сигнал слишком неоднозначный (ambiguity > порога) — даже LLM-слот не вызывается.",
     "kill_switch_active": "Активен kill switch — все сделки заблокированы.",
     "max_open_positions": "Достигнут лимит открытых позиций по риск-профилю.",

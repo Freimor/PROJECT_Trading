@@ -33,8 +33,10 @@ def _filter_context(
     }
 
 
-def _llm_mode() -> str:
-    return str(get_guardrails().get("llm", {}).get("mode", "validate_only"))
+def _llm_mode(*, symbol: str | None = None, workflow_name: str | None = None) -> str:
+    from llm_assist_service import effective_llm_mode
+
+    return effective_llm_mode(symbol=symbol, workflow_name=workflow_name)
 
 
 def _llm_reject_reason(llm_result: dict[str, Any]) -> str | None:
@@ -65,7 +67,7 @@ def run_crypto_signal(
     crypto_cfg = apply_swing_conservatism_crypto(get_config_effective("crypto_config"))
     guardrails = apply_risk_profile_to_guardrails(get_guardrails(), "crypto")
     filt_ctx = _filter_context(crypto_cfg, guardrails, workflow_name)
-    llm_mode = _llm_mode()
+    llm_mode = _llm_mode(symbol=symbol, workflow_name=workflow_name)
     testnet = crypto_cfg.get("env") == "testnet" or env == "paper"
     timeframe = crypto_cfg.get("timeframe", "4h")
     prompt_version = crypto_cfg.get("prompt_version", "crypto_validate_v1")

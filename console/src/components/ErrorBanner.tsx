@@ -1,15 +1,15 @@
 import { useErrorNotifications } from "../context/ErrorNotifications";
-
 import { useI18n } from "../i18n/LanguageContext";
 
-
+function shortSource(id: string): string {
+  const slash = id.lastIndexOf("/");
+  if (slash >= 0) return id.slice(slash + 1) || id;
+  return id.length > 48 ? `${id.slice(0, 45)}…` : id;
+}
 
 export default function ErrorBanner() {
-
   const { t } = useI18n();
-
   const { notices, dismiss, dismissAll } = useErrorNotifications();
-
   const visible = notices.slice(-3);
 
   if (visible.length === 0) return null;
@@ -41,18 +41,4 @@ export default function ErrorBanner() {
       </div>
     </div>
   );
-
 }
-
-
-
-function shortSource(id: string): string {
-
-  const path = id.replace(/^GET\s+|^POST\s+/i, "");
-
-  if (path.length <= 36) return path;
-
-  return `…${path.slice(-34)}`;
-
-}
-

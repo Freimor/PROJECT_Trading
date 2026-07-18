@@ -89,7 +89,7 @@ async function fetchOnce<T>(
   path: string,
   options: {
     timeoutMs: number;
-    method?: "GET" | "POST" | "PUT" | "PATCH";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     operatorPassword?: string;
   },
@@ -188,4 +188,16 @@ export async function apiPatch<T>(
   options?: { timeoutMs?: number },
 ): Promise<T> {
   return fetchOnce<T>(path, { timeoutMs: options?.timeoutMs ?? 60_000, method: "PATCH", body });
+}
+
+export async function apiDelete<T>(
+  path: string,
+  options?: { timeoutMs?: number; operatorPassword?: string },
+): Promise<T> {
+  const timeoutMs = options?.timeoutMs ?? 60_000;
+  return fetchOnce<T>(path, {
+    timeoutMs,
+    method: "DELETE",
+    operatorPassword: options?.operatorPassword,
+  });
 }

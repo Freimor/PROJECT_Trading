@@ -104,9 +104,9 @@ def get_market_price(symbol: str, *, testnet: bool = True, cfg: dict[str, Any] |
 def get_trading_equity(*, testnet: bool = True, cfg: dict[str, Any] | None = None) -> float:
     product = get_crypto_trading_product(cfg=cfg)
     if product.get("is_futures"):
-        from binance_futures_client import get_futures_usdt_balance
+        from binance_futures_client import get_futures_margin_equity
 
-        return get_futures_usdt_balance(testnet=testnet)
+        return get_futures_margin_equity(testnet=testnet)
     from binance_client import get_account_balances
     from crypto_quote import wallet_quote_balance
 

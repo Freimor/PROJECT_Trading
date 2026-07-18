@@ -70,6 +70,17 @@ def _signed_request(
     return data if isinstance(data, dict) else {"data": data, "http_status": resp.status_code}
 
 
+def _unwrap_list_response(data: Any) -> list[Any]:
+    """Binance list endpoints are wrapped as {data: [...], http_status} by _signed_request."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        inner = data.get("data")
+        if isinstance(inner, list):
+            return inner
+    return []
+
+
 def fetch_futures_klines(
     symbol: str,
     interval: str = "5m",
@@ -227,10 +238,9 @@ def get_futures_position_risk(
     if symbol:
         params["symbol"] = symbol.upper()
     data = _signed_request("GET", "/fapi/v2/positionRisk", params=params, testnet=testnet)
-    if not isinstance(data, list):
-        return []
+    rows = _unwrap_list_response(data)
     out: list[dict[str, Any]] = []
-    for row in data:
+    for row in rows:
         if not isinstance(row, dict):
             continue
         amt = float(row.get("positionAmt") or 0)
@@ -318,10 +328,9 @@ def get_futures_force_orders(
     if end_time_ms is not None:
         params["endTime"] = int(end_time_ms)
     data = _signed_request("GET", "/fapi/v1/forceOrders", params=params, testnet=testnet)
-    if not isinstance(data, list):
-        return []
+    rows = _unwrap_list_response(data)
     out: list[dict[str, Any]] = []
-    for row in data:
+    for row in rows:
         if not isinstance(row, dict):
             continue
         out.append(
@@ -344,12 +353,21 @@ def get_futures_force_orders(
 
 def get_futures_usdt_balance(*, testnet: bool = True) -> float:
     data = _signed_request("GET", "/fapi/v2/balance", testnet=testnet)
-    if not isinstance(data, list):
-        return 0.0
-    for row in data:
+    for row in _unwrap_list_response(data):
         if str(row.get("asset") or "").upper() == "USDT":
-            return float(row.get("balance") or row.get("crossWalletBalance") or 0)
+            return float(
+                row.get("availableBalance") or row.get("balance") or row.get("crossWalletBalance") or 0
+            )
     return 0.0
+
+
+def get_futures_margin_equity(*, testnet: bool = True) -> float:
+    """Total margin balance in USDT terms (includes USDC/BTC collateral when enabled)."""
+    data = _signed_request("GET", "/fapi/v2/account", testnet=testnet)
+    if not isinstance(data, dict):
+        return 0.0
+    margin = float(data.get("totalMarginBalance") or data.get("totalWalletBalance") or 0)
+    return margin
 
 
 def get_futures_ticker_price(symbol: str, *, testnet: bool = True) -> float | None:
